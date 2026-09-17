@@ -1,0 +1,227 @@
+%==============================================================================
+%  Sina Sabzevar -- Academic CV
+%  Positioning: Causal discovery & effective connectivity in clinical fMRI
+%
+%  BUILD:  pdflatex sina_sabzevar_cv.tex   (run twice)
+%  Compiles on Overleaf as-is (standard packages only).
+%
+%  >>> Red [FILL: ...] markers are placeholders you MUST replace before sending.
+%  >>> Set \draftfalse below to preview without the red highlighting.
+%==============================================================================
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=0.7in,top=0.55in,bottom=0.55in]{geometry}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+
+%------------------------------------------------------------------ colors ---
+\definecolor{accent}{HTML}{1F3A5F}   % deep slate blue
+\definecolor{rule}{HTML}{B8C4D4}
+\definecolor{muted}{HTML}{555555}
+\definecolor{todo}{HTML}{C0392B}
+
+%--------------------------------------------------------------- draft mode ---
+\newif\ifdraft
+\drafttrue          % <-- \draftfalse to preview without red markers
+
+% Breakable placeholder (must NOT be a box, or it overflows the margin)
+\newcommand{\fillme}[1]{%
+  \ifdraft{\color{todo}\bfseries[FILL: #1]}\else\textbf{[#1]}\fi}
+
+%------------------------------------------------------------------ layout ---
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+\setlength{\emergencystretch}{2em}
+
+\titleformat{\section}
+  {\color{accent}\normalsize\bfseries\scshape}
+  {}{0em}{}[\vspace{-0.55em}{\color{rule}\rule{\linewidth}{0.7pt}}]
+\titlespacing*{\section}{0pt}{8pt}{4pt}
+
+\setlist[itemize]{leftmargin=1.0em,itemsep=1pt,topsep=1.5pt,parsep=0pt,
+                  label=\textcolor{accent}{\textbullet}}
+
+% Role header:  \role{Title}{Institution / advisor}{Dates}
+\newcommand{\role}[3]{%
+  \par\vspace{4pt}%
+  \textbf{#1}\hfill{\color{muted}\small #3}\par
+  \textit{\color{muted}\small #2}\par\vspace{1.5pt}}
+
+% Compact one-line entry (teaching)
+\newcommand{\teachline}[2]{%
+  \par #1\hfill{\color{muted}\small #2}\par\vspace{2pt}}
+
+% Publication group heading
+\newcommand{\pubhead}[1]{\par\vspace{4pt}{\bfseries\small #1}\par\vspace{1.5pt}}
+
+\newcounter{pub}
+\newcommand{\pub}[1]{\par\refstepcounter{pub}\noindent%
+  \begin{minipage}[t]{0.032\linewidth}\raggedright\small\thepub.\end{minipage}%
+  \begin{minipage}[t]{0.958\linewidth}\small #1\end{minipage}\\[2.5pt]}
+
+\newcommand{\me}{\textbf{Sabzevar, S.}}
+
+%==============================================================================
+\begin{document}
+
+%--------------------------------------------------------------------- head ---
+\begin{center}
+  {\LARGE\bfseries\color{accent} Sina Sabzevar}\\[3pt]
+  {\large Causal Discovery \& Effective Connectivity in Clinical fMRI}\\[6pt]
+  {\small
+    \href{mailto:sinasabzevar7@gmail.com}{sinasabzevar7@gmail.com}
+    \;\textbar\; +98 916 746 6673
+    \;\textbar\; \href{https://linkedin.com/in/sinasabzevar}{linkedin.com/in/sinasabzevar}\\[1.5pt]
+    \fillme{website} \;\textbar\; \fillme{Google Scholar} \;\textbar\; \fillme{GitHub} \;\textbar\; \fillme{ORCID}
+  }
+\end{center}
+
+%------------------------------------------------------------------ summary ---
+\section{Research Summary}
+
+I develop causal-inference methods for resting-state fMRI to identify discriminative brain regions
+in psychiatric and neurological disorders. Across four years and two laboratories I have applied
+constraint-based, score-based, and functional causal discovery (PC, GES, LiNGAM) to schizophrenia
+and epilepsy cohorts, and developed generative-augmentation and graph-embedding methods to address
+the small-sample, class-imbalanced regime that limits clinical neuroimaging. MSc in Electrical
+Engineering, University of Tehran; ranked 4th nationally among $\sim$20,000 candidates. I currently
+apply large-scale imbalanced-learning methods in industry while continuing neuroimaging research,
+and seek a PhD extending causal connectivity analysis toward
+\fillme{your direction, e.g.\ cross-disorder biomarker discovery}.
+
+%---------------------------------------------------------------- education ---
+\section{Education}
+
+\role{M.Sc., Electrical Engineering (Control Systems)}{University of Tehran, Iran \ $\cdot$ \ Full Scholarship \ $\cdot$ \ GPA 16.45/20 (3.72/4.00)}{Sep 2019 -- Feb 2023}
+\begin{itemize}
+  \item \textbf{Thesis:} \textit{Diagnosing Discriminative Brain Regions in Schizophrenia Using
+        Causal Discovery and Machine Learning.} \ Advisor: Prof.\ Babak N.\ Araabi.
+\end{itemize}
+
+\role{B.Sc., Electrical Engineering (Control Systems)}{Hamedan University of Technology, Iran \ $\cdot$ \ Full Scholarship}{Sep 2013 -- Jul 2018}
+
+%------------------------------------------------------------- publications ---
+\section{Publications}
+
+\pubhead{Peer-Reviewed Conference Papers}
+\pub{\me, Masoudnia, S., Nazemzadeh, M.R., Araabi, B.N. (2023). Enhanced Diagnosis of
+  Schizophrenia Using Integrated Node Embedding and Causal Discovery on Imbalanced fMRI Data.
+  \textit{IEEE Int.\ Conf.\ on Signal Processing and Intelligent Systems (ICSPIS)}. \fillme{DOI}}
+
+\pubhead{Manuscripts Under Review}
+\pub{\me, Masoudnia, S., Araabi, B.N. Rest-fMRI Data Augmentation Using Deep Generative Models to
+  Improve Classification Performance. Under review at \fillme{journal}, submitted \fillme{mon.\ year}.}
+
+\pubhead{Conference Abstracts \& Presentations}
+\pub{\me, Masoudnia, S., Nazemzadeh, M.R., Araabi, B.N. (2025). Identifying Discriminative Regions
+  in Epilepsy Through Effective Connectivity Analysis. \textit{Organization for Human Brain Mapping
+  (OHBM) Annual Meeting}, \fillme{city}; \fillme{poster/oral}.}
+
+\pubhead{In Preparation}
+\pub{\me, \fillme{co-authors}. Continual Learning: Review, Benchmark Dataset, and Evaluation Under
+  Non-Stationary Data Distributions. Target: \fillme{venue}, \fillme{2027}.}
+
+%--------------------------------------------------------- research exper. ---
+\section{Research Experience}
+
+\role{Research Assistant --- Causal Discovery in Psychiatric Neuroimaging}{Computational Modeling \& Machine Learning Lab, University of Tehran \ $\cdot$ \ Advisor: Prof.\ B.N.\ Araabi}{2021 -- 2024}
+\begin{itemize}
+  \item Applied constraint-based (PC), score-based (GES), and functional (LiNGAM) causal discovery
+        to resting-state fMRI from \fillme{dataset} (\fillme{n} patients / \fillme{n} controls,
+        \fillme{atlas}), recovering directed connectivity that isolated \fillme{k} discriminative
+        regions in schizophrenia.
+  \item Integrated graph node embedding with causal-graph features, improving \fillme{metric}
+        from \fillme{baseline} to \fillme{result} over correlation-based functional-connectivity
+        baselines.
+  \item Addressed severe class imbalance (\fillme{ratio}) with SMOTE and cost-sensitive learning,
+        raising minority-class \fillme{recall/F1} by \fillme{delta}.
+  \item Designed VAE- and GAN-based augmentation for rs-fMRI connectivity data, improving held-out
+        \fillme{metric} by \fillme{delta} in the low-$n$ regime.
+  \item Built and ran the end-to-end pipeline on HPC infrastructure (\fillme{scale}).
+\end{itemize}
+
+\role{Research Assistant --- Effective Connectivity in Epilepsy}{Research Center for Molecular \& Cellular Imaging, TUMS \ $\cdot$ \ Advisors: Prof.\ M.R.\ Nazemzadeh, Dr.\ S.\ Masoudnia}{2022 -- 2023}
+\begin{itemize}
+  \item Estimated effective connectivity on a clinical epilepsy cohort (\fillme{n} patients /
+        \fillme{n} controls, \fillme{scanner}), identifying \fillme{k} regions distinguishing
+        \fillme{subtype} from controls; presented at OHBM 2025.
+  \item Developed a multimodal \fillme{modalities} pipeline for \fillme{task}, reaching
+        \fillme{metric}.
+  \item Collaborated directly with clinicians on cohort definition, quality control, and
+        interpretation of connectivity findings.
+\end{itemize}
+
+%-------------------------------------------------------- applied / industry ---
+\section{Applied Machine Learning Experience}
+
+\role{Data Scientist \& Project Manager}{Hamrah-e Aval (MCI), Tehran}{Feb 2024 -- Present}
+\begin{itemize}
+  \item Built end-to-end supervised pipelines for churn prediction and subscriber classification
+        over \textbf{70M+ records} --- large-scale learning under severe class imbalance, the same
+        methodological regime as clinical neuroimaging at a different scale.
+  \item Developed a simulation framework for counterfactual sensitivity analysis of campaigns,
+        estimating intervention effects prior to deployment.
+\end{itemize}
+
+\role{Freelance Data Scientist \& Python Developer}{Remote \ $\cdot$ \ scalable data pipelines, computer vision, predictive modeling}{2020 -- 2024}
+\role{Co-Founder \& Lead Instructor}{Cofe Deep --- online AI education platform; built deep-learning curriculum, delivered live lectures}{2020 -- 2021}
+
+%------------------------------------------------------------------ teaching ---
+\section{Teaching --- University of Tehran}
+
+\teachline{\textbf{Chief Teaching Assistant} --- Machine Learning \& Deep Learning (Graduate)}{Fall 2024}
+\teachline{\textbf{Teaching Assistant} --- Deep Learning (Graduate)}{Fall 2021, Fall 2022}
+\teachline{\textbf{Teaching Assistant} --- Statistical Inference \& Game Theory (Graduate)}{2020}
+\teachline{\textbf{Instructor} --- PyTorch \& Python hands-on workshops}{2021, 2022}
+
+%-------------------------------------------------------------------- skills ---
+\section{Technical Skills}
+
+\begin{tabular}{@{}>{\bfseries}p{0.20\linewidth}p{0.77\linewidth}@{}}
+Causal \& \newline Connectivity &
+  Causal discovery (PC, GES, FCI, LiNGAM), effective connectivity, functional connectivity,
+  graph \& network analysis, brain parcellation \\[3pt]
+Neuroimaging &
+  Resting-state fMRI preprocessing \& analysis, structural MRI,
+  \fillme{name your actual toolboxes: fMRIPrep / FSL / SPM / nilearn / CONN / Tetrad} \\[3pt]
+Machine Learning &
+  PyTorch, scikit-learn, graph neural networks, VAEs, GANs, imbalanced learning, continual learning \\[3pt]
+Computing &
+  Python (advanced), MATLAB, SQL, HPC \& distributed computing, Git, \LaTeX{} \\
+\end{tabular}
+
+%-------------------------------------------------------------------- honors ---
+\section{Honors \& Awards}
+\begin{itemize}
+  \item \textbf{Ranked 4th nationally} out of $\sim$20,000 candidates, Iranian MSc entrance
+        examination (Konkour), 2019.
+  \item Full Scholarship --- MSc, University of Tehran (2019--2023); BSc, Hamedan University of
+        Technology (2013--2018).
+\end{itemize}
+
+%---------------------------------------------------------------- additional ---
+\section{Additional Information}
+
+\begin{tabular}{@{}>{\bfseries}p{0.20\linewidth}p{0.77\linewidth}@{}}
+Languages     & English --- TOEFL iBT \fillme{retake and update} \ $\cdot$ \ Persian (native) \\[2pt]
+Certification & Machine Learning Specialization, Stanford University (Coursera) \\[2pt]
+Coursework    & Deep Generative Models, Advanced Deep Learning, Statistical Inference,
+                System Identification, Optimal \& Non-Linear Control, Game Theory \\
+\end{tabular}
+
+%---------------------------------------------------------------- references ---
+\section{References}
+
+\begin{tabular}{@{}p{0.27\linewidth}p{0.24\linewidth}>{\raggedright\arraybackslash\small}p{0.46\linewidth}@{}}
+\textbf{Prof.\ Babak N.\ Araabi}       & University of Tehran & \href{mailto:araabi@ut.ac.ir}{araabi@ut.ac.ir} \\[1.5pt]
+\textbf{Dr.\ M.R.\ Nazem-Zadeh}        & Monash University    & \href{mailto:Mohamad.Nazem-Zadeh@monash.edu}{Mohamad.Nazem-Zadeh@monash.edu} \\[1.5pt]
+\textbf{Dr.\ Saeed Masoudnia}          & University of Tehran & \href{mailto:masoudnia@ut.ac.ir}{masoudnia@ut.ac.ir} \\
+\end{tabular}
+
+\end{document}
