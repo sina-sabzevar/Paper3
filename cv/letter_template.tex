@@ -1,0 +1,91 @@
+%==============================================================================
+%  Application letter -- advertised European PhD positions
+%  Typography deliberately matches sina_sabzevar_cv.tex so the two read as a set.
+%
+%  BUILD:  pdflatex letter_template.tex
+%
+%  Keep it to ONE page. If it spills over, cut from paragraph 3, never from 2.
+%  Red [FILL: ...] markers must all be replaced. \draftfalse hides the marking.
+%==============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1in,top=0.8in,bottom=0.8in]{geometry}
+\usepackage{xcolor}
+\usepackage{parskip}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{accent}{HTML}{1F3A5F}
+\definecolor{rule}{HTML}{B8C4D4}
+\definecolor{muted}{HTML}{555555}
+\definecolor{todo}{HTML}{C0392B}
+
+\newif\ifdraft
+\drafttrue                      % <-- \draftfalse to preview without red markers
+\newcommand{\fillme}[1]{\ifdraft{\color{todo}\bfseries[FILL: #1]}\else\textbf{[#1]}\fi}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\linespread{1.04}
+
+%==============================================================================
+\begin{document}
+
+%------------------------------------------------------------------ letterhead
+{\LARGE\bfseries\color{accent} Sina Sabzevar}\\[2pt]
+{\small\color{muted} Causal discovery \& effective connectivity in clinical fMRI}\\[5pt]
+{\small
+  \href{mailto:sinasabzevar7@gmail.com}{sinasabzevar7@gmail.com}
+  \ \textbar\ \fillme{website}
+  \ \textbar\ \fillme{Google Scholar}
+}\\[-2pt]
+{\color{rule}\rule{\linewidth}{0.7pt}}
+
+\vspace{10pt}
+{\small\color{muted}\fillme{date}}
+
+\vspace{10pt}
+
+Dear \fillme{Dr / Professor Surname},
+
+%---------------------------------------------------------------------- para 1
+I am applying for the PhD position on \fillme{project title as advertised}
+(ref.\ \fillme{reference number}). I work on causal discovery and effective connectivity in
+resting-state fMRI, and \fillme{the one-line reason this project and you meet}.
+
+%---------------------------------------------------------------------- para 2
+% THE LETTER. Name the project's real technical content, then connect it to
+% something you have done, with a number attached. Rewrite for every application.
+Your project \fillme{state in your own words what the work actually is}. My MSc and the two
+years following it were spent on the applied side of that same problem: I applied PC, GES and
+LiNGAM causal discovery to resting-state fMRI in schizophrenia (\fillme{n} patients,
+\fillme{n} controls) and estimated effective connectivity in a clinical epilepsy cohort
+(\fillme{n}), and in both the binding constraint was never the method but
+\fillme{the constraint that connects to their project}. That is what led to my current
+manuscript, which builds VAE- and GAN-based augmentation for connectivity data and evaluates it
+against SMOTE and cost-sensitive baselines (\fillme{result}). I have therefore spent real time
+on the question your project \fillme{formalises / extends / tests}, approaching it as someone
+who kept hitting the wall rather than as someone modelling it from outside.
+
+%---------------------------------------------------------------------- para 3
+% Two differentiators the advertisement did not ask for. Pick from: engineering
+% scale and HPC; a complementary methods family; clinical collaboration; teaching.
+Two things I would bring beyond the advertised requirements. First,
+\fillme{differentiator one, with its evidence}. Second,
+\fillme{differentiator two, with its evidence}.
+
+%---------------------------------------------------------------------- para 4
+Publications, code and figures are at \fillme{website}; the schizophrenia work appeared at
+ICSPIS 2023 and the epilepsy analysis at OHBM 2025.
+
+%---------------------------------------------------------------------- para 5
+I can start \fillme{date}, I am ready to relocate, and I have worked in English throughout my
+MSc and current role (\fillme{TOEFL, once retaken}). I would be glad to discuss the project.
+
+\vspace{12pt}
+Yours sincerely,\\[14pt]
+Sina Sabzevar
+
+\end{document}
