@@ -1,0 +1,68 @@
+%==============================================================================
+%  ssletter.sty -- shared letterhead and styling for Sina Sabzevar's letters
+%
+%  Typography matches cv/sina_sabzevar_cv.tex so every document in an
+%  application reads as coming from the same person.
+%
+%  USAGE
+%    \documentclass[11pt,a4paper]{article}
+%    \usepackage{ssletter}          % add [final] to hide the red FILL markers
+%    \begin{document}
+%    \letterhead
+%    \lettermeta{2026-11-03}
+%    \opening{Dear Dr Surname}
+%      ... paragraphs ...
+%    \closing
+%    \end{document}
+%==============================================================================
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{ssletter}[2026/09/17 Sina Sabzevar letter style]
+
+\newif\ifss@draft \ss@drafttrue
+\DeclareOption{final}{\ss@draftfalse}
+\DeclareOption{draft}{\ss@drafttrue}
+\ProcessOptions\relax
+
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{lmodern}
+\RequirePackage[margin=1in,top=0.8in,bottom=0.8in]{geometry}
+\RequirePackage{xcolor}
+\RequirePackage{parskip}
+\RequirePackage[hidelinks]{hyperref}
+
+\definecolor{accent}{HTML}{1F3A5F}
+\definecolor{rule}{HTML}{B8C4D4}
+\definecolor{muted}{HTML}{555555}
+\definecolor{todo}{HTML}{C0392B}
+
+% Placeholder that is impossible to miss, and breakable across lines.
+\newcommand{\fillme}[1]{%
+  \ifss@draft{\color{todo}\bfseries[FILL: #1]}\else\textbf{[#1]}\fi}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\linespread{1.04}
+
+% Contact line -- edit these four once and every letter inherits them.
+\newcommand{\ssemail}{sinasabzevar7@gmail.com}
+\newcommand{\sstagline}{Causal discovery \& effective connectivity in clinical fMRI}
+\newcommand{\sssite}{\fillme{website}}
+\newcommand{\ssscholar}{\fillme{Google Scholar}}
+
+\newcommand{\letterhead}{%
+  {\LARGE\bfseries\color{accent} Sina Sabzevar}\\[2pt]
+  {\small\color{muted} \sstagline}\\[5pt]
+  {\small \href{mailto:\ssemail}{\ssemail}
+    \ \textbar\ \sssite
+    \ \textbar\ \ssscholar}\\[-2pt]
+  {\color{rule}\rule{\linewidth}{0.7pt}}\par}
+
+% Date, and optionally the addressee block some portals expect.
+\newcommand{\lettermeta}[1]{\vspace{10pt}{\small\color{muted} #1}\par}
+\newcommand{\recipient}[1]{\vspace{8pt}{\small #1}\par}
+
+\newcommand{\opening}[1]{\vspace{10pt} #1,\par}
+\newcommand{\closing}{\vspace{12pt} Yours sincerely,\\[14pt] Sina Sabzevar\par}
+
+\endinput

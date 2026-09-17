@@ -1,0 +1,64 @@
+%==============================================================================
+%  MOTIVATION LETTER -- university portal or graduate programme
+%  Register: narrative is WANTED here, unlike the cover letter. 500-650 words,
+%  one page if it fits, two at most. Respect any word limit the portal states.
+%
+%  The key difference from cover-example.tex: a motivation letter DOES want
+%  "why this group" -- but specific (their method line, their cohort, a named
+%  paper), never "your beautiful campus and vibrant city".
+%==============================================================================
+\documentclass[11pt,a4paper]{article}
+\usepackage{ssletter}
+\begin{document}
+
+\letterhead
+\lettermeta{\fillme{date}}
+\recipient{\fillme{Admissions / Selection Committee, Department, University}}
+
+\opening{Dear \fillme{Members of the Selection Committee / Dr Surname}}
+
+I am applying to \fillme{programme or position, with reference number} at
+\fillme{institution}. I am an electrical engineer working on causal inference for
+resting-state fMRI, and I want to spend a PhD on a problem I have already run into from the
+applied side: \fillme{the problem, in one clause}.
+
+% ---- Where you come from, methodologically. Narrative is appropriate here.
+My route into this was through control systems rather than neuroscience, which shaped how I
+approach it. During my MSc at the University of Tehran I applied constraint-based (PC),
+score-based (GES) and functional (LiNGAM) causal discovery to resting-state fMRI in
+schizophrenia (\fillme{n} patients, \fillme{n} controls, \fillme{atlas}), combining the
+recovered directed graphs with graph node embeddings to classify patients
+(\fillme{result vs.\ the correlation-based baseline}). I then joined a clinical group at
+Tehran University of Medical Sciences to estimate effective connectivity in an epilepsy cohort
+(\fillme{n}), where working alongside radiologists taught me the distance between a
+statistically significant connectivity result and a claim a clinician will act on. Both
+studies met the same wall — small, imbalanced, single-site cohorts — which is why my current
+manuscript builds generative augmentation for connectivity data rather than another
+classifier.
+
+% ---- Why THIS group. Be specific: name the method line or a paper.
+\fillme{Why this group specifically: name their method line, cohort, or facility, and one
+paper you have actually read. One or two sentences on what they do that you cannot do
+elsewhere. Never mention the city.}
+
+% ---- What you would work on. A concrete direction, not "I am eager to learn".
+Concretely, I would want to work on \fillme{your proposed direction, in one or two
+sentences}. \fillme{Why it is open: what is unresolved, and why their setting is the right
+place to attempt it.}
+
+% ---- What you bring that the requirements did not ask for.
+Beyond the stated requirements I bring two things. First, engineering scale: I currently build
+production machine-learning pipelines over 70 million records and ran my fMRI analyses on HPC
+infrastructure, so large simulation studies and multi-site pipelines are work I have done
+rather than would be learning. Second, \fillme{second differentiator: a complementary methods
+family, clinical collaboration, or graduate teaching}.
+
+I was ranked 4th nationally among approximately 20,000 candidates in the Iranian MSc entrance
+examination and held full scholarships for both degrees. My publications, code and figures are
+at \fillme{website}.
+
+I can begin \fillme{date} and am ready to relocate. Thank you for considering my application;
+I would welcome the opportunity to discuss the project.
+
+\closing
+\end{document}

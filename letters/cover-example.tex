@@ -1,0 +1,44 @@
+%==============================================================================
+%  COVER LETTER -- advertised PhD / research position, read by the PI
+%  Register: direct, technical, one page, 320-400 words.
+%  The argument is PROJECT FIT. Paragraph 2 is the letter; the rest is packaging.
+%  Copy this file to cover-<yyyy-mm>-<institution>.tex and edit.
+%==============================================================================
+\documentclass[11pt,a4paper]{article}
+\usepackage{ssletter}          % add [final] once every FILL is replaced
+\begin{document}
+
+\letterhead
+\lettermeta{\fillme{date}}
+
+\opening{Dear \fillme{Dr / Professor Surname}}
+
+I am applying for the PhD position on \fillme{project title as advertised}
+(ref.\ \fillme{reference number}). I work on causal discovery and effective connectivity in
+resting-state fMRI, and \fillme{the one-line reason this project and you meet}.
+
+% ---- PARAGRAPH 2: the only paragraph that cannot be reused. Rewrite every time.
+Your project \fillme{state in your own words what the work actually is}. My MSc and the two
+years following it were spent on the applied side of that same problem: I applied PC, GES and
+LiNGAM causal discovery to resting-state fMRI in schizophrenia (\fillme{n} patients,
+\fillme{n} controls) and estimated effective connectivity in a clinical epilepsy cohort
+(\fillme{n}), and in both the binding constraint was never the method but
+\fillme{the constraint that connects to their project}. That is what led to my current
+manuscript, which builds VAE- and GAN-based augmentation for connectivity data and evaluates
+it against SMOTE and cost-sensitive baselines (\fillme{result}). I have therefore spent real
+time on the question your project \fillme{formalises / extends / tests}, approaching it as
+someone who kept hitting the wall rather than as someone modelling it from outside.
+
+% ---- PARAGRAPH 3: two differentiators the advertisement did not ask for.
+Two things I would bring beyond the advertised requirements. First,
+\fillme{differentiator one, with its evidence}. Second,
+\fillme{differentiator two, with its evidence}.
+
+Publications, code and figures are at \fillme{website}; the schizophrenia work appeared at
+ICSPIS 2023 and the epilepsy analysis at OHBM 2025.
+
+I can start \fillme{date}, I am ready to relocate, and I have worked in English throughout my
+MSc and current role (\fillme{TOEFL, once retaken}). I would be glad to discuss the project.
+
+\closing
+\end{document}
