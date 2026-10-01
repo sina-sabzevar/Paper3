@@ -136,3 +136,47 @@ SELECT  COALESCE(exclude_reason, 'KEPT')   AS reason,
 FROM    label_table_prefilter
 GROUP   BY 1
 ORDER   BY n DESC;
+
+
+-- ---------------------------------------------------------------------
+-- Q7. Did the previously-suspended recover?
+--     Decides whether the 6-12 month group is worth keeping.
+--     Run this BEFORE applying any suspension gate, so the groups exist.
+--
+--     Read it like this:
+--       bad rate close to "never suspended"  -> keep them, it is free coverage
+--       bad rate 2-3x higher                 -> push the gate out to 12 months
+-- ---------------------------------------------------------------------
+WITH prior_susp AS (
+    SELECT  base.subscriber_id,
+            base.obs_cohort,
+            MIN(DATE_DIFF(base.t0, sp.suspend_date, MONTH)) AS months_since_twoway,
+            COUNT(*)                                        AS n_twoway_prior
+    FROM    billing.suspension sp                                     -- [RENAME]
+    JOIN    base ON base.subscriber_id = sp.subscriber_id
+    WHERE   sp.suspend_type = 'TWO_WAY'                               -- [RENAME]
+      AND   sp.reason       = 'NON_PAYMENT'                           -- [RENAME]
+      -- strictly BEFORE t0: this is an input, not an outcome
+      AND   sp.suspend_date <  base.t0
+      AND   sp.suspend_date >= DATE_SUB(base.t0, INTERVAL 12 MONTH)
+    GROUP   BY 1, 2
+)
+SELECT  CASE WHEN ps.months_since_twoway IS NULL THEN '0  never suspended'
+             WHEN ps.months_since_twoway <  3    THEN '1  0-3 months ago'
+             WHEN ps.months_since_twoway <  6    THEN '2  3-6 months ago'
+             WHEN ps.months_since_twoway <  9    THEN '3  6-9 months ago'
+             ELSE                                     '4  9-12 months ago'
+        END                                             AS recency_group,
+        COUNT(*)                                        AS n,
+        COUNT(*) / SUM(COUNT(*)) OVER ()                AS share_of_base,
+        AVG(l.y_v1)                                     AS bad_rate_v1,
+        AVG(l.y_strict)                                 AS bad_rate_strict,
+        -- relative risk against the never-suspended group
+        AVG(l.y_v1) / NULLIF(MAX(AVG(l.y_v1)) OVER (ORDER BY 1 ROWS
+                             BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED PRECEDING), 0)
+                                                        AS lift_vs_never
+FROM        label_table l
+LEFT JOIN   prior_susp ps ON ps.subscriber_id = l.subscriber_id
+                         AND ps.obs_cohort    = l.obs_cohort
+GROUP   BY recency_group
+ORDER   BY recency_group;
