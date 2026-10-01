@@ -15,11 +15,12 @@ debt_to_bill,0.5203906799804371,4,SUSPECT
 max_consec_late,0.5186163452438117,3,SUSPECT
 max_debt_amt_10m,0.5173506039760061,4,SUSPECT
 months_since_last_susp,0.39829914827287716,3,strong
-goodpay_v1,0.3923099097710422,3,strong
+goodpay_v1,0.39414518725777214,4,strong
 n_ontime_months,0.354717205237879,4,strong
 dtp_trend,0.30787558932846437,10,strong
 dtp_shift_3m,0.29597896705934934,10,medium
 bureau_score,0.18862923834436499,11,medium
+n_debt_months_10m,0.1781565448105497,4,medium
 n_partial_payments,0.11294171853899537,4,medium
 pay_ratio_mean,0.10033293139981608,6,medium
 pay_ratio_min,0.08129013452376926,6,weak
