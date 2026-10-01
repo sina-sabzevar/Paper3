@@ -1,0 +1,5 @@
+# real subscriber extract - never commit
+data/*.csv
+# regenerable, large
+outputs/decision_file_sample.csv
+.ipynb_checkpoints/

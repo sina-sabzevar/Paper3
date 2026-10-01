@@ -1,0 +1,9 @@
+gate,dropped,remaining,pct_of_base,remaining_real
+Total permanent-SIM base,0,60000,1.0,6000000
+Individual (not corporate),2318,57682,0.9613666666666667,5768200
+Tenure >= 12m,9430,48252,0.8042,4825200
+Age 18-70,62,48190,0.8031666666666667,4819000
+No debt today,7973,40217,0.6702833333333333,4021700
+Suspensions <= 2,5666,34551,0.57585,3455100
+"Expected bill >= 35,000",1545,33006,0.5501,3300600
+Has >=1 on-time paid month,0,33006,0.5501,3300600

@@ -1,0 +1,22 @@
+{
+  "policy": "PD<=6% | alpha x1.15",
+  "eligible_after_gates": 3300600,
+  "scored_rows_OOT": 10032,
+  "approved_subscribers": 1296617,
+  "approval_rate_of_eligible": 0.39284290271132377,
+  "total_disbursement_toman": 447709676435.40674,
+  "avg_limit_toman": 345290.5353971073,
+  "median_limit_toman": 320000.0,
+  "avg_installment_toman": 89775.5392032479,
+  "avg_expected_bill_toman": 159817.6678322503,
+  "bill_uplift_pct": 0.5617372623499872,
+  "weighted_PD": 0.03760397698061075,
+  "realised_bad_rate_on_proxy": 0.03476275057092108,
+  "expected_loss_toman": 6481730781.169382,
+  "expected_loss_ratio": 0.014477531137535138,
+  "net_contribution_toman": 56708754390.53118,
+  "return_on_disbursement": 0.1266641249347954,
+  "net_per_loan_toman": 43735.92351434159,
+  "champion_gini_OOT": 0.5574811396439003,
+  "champion_KS_OOT": 0.453353714629757
+}
