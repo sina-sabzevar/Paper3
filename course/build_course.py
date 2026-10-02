@@ -859,13 +859,21 @@ for hi in NS[1:]:
                      behavioural_part=Fo / Fm, cells=f'{len(fm)} vs {len(fc)}'))
 CAL = pd.DataFrame(rows); print(CAL.round(3).to_string(index=False))
 last = CAL.iloc[-1]
-print(f"\nwidest span: artefact share = log {last.copier_fold:.2f} / log {last.trained_fold:.2f} = {last.artefact_share_log:.0%}"
-      f"  (the WRONG linear share would be {last.copier_fold/last.trained_fold:.0%})")
+if last.copier_fold >= last.trained_fold:
+    print(f"\nwidest span: the copier rises {last.copier_fold:.2f}x and the trained models only {last.trained_fold:.2f}x"
+          " -> the metric alone can explain the WHOLE rise; nothing is credited to the models.")
+else:
+    print(f"\nwidest span: artefact share = log {last.copier_fold:.2f} / log {last.trained_fold:.2f} = {last.artefact_share_log:.0%}"
+          f"  (the WRONG linear share would be {last.copier_fold/last.trained_fold:.0%})")
 print('paper, for comparison: 20 -> 3,000 on CDC diabetes, trained 16.87x vs copier 2.31x, share 30%, behavioural part 7.3x')
 """)
 
 md(r"""
 **How to read the table.** `behavioural_part` > 1 means the trained models' ρ rose by more than a fixed-behaviour generator's would; ≤ 1 means the whole rise is explainable by the metric. With only a handful of cells per span, the Mann–Whitney p-values are weak — the paper had the same problem at its smallest span (p = 0.058) and withdrew the claim there. A blank `artefact_share_log` means the trained models barely moved, so the share is undefined.
+
+**Why the toy may credit nothing to the models — and why that is the calibration working.** The paper's models copied almost perfectly at n = 20 (ρ ≈ 0.05) and reached ρ ≈ 0.96 at n = 3,000: a 17× rise that a fixed copier (2.3×) cannot produce. Our toy models, trained for 5,000 instead of 25,600 steps, copy only partly at n = 20 (ρ ≈ 0.3–0.5), so their rise is a few-fold — about what the shrinking denominator produces on its own, especially on a table with low intrinsic dimension where spacing shrinks fast (Module 2). The calibration then correctly refuses to credit the models: their n-trend is **real in ρ but not distinguishable from the metric's drift** — exactly the paper's own conclusion for its small spans (p = 0.058). Two things change the verdict, and you can test both:
+* train longer so small-n models copy deeply (Exercise 7.3), which raises the trained fold;
+* use a table of higher intrinsic dimension, which shrinks the copier's fold (spacing ∝ n^(−1/m)).
 """)
 
 md(r"""
@@ -874,6 +882,8 @@ md(r"""
 *Exercise 7.1.* Recompute the comparison for n = 20 → 50 only. Can you distinguish the trained models from the copier there?
 
 *Exercise 7.2.* Prove that if the copier's numerator is exactly constant, its fold change equals the denominator ratio for every σ (one line of algebra).
+
+*Exercise 7.3.* Set `STEPS = 20000` and `CKPTS = [500, 1000, 2000, 4000, 8000, 12000, 16000, 20000]`, rerun Modules 6–7 for dataset B only, and check whether `behavioural_part` rises above 1.
 """)
 
 # =====================================================================
@@ -943,7 +953,7 @@ for fam, g in DM.groupby('family'):
 """)
 
 md(r"""
-**How to read this.** With only a few cells, the intervals are wide — that is the lesson about **power**, not a failure. The paper had 39 cells per family and still found the PCA correlation's *sign* flipping with the cell-inclusion rule (−0.092, +0.073, +0.158), which it rightly reads as "how little signal is present". A ratio CI that includes 1 means "no detectable dip"; one that excludes 1 means "the dip is real".
+**How to read this.** With only a few cells, the intervals are wide — that is the lesson about **power**, not a failure. Worse, a bootstrap over 3 cells has only 10 distinct resamples, so its "95 % interval" is not trustworthy at all: never read a bootstrap CI from a handful of units. The paper had 39 cells per family and still found the PCA correlation's *sign* flipping with the cell-inclusion rule (−0.092, +0.073, +0.158), which it rightly reads as "how little signal is present". A ratio CI that includes 1 means "no detectable dip"; one that excludes 1 means "the dip is real".
 
 ### The dimension copier: is ρ itself dimension-dependent?
 Per-coordinate noise σ · spacing / √d gives total noise norm σ · spacing at every d, so the copier's *behaviour* is constant across d. The noise must be added in **the space ρ is computed in** (the standardised representation space): add it before standardising and the standardisation stretches it unevenly across PCA components, which is no longer "fixed behaviour". Any drift in its ρ is the metric's doing. A **monotone** drift cannot create a **dip** — so if the models dip and the copier rises monotonically, the shape belongs to the models. The paper also divides the observed curve by the copier curve ("drift-corrected") and checks the shape survives.
@@ -989,10 +999,16 @@ def rp_sweep(clamp, n=240, seed=0, steps=STEPS_D):
                         min_rho=min(L['rho'] for L in log)))
     return pd.DataFrame(out)
 print('coordinate SD of random-projection space by d (theory sqrt(D/d)):',
-      {d: round(np.sqrt(12 / d), 2) for d in DIMS})
-print('The clamp only bites when |predicted x0| > 5. On this 12-column table, coordinate SD at d=3 is only 2,')
-print('so it rarely binds; on the paper\'s 21-30 column tables it binds on ~3% of coordinates at d=4.')
-print('Exercise 8.1 below asks you to run rp_sweep(5.0) vs rp_sweep(np.inf) on a wider table.')
+      {d: round(float(np.sqrt(12 / d)), 2) for d in DIMS})
+cl = DM.pivot_table(index='family', columns='d', values='clamp')
+print('measured clamp share (averaged over all 100 reverse steps and checkpoints):'); print(cl.round(4))
+trend = cl.loc['randproj'].iloc[0] / max(cl.loc['randproj'].iloc[-1], 1e-9)
+print(f'random projection, clamp share at d={DIMS[0]} vs d={DIMS[-1]}: {trend:.2f}x. '
+      + ('It barely changes with d here, so the clamp cannot drive a dimension trend in this toy.' if trend < 1.5 else
+         'It grows as d falls, so the clamp could contribute to a dimension trend here.'))
+print('Most of this clamping happens at the noisiest early reverse steps. With only 12 columns, sqrt(D/d) is at most 2;')
+print('on the paper\'s 21-30 column tables it reaches 2.3-2.7, and the share of clamped coordinates at d=4 is ~3%.')
+print('Exercise 8.1 asks you to run rp_sweep(5.0) vs rp_sweep(np.inf) on a wider table.')
 """)
 
 md(r"""
@@ -1067,24 +1083,23 @@ Runs in a cell share a random effect, so they are **not independent**. Resamplin
 """)
 
 code(r"""
-# A grid where cells differ a lot (cell_sd) and runs inside a cell differ little (noise_sd).
-Gc = simulate_grid(beta_logn=0.0, cell_sd=0.10, noise_sd=0.02, seed=0)
-cells = Gc.groupby(['dataset', 'family', 'dim', 'seed']).rho.mean().values
-print(f'{len(Gc)} runs in {len(cells)} cells')
+# 150 cells x 4 runs. Each cell has its own random shift u (sd 0.10); runs inside a cell differ
+# only by small noise (sd 0.02). The true population mean is 0.5.
+def two_level(seed, n_cells=150, runs=4, cell_sd=0.10, run_sd=0.02):
+    g = np.random.default_rng(seed)
+    u = g.normal(0, cell_sd, n_cells)
+    return pd.DataFrame({'cell': np.repeat(np.arange(n_cells), runs),
+                         'rho': 0.5 + np.repeat(u, runs) + g.normal(0, run_sd, n_cells * runs)})
+Gc = two_level(0)
+cells = Gc.groupby('cell').rho.mean().values
 print('mean rho, bootstrap over RUNS :', boot(Gc.rho.values).round(4), f'(width {np.ptp(boot(Gc.rho.values)):.4f})')
 print('mean rho, bootstrap over CELLS:', boot(cells).round(4), f'(width {np.ptp(boot(cells)):.4f})')
-# Coverage check by simulation: across 60 replicate "studies", how often does each 95% interval
-# contain the truth? The truth is the noise-free design mean (run-weighted for the run bootstrap,
-# cell-weighted for the cell bootstrap — the two estimands weight cells differently).
-KEYS = ['dataset', 'family', 'dim', 'seed']
-clean = simulate_grid(beta_logn=0.0, cell_sd=0.0, noise_sd=0.0)
-truth_run, truth_cell = clean.rho.mean(), clean.groupby(KEYS).rho.mean().mean()
 hits_run = hits_cell = 0
-for s in range(60):
-    Gs = simulate_grid(beta_logn=0.0, cell_sd=0.10, noise_sd=0.02, seed=100 + s)
-    lo, hi = boot(Gs.rho.values, B=1000); hits_run += lo <= truth_run <= hi
-    lo, hi = boot(Gs.groupby(KEYS).rho.mean().values, B=1000); hits_cell += lo <= truth_cell <= hi
-print(f'coverage of a nominal 95% interval:  bootstrap over runs {hits_run/60:.0%}   |   over cells {hits_cell/60:.0%}')
+for k in range(200):
+    Gs = two_level(100 + k)
+    lo, hi = boot(Gs.rho.values, B=500, seed=k); hits_run += lo <= 0.5 <= hi
+    lo, hi = boot(Gs.groupby('cell').rho.mean().values, B=500, seed=k); hits_cell += lo <= 0.5 <= hi
+print(f'coverage of a nominal 95% interval over 200 simulated studies:  runs {hits_run/200:.0%}   |   cells {hits_cell/200:.0%}')
 print('-> resampling runs ignores the shared cell effects, so its interval is far too narrow.')
 """)
 
