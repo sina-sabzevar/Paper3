@@ -597,7 +597,9 @@ SELECT  sbrp_id,
         STDDEV_SAMP(tot_rev)                             AS totrev_std_6m,
         STDDEV_SAMP(data_gb)                             AS data_gb_std_6m,
         SUM(billed_amt)                                  AS billed_6m,
-        SUM(mc_billed_amt)                               AS mc_billed_6m,
+        -- mc_billed_6m NOT repeated here: dcb3_billref already produces it over
+        -- the same window from the same source, and two identical columns break
+        -- CREATE TABLE AS.
         -- genuine mid-cycle intensity, from the BILL TYPES (3 vs 2)
         SUM(mc_billed_amt) / NULLIF(SUM(billed_amt), 0)   AS midcycle_billed_share_6m,
         -- NON-CASH SHARE OF USAGE. CONFIRMED: tot_rev is TOTAL usage, cash and
@@ -609,7 +611,7 @@ SELECT  sbrp_id,
         -- usage has a small bill and a small apparent exposure, but their real
         -- spending power is the whole of tot_rev.
         SUM(billed_amt) / NULLIF(SUM(tot_rev), 0)         AS noncash_share_6m,
-        COUNT(*)                                         AS n_months_seen
+        COUNT(*)                                         AS n_months_panel
 -- FULL OUTER on the month key so a subscriber-month present in one source but
 -- not the other is still kept. An INNER JOIN here would silently drop months,
 -- which is the failure mode this whole file has been chasing.
@@ -688,9 +690,10 @@ GROUP BY sbrp_id
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_pit;
 CREATE TABLE dwbi_temp40_db.dcb3_pit WITH (format='PARQUET') AS
 SELECT  c.sbrp_id,
-        -- from dcb3_base, which RECOVERED it. Reading c.age_on_net_months here
-        -- would reintroduce the NULL that STEP 1 exists to repair.
-        b.age_on_net_months,
+        -- age_on_net_months is NOT selected here. dcb3_base already carries it,
+        -- recovered from the NULLs, and duplicating it breaks CREATE TABLE AS.
+        -- Never read c.age_on_net_months instead: that is the raw, partly-NULL
+        -- column STEP 1 exists to repair.
         c.max_rat_id                                             AS network_id,
         COALESCE(c.initial_cred_lim_amt,0)                       AS initial_cred_lim_amt,
         COALESCE(c.temporary_cred_lim_amt,0)                     AS temporary_cred_lim_amt,
@@ -807,7 +810,7 @@ agg AS (
     GROUP BY o.sbrp_id
 )
 SELECT  sbrp_id,
-        n_months_seen, max_dpd_out, n_late_out, total_debt_days_out,
+        n_months_seen AS n_months_out, max_dpd_out, n_late_out, total_debt_days_out,
         oneway_days_out, twoway_days_out, twoway_months_out,
         escalated_twoway,
         -- rule components, stored so a variant can be re-chosen without re-querying
@@ -844,34 +847,33 @@ WHERE   hit_queue   = 0
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_dataset_c1;
 CREATE TABLE dwbi_temp40_db.dcb3_dataset_c1 WITH (format='PARQUET') AS
-SELECT  '140501' AS obs_cohort, b.sbrp_id, r.med_bill,
-        -- CAPACITY BASIS = paid_total_6m, as decided. But part of the excess of
-        -- payments over billing is ARREARS CLEARED FROM BEFORE THE WINDOW, not
-        -- ongoing capacity, so the window overstates capacity for anyone who
-        -- was catching up. These two make that visible instead of hiding it:
-        --   paid_to_obligation  > 1  was paying down old debt in the window
-        --                       < 1  was accumulating new arrears
-        --   arrears_paydown_6m  the Rial amount of that excess
-        -- Discount proven_capacity by this in Python before setting a limit.
+-- USING (sbrp_id), NOT ON. With ON plus the .* expansions this statement
+-- selected sbrp_id five times and CREATE TABLE AS rejected it outright:
+-- "column name sbrp_id specified more than once". USING emits the join key
+-- ONCE, which is standard SQL and what Trino does.
+-- The alternative was to enumerate every column and leave sbrp_id out of all
+-- but one table. Rejected deliberately: if the enumeration missed a column the
+-- loss would be SILENT, whereas a join that misbehaves fails loudly.
+-- Three further collisions were removed at source rather than aliased here -
+-- n_months_seen in panel and label, mc_billed_6m in panel and billref,
+-- age_on_net_months in pit and base.
+SELECT  '140501' AS obs_cohort,
         pay.paid_total_6m / NULLIF(r.obligation_6m, 0)     AS paid_to_obligation,
         GREATEST(pay.paid_total_6m - r.obligation_6m, 0)   AS arrears_paydown_6m,
-        dpd.*, bar.*, pan.*, pay.*, pit.*,
-        lab.y_twoway_2m, lab.y_twoway_any2m, lab.y_severe, lab.y_strict,
-        lab.y_v1, lab.y_v2, lab.y_loose, lab.indeterminate,
-        lab.max_dpd_out, lab.n_late_out, lab.total_debt_days_out,
-        lab.oneway_days_out, lab.twoway_days_out, lab.twoway_months_out,
-        lab.escalated_twoway,
-        lab.rule1_dpd60, lab.rule2_late, lab.rule4_escalated
+        *
 FROM        dwbi_temp40_db.dcb3_base    b
-INNER JOIN  dwbi_temp40_db.dcb3_billref r   ON r.sbrp_id = b.sbrp_id
-INNER JOIN  dwbi_temp40_db.dcb3_label   lab ON lab.sbrp_id = b.sbrp_id
-LEFT  JOIN  dwbi_temp40_db.dcb3_dpd    dpd ON dpd.sbrp_id = b.sbrp_id
-LEFT  JOIN  dwbi_temp40_db.dcb3_bars   bar ON bar.sbrp_id = b.sbrp_id
-LEFT  JOIN  dwbi_temp40_db.dcb3_panel  pan ON pan.sbrp_id = b.sbrp_id
-LEFT  JOIN  dwbi_temp40_db.dcb3_pay    pay ON pay.sbrp_id = b.sbrp_id
-LEFT  JOIN  dwbi_temp40_db.dcb3_pit    pit ON pit.sbrp_id = b.sbrp_id
+INNER JOIN  dwbi_temp40_db.dcb3_billref r   USING (sbrp_id)
+INNER JOIN  dwbi_temp40_db.dcb3_label   lab USING (sbrp_id)
+LEFT  JOIN  dwbi_temp40_db.dcb3_dpd     dpd USING (sbrp_id)
+LEFT  JOIN  dwbi_temp40_db.dcb3_bars    bar USING (sbrp_id)
+LEFT  JOIN  dwbi_temp40_db.dcb3_panel   pan USING (sbrp_id)
+LEFT  JOIN  dwbi_temp40_db.dcb3_pay     pay USING (sbrp_id)
+LEFT  JOIN  dwbi_temp40_db.dcb3_pit     pit USING (sbrp_id)
 ;
---  Drop the duplicated sbrp_id columns the .* joins create before exporting.
+--  No duplicated sbrp_id to drop any more: USING handles it at join time.
+--  This note used to say "drop them before exporting", which was wrong about
+--  WHEN it matters - CREATE TABLE AS rejects duplicate names at creation, so
+--  the statement never ran at all.
 
 
 -- ---------------------------------------------------------------------------
@@ -920,6 +922,6 @@ WHERE   month_key BETWEEN 140501 AND 140506;
 -- G4  completeness of the outcome window. 7 is the full window. If the 6-month
 -- group is large, the tolerance in STEP 8 is carrying real censoring and should
 -- be tightened to 7.
-SELECT n_months_seen, COUNT(*) AS n, AVG(y_v1) AS bad_rate
+SELECT n_months_out, COUNT(*) AS n, AVG(y_v1) AS bad_rate
 FROM   dwbi_temp40_db.dcb3_label
 GROUP BY 1 ORDER BY 1;
