@@ -141,3 +141,74 @@ available to a forward-looking test.
 
 Both become possible only because 1403 is in fact available. The old constraint
 that "no cohort is free of the shock" was an artefact of the wrong start date.
+
+
+---
+
+# The bill source is settled: `v_fact_cust_bil_daily.payment_due_amt`
+
+Measured over 140301..140506 with `cust_bil_typ_id = 2`:
+
+* **Complete in all 30 months.** 22.7M to 27.4M positive bills per month,
+  growing monotonically, no gap anywhere — including 140312..140409, where the
+  monthly fact's `payable_amt` and `invoice_amt` are both empty.
+* `n_days = 1` in **every** month, and `first_day = last_day` = the month's last
+  day. The `MOD(day_key,100) >= 28` cost guard is therefore valid and stays.
+* Month ends confirm the Jalali lengths the tooling assumes: months 1–6 end on
+  31, 7–11 on 30, month 12 on 30 in 1403 and **29** in 1404 — so 1403 is a leap
+  year and 1404 is not. The day-31 upper bound in `recalendar.py` covers both.
+* Keyed by `sbrp_id`, so it joins directly. No customer-to-SIM bridge.
+
+**The calendar is no longer constrained by the bill.** One thing still is: the
+revenue gate, the payment features and the usage features still read the monthly
+fact, and their per-month coverage has never been measured. `S1` in
+`15_sizing_and_coverage.sql` settles it. If they are healthy in 140311..140404,
+the shock-free C1 (T0 = 140405) is available.
+
+# The number that matters more than the calendar
+
+The end-of-cycle bill distribution, month 140506:
+
+| | Toman |
+|---|---|
+| median monthly bill | **47,410** |
+| p90 monthly bill | **178,900** |
+| network ARPU as quoted | 130,000 |
+
+ARPU sitting 2.7x above the median is consistent — telco spend is heavily
+right-skewed, and the maximum bill here is around 12 billion Toman, clearly
+corporate. But it means **ARPU is the wrong number to plan the product
+against**. Half of the postpaid base bills under 48,000 Toman a month.
+
+Against that, the stated minimum ticket of 400,000 Toman over four instalments
+is **100,000 Toman a month**:
+
+* for the **median** subscriber that is **2.11x their entire monthly bill**;
+* for the **p90** subscriber it is **0.56x** their monthly bill.
+
+The bill a subscriber needs for the instalment to stay within a given share of
+it:
+
+| instalment as share of bill | required monthly bill | where that sits |
+|---|---|---|
+| 30 pct | 333,000 Toman | above p90 |
+| 40 pct | 250,000 Toman | above p90 |
+| 50 pct | 200,000 Toman | above p90 |
+| 70 pct | 143,000 Toman | below p90 |
+| 100 pct — the bill doubles | 100,000 Toman | below p90 |
+
+So on any prudent affordability stance the 400,000 Toman ticket only fits
+subscribers **above the 90th percentile**, which is under 2.8M of the 27.4M
+billed base before any risk screening at all. Reaching **3 million loans at a
+400,000 Toman minimum** therefore requires an affordability stance near
+**70 pct of the monthly bill** — a payment shock that will show up as real
+defaults, and exactly the regime the `shock_uplift_k` term in the notebook's
+limit engine was written to penalise.
+
+At a prudent 40 pct stance, the ticket that fits the population is closer to
+**200,000 Toman**, needing a bill of 125,000 Toman, which sits below p90.
+
+`S2` gives the full distribution and the counts at each stance, so this is sized
+on the real book rather than on two percentiles. This is a business decision, not
+a modelling one: **budget, loan count and minimum ticket are over-constrained**,
+and something has to give — the ticket, the count, or the risk appetite.
