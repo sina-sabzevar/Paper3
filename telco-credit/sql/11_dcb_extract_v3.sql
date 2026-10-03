@@ -72,9 +72,14 @@ FROM (
       AND   sbrp_stat_id = 2           -- GATE: active at T0 (point in time only)
       AND   sbrp_typ_id  = 1           -- permanent
       AND   age_on_net_months >= 12
-      -- GATE: no open bill at T0. Lending to someone already behind is not a
-      -- modelling question.
-      AND   COALESCE(bill_outstanding_amt, 0) = 0
+      -- GATE: no open bill at T0 - DISABLED by default.
+      -- In the monthly fact this column appears to be the balance at snapshot
+      -- time, and for an active postpaid subscriber there is almost always a
+      -- bill outstanding, so requiring zero removes nearly the whole base.
+      -- The "not barred in the 60 days before T0" gate below already covers
+      -- the case this was meant to catch. Re-enable only if G1 in
+      -- 08_gate_funnel.sql shows it keeps a sensible share.
+      -- AND   COALESCE(bill_outstanding_amt, 0) = 0
 ) s
 -- GATE: the economic floor from the original DCB pipeline - average revenue
 -- over the last three months above 1,000,000 Rial (100k Toman). This is what
