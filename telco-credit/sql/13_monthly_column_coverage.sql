@@ -19,8 +19,11 @@ SELECT  month_key,
         COUNT(*)                                          AS n_perm_rows,
         COUNT(*) FILTER (WHERE sbrp_stat_id = 2)          AS n_perm_active,
 
-        -- payments. Candidate replacement yardstick for the materiality floor
-        -- if invoice_amt stays unusable.
+        -- confirm the billing gap in the same result set. payable_amt is the
+        -- correct column of the two and has the IDENTICAL gap as invoice_amt.
+        COUNT(*) FILTER (WHERE payable_amt > 0)           AS payable_pos,
+        -- payments. These decide the calendar: if they share the billing gap,
+        -- the only usable monthly window is 140410..140505.
         COUNT(*) FILTER (WHERE pmnt_amt > 0)              AS pmnt_pos,
 
         -- the revenue blocks the base gate is built from

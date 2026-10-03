@@ -57,6 +57,19 @@ Jalali month lengths are confirmed by the daily `last_day` column: months 1–6
 end at 31, months 7–11 at 30, and 140412 ends at **14041229**, so 1404 is not a
 leap year. The day-31 upper bound used throughout `recalendar.py` is safe.
 
+## `payable_amt` has the identical gap — it is the table, not the column
+
+`payable_amt` is the correct column of the two, and its coverage was re-measured
+per month. **Zero months disagree with `invoice_amt`:** same loaded runs
+(140301..140304, 140306, 140311, 140410..140505), same zeros across
+140312..140409 and at 140506. In the broken months `payable_amt` is exactly 0
+where `invoice_amt` held a few thousand stray rows, but the shape is the same.
+
+So this is a **loading gap in the monthly fact's billing columns**, not a
+column-naming mistake, and no choice of monthly billing column escapes it.
+Switching to `payable_amt` is still correct and has been done — it is the right
+column — but it is not a fix for the calendar.
+
 ## The consequence for the materiality floor
 
 `0.40 * med_invoice` is the threshold the whole label rests on — what counts as
@@ -74,9 +87,42 @@ month. Two candidates, in order of preference:
    the subscriber chose to pay rather than what they were billed, so it is a
    weaker yardstick for materiality. Coverage not yet measured.
 
-`13_monthly_column_coverage.sql` measures the coverage of `pmnt_amt`, the
-revenue blocks and the usage columns per month. That result decides both the
-yardstick and the calendar, so it is the next thing to run.
+### Done: the yardstick now comes from the daily table
+
+STEP 1 no longer computes `med_invoice`. A new **STEP 1B** builds
+`dcb3_billref.med_bill` from the daily balance:
+
+* per subscriber-month, `MAX(bill_outstanding_amt)` over the feature window;
+* then the **median** of those monthly maxima.
+
+The month-maximum is the right proxy because the bill for month M-1 is issued at
+the end of M-1, so on day 1 of M the balance *is* that bill and it falls to zero
+on payment. A month carrying an unpaid earlier bill shows two stacked and a high
+maximum, which is why the median across the subscriber's own months is used
+rather than the mean or the max — one carry-over month cannot move it.
+
+Every `0.40 *` and `1.5 *` threshold in the rollup, and the label that rests on
+them, now reads `med_bill`. The panel's `invoice_m1..m6` became
+`payable_m1..m6`. STEP 7 was also reading raw `age_on_net_months` from the
+monthly table, which reintroduced the NULL that STEP 1 repairs; it now reads the
+recovered value from `dcb3_base`.
+
+Cost: one extra daily pass over the feature window. Unavoidable — the threshold
+has to exist before it can be applied at day level, and once a month is rolled
+up the day detail needed for `debt_days` is gone.
+
+### Still blocking: do payments and revenue share the gap?
+
+`13_monthly_column_coverage.sql` measures `payable_amt`, `pmnt_amt`, the revenue
+blocks and the usage columns per month. Payments and revenue are monthly-only —
+nothing in the daily table can replace them — so this result decides the
+calendar and nothing else should be locked until it lands.
+
+If they share the billing gap, the only usable monthly window is the eight
+months 140410..140505, with the shock sitting at 140412/140501/140502 right
+across the middle of it, and the design has to shrink to something like three
+feature months with T0 at 140501. If they are loaded throughout, the shock-free
+C1 below is available.
 
 ## Candidate calendars, once the yardstick no longer constrains them
 

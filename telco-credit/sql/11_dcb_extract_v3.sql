@@ -111,8 +111,7 @@
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_base;
 CREATE TABLE dwbi_temp40_db.dcb3_base WITH (format='PARQUET') AS
 SELECT  s.sbrp_id,
-        ten.tenure_at_t0 AS age_on_net_months,
-        m.med_invoice
+        ten.tenure_at_t0 AS age_on_net_months
 FROM (
     SELECT  sbrp_id
     FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
@@ -176,19 +175,6 @@ INNER JOIN (
             GROUP BY sbrp_id ) r
     WHERE   r.rev_3m / 3 > 1000000
 ) rev ON rev.sbrp_id = s.sbrp_id
-INNER JOIN (
-    SELECT  sbrp_id, APPROX_PERCENTILE(invoice_amt, 0.5) FILTER (WHERE invoice_amt > 0) AS med_invoice
-    FROM (  SELECT sbrp_id, month_key, MAX(COALESCE(invoice_amt,0)) AS invoice_amt
-            FROM   dwbi_fact_db.v_fact_sbrp_mthly_cip
-            WHERE  month_key BETWEEN 140401 AND 140406
-              AND  sbrp_typ_id = 1
-            GROUP BY sbrp_id, month_key ) a
-    GROUP BY sbrp_id
-    -- median over the months that actually carried a bill. A plain median is
-    -- dragged to zero by the zero months, which would drop subscribers who
-    -- bill perfectly normally.
-    HAVING APPROX_PERCENTILE(invoice_amt, 0.5) FILTER (WHERE invoice_amt > 0) > 0
-) m ON m.sbrp_id = s.sbrp_id
 -- GATE: never touched the reclamation path, ANYWHERE in the project window.
 -- Per the business rule these subscribers do not enter the project at all, so
 -- the window here is the FULL 14040101..14050131 - features and outcome both -
@@ -237,6 +223,52 @@ WHERE   reclaim.sbrp_id IS NULL
 
 
 -- ---------------------------------------------------------------------------
+-- STEP 1B  THE MATERIALITY YARDSTICK - med_bill
+--
+--  WHY THIS IS NOT BUILT FROM THE MONTHLY TABLE ANY MORE.
+--  It used to be APPROX_PERCENTILE(invoice_amt) from v_fact_sbrp_mthly_cip.
+--  The month inventory showed that the monthly billing columns are LOADED IN
+--  ONLY 14 OF 30 MONTHS - 140301..140304, 140306, 140311 and 140410..140505 -
+--  and are exactly zero across 140312..140409. payable_amt, which is the
+--  correct column of the two, has the IDENTICAL gap: zero months disagree. So
+--  this is a loading gap in the monthly fact, not a column-naming mistake, and
+--  no choice of monthly column escapes it.
+--  Anchoring the threshold there made the whole calendar hostage to that gap,
+--  and when the feature window fell inside it the base collapsed to 1371 rows.
+--
+--  The daily balance is loaded in EVERY month (600M+ positive rows per month,
+--  all 30 months), so the yardstick is taken from there instead.
+--
+--  WHY A MONTH-MAXIMUM IS THE RIGHT PROXY. The bill for month M-1 is issued at
+--  the end of M-1, so on day 1 of M the balance IS that bill, and it drops to
+--  zero on payment. The maximum daily balance within a month is therefore the
+--  bill itself - exactly the quantity invoice_amt was standing in for.
+--  A month where an earlier bill is still unpaid shows two bills stacked and a
+--  high maximum, so the MEDIAN across the subscriber's own months is used, not
+--  the mean or the max: one carry-over month cannot move it.
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_billref;
+CREATE TABLE dwbi_temp40_db.dcb3_billref WITH (format='PARQUET') AS
+SELECT  sbrp_id,
+        APPROX_PERCENTILE(bill_max, 0.5) FILTER (WHERE bill_max > 0) AS med_bill,
+        COUNT(*) FILTER (WHERE bill_max > 0)                         AS n_billed_months
+FROM (
+    SELECT  d.sbrp_id,
+            d.day_key / 100                         AS month_key,
+            MAX(COALESCE(d.bill_outstanding_amt,0)) AS bill_max
+    FROM        dwbi_fact_db.v_fact_sbrp_daily_cip d
+    INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = d.sbrp_id
+    WHERE   d.day_key BETWEEN 14040101 AND 14040631   -- FEATURE window only
+      AND   d.sbrp_typ_id = 1
+    GROUP BY d.sbrp_id, d.day_key / 100
+) t
+GROUP BY sbrp_id
+-- a subscriber with no positive balance in any feature month has no bill to
+-- measure against, so there is nothing to call material. Dropped explicitly.
+HAVING  COUNT(*) FILTER (WHERE bill_max > 0) > 0
+;
+
+-- ---------------------------------------------------------------------------
 -- STEP 2  THE ONE DAILY PASS
 --
 --  Rolls the daily fact up to one row per subscriber-month. Everything
@@ -254,26 +286,26 @@ SELECT  d.sbrp_id,
         COUNT(*)                                                      AS days_seen,
         MAX(d.day_key)                                                AS last_day,
         -- ---- debt, against the subscriber's own bill
-        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 0.40 * b.med_invoice)
+        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 0.40 * r.med_bill)
                                                                       AS debt_days,
         -- IN DEBT ON THE LAST DAY of the month. Used ONLY to decide whether a
         -- debt run continues into the next month. It is NOT a lateness flag:
         -- the bill for month M is issued at the end of M, so this is true for
         -- almost everyone and reads as a 100 pct bad rate if misused.
-        MAX_BY(IF(d.bill_outstanding_amt > 0.40 * b.med_invoice, 1, 0), d.day_key)
+        MAX_BY(IF(d.bill_outstanding_amt > 0.40 * r.med_bill, 1, 0), d.day_key)
                                                                       AS open_at_month_end,
         -- LATE: still open around day 25, which is ten days past the due date
         -- of the 15th. This is the lateness flag the label counts. Probed over
         -- days 24-26 so a missing day does not lose the month.
         MAX(IF(MOD(d.day_key, 100) BETWEEN 24 AND 26
-               AND d.bill_outstanding_amt > 0.40 * b.med_invoice, 1, 0))
+               AND d.bill_outstanding_amt > 0.40 * r.med_bill, 1, 0))
                                                                       AS open_after_grace,
         MAX(d.bill_outstanding_amt)                                   AS bill_out_max,
         -- past due = still open after the 15th
-        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 0.40 * b.med_invoice
+        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 0.40 * r.med_bill
                            AND MOD(d.day_key, 100) > 15)              AS past_due_days,
         -- carried = more than one bill stacked, which only happens on a miss
-        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 1.5 * b.med_invoice)
+        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 1.5 * r.med_bill)
                                                                       AS carried_days,
         -- ---- the status ladder. NOT filtered on stat: that is the point.
         COUNT(*) FILTER (WHERE d.sbrp_stat_id = 3)                    AS oneway_days,
@@ -296,18 +328,18 @@ SELECT  d.sbrp_id,
         -- the in-cycle allowance, which the user flagged as a sensitive
         -- feature and must NOT be read as bad payment behaviour.
         MAX(IF(d.sbrp_stat_id = 3
-               AND (d.bill_outstanding_amt > 1.5 * b.med_invoice
-                    OR (d.bill_outstanding_amt > 0.40 * b.med_invoice
+               AND (d.bill_outstanding_amt > 1.5 * r.med_bill
+                    OR (d.bill_outstanding_amt > 0.40 * r.med_bill
                         AND MOD(d.day_key, 100) > 15)), 1, 0))        AS nonpay_bar_day,
         MAX(IF(d.sbrp_stat_id = 3
-               AND NOT (d.bill_outstanding_amt > 1.5 * b.med_invoice
-                        OR (d.bill_outstanding_amt > 0.40 * b.med_invoice
+               AND NOT (d.bill_outstanding_amt > 1.5 * r.med_bill
+                        OR (d.bill_outstanding_amt > 0.40 * r.med_bill
                             AND MOD(d.day_key, 100) > 15)), 1, 0))    AS ceiling_bar_day,
         -- ---- ceiling pressure
         MAX(d.unbill_outstanding_amt)                                 AS unbill_max,
         AVG(d.unbill_outstanding_amt)                                 AS unbill_avg
 FROM        dwbi_fact_db.v_fact_sbrp_daily_cip d
-INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = d.sbrp_id
+INNER JOIN  dwbi_temp40_db.dcb3_billref r ON r.sbrp_id = d.sbrp_id
 WHERE   d.day_key BETWEEN 14040101 AND 14050131    -- features AND watch window
   AND   d.sbrp_typ_id = 1
 GROUP BY d.sbrp_id, d.day_key / 100,
@@ -324,7 +356,7 @@ DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_month_end;
 CREATE TABLE dwbi_temp40_db.dcb3_month_end WITH (format='PARQUET') AS
 SELECT  e.sbrp_id,
         e.month_key,
-        MAX(IF(d.bill_outstanding_amt > 0.40 * b.med_invoice, 1, 0)) AS open_at_month_end
+        MAX(IF(d.bill_outstanding_amt > 0.40 * r.med_bill, 1, 0)) AS open_at_month_end
 FROM (
     SELECT sbrp_id, day_key / 100 AS month_key, MAX(day_key) AS last_day
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
@@ -335,7 +367,7 @@ FROM (
 ) e
 INNER JOIN  dwbi_fact_db.v_fact_sbrp_daily_cip d
                  ON d.sbrp_id = e.sbrp_id AND d.day_key = e.last_day
-INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = e.sbrp_id
+INNER JOIN  dwbi_temp40_db.dcb3_billref r ON r.sbrp_id = e.sbrp_id
 GROUP BY e.sbrp_id, e.month_key
 ;
 
@@ -432,7 +464,7 @@ DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_panel;
 CREATE TABLE dwbi_temp40_db.dcb3_panel WITH (format='PARQUET') AS
 WITH mth AS (
     SELECT  c.sbrp_id, c.month_key,
-            MAX(COALESCE(c.invoice_amt,0)) AS invoice_amt,
+            MAX(COALESCE(c.payable_amt,0)) AS payable_amt,
             MAX(COALESCE(c.pmnt_amt,0))    AS pmnt_amt,
             SUM(COALESCE(c.voi_pkg_rev,0) + COALESCE(c.voi_payg_rev,0)
                 - COALESCE(c.intl_roam_voi_rev,0)) / 1.1
@@ -455,12 +487,12 @@ SELECT  sbrp_id,
         -- invoice_mN is the bill for the USAGE OF MONTH N-1 (confirmed).
         -- totrev_mN below is the usage OF MONTH N. The two series are one month
         -- apart: do not combine them inside a row. See the header.
-        MAX(invoice_amt) FILTER (WHERE month_key=140401) AS invoice_m1,
-        MAX(invoice_amt) FILTER (WHERE month_key=140402) AS invoice_m2,
-        MAX(invoice_amt) FILTER (WHERE month_key=140403) AS invoice_m3,
-        MAX(invoice_amt) FILTER (WHERE month_key=140404) AS invoice_m4,
-        MAX(invoice_amt) FILTER (WHERE month_key=140405) AS invoice_m5,
-        MAX(invoice_amt) FILTER (WHERE month_key=140406) AS invoice_m6,
+        MAX(payable_amt) FILTER (WHERE month_key=140401) AS payable_m1,
+        MAX(payable_amt) FILTER (WHERE month_key=140402) AS payable_m2,
+        MAX(payable_amt) FILTER (WHERE month_key=140403) AS payable_m3,
+        MAX(payable_amt) FILTER (WHERE month_key=140404) AS payable_m4,
+        MAX(payable_amt) FILTER (WHERE month_key=140405) AS payable_m5,
+        MAX(payable_amt) FILTER (WHERE month_key=140406) AS payable_m6,
         MAX(pmnt_amt) FILTER (WHERE month_key=140401) AS pmnt_m1,
         MAX(pmnt_amt) FILTER (WHERE month_key=140402) AS pmnt_m2,
         MAX(pmnt_amt) FILTER (WHERE month_key=140403) AS pmnt_m3,
@@ -538,7 +570,9 @@ GROUP BY sbrp_id
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_pit;
 CREATE TABLE dwbi_temp40_db.dcb3_pit WITH (format='PARQUET') AS
 SELECT  c.sbrp_id,
-        c.age_on_net_months,
+        -- from dcb3_base, which RECOVERED it. Reading c.age_on_net_months here
+        -- would reintroduce the NULL that STEP 1 exists to repair.
+        b.age_on_net_months,
         c.max_rat_id                                             AS network_id,
         COALESCE(c.initial_cred_lim_amt,0)                       AS initial_cred_lim_amt,
         COALESCE(c.temporary_cred_lim_amt,0)                     AS temporary_cred_lim_amt,
@@ -687,7 +721,7 @@ WHERE   hit_queue   = 0
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_dataset_c1;
 CREATE TABLE dwbi_temp40_db.dcb3_dataset_c1 WITH (format='PARQUET') AS
-SELECT  '140407' AS obs_cohort, b.sbrp_id, b.med_invoice,
+SELECT  '140407' AS obs_cohort, b.sbrp_id, r.med_bill,
         dpd.*, bar.*, pan.*, pay.*, pit.*,
         lab.y_twoway_2m, lab.y_twoway_any2m, lab.y_severe, lab.y_strict,
         lab.y_v1, lab.y_v2, lab.y_loose, lab.indeterminate,
@@ -696,8 +730,9 @@ SELECT  '140407' AS obs_cohort, b.sbrp_id, b.med_invoice,
         lab.had_nonpay_oneway, lab.n_nonpay_bar_months, lab.escalated_twoway,
         lab.had_ceiling_oneway,
         lab.rule1_dpd60, lab.rule2_late, lab.rule3_nonpay_bar, lab.rule4_escalated
-FROM        dwbi_temp40_db.dcb3_base   b
-INNER JOIN  dwbi_temp40_db.dcb3_label  lab ON lab.sbrp_id = b.sbrp_id
+FROM        dwbi_temp40_db.dcb3_base    b
+INNER JOIN  dwbi_temp40_db.dcb3_billref r   ON r.sbrp_id = b.sbrp_id
+INNER JOIN  dwbi_temp40_db.dcb3_label   lab ON lab.sbrp_id = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb3_dpd    dpd ON dpd.sbrp_id = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb3_bars   bar ON bar.sbrp_id = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb3_panel  pan ON pan.sbrp_id = b.sbrp_id
