@@ -22,8 +22,34 @@
 --       across months wherever the bill was still open at month end. Same
 --       answer, about thirty times less sorting.
 --
+--  CONFIRMED BILLING SEMANTICS - the whole file rests on these four
+--    a. bill_outstanding_amt  = the issued bill, due the 15th of the NEXT month.
+--       Goes to 0 the moment it is paid, INCLUDING by a mid-cycle payment.
+--       It is a month-end snapshot in the monthly table and a running daily
+--       balance in the daily table.
+--    b. unbill_outstanding_amt = that bill PLUS the current month's day-by-day
+--       usage, so it is the live exposure, not an arrear.
+--    c. invoice_amt stamped month M is the bill for the USAGE OF MONTH M-1.
+--    d. tot_rev stamped month M is the usage OF MONTH M.
+--
+--  WHAT (c) AND (d) TOGETHER MEAN - checked line by line, nothing below breaks
+--    - invoice_amt(M) is due on the 15th of M, and a payment recorded in M is
+--      paying exactly that bill. So payment-to-bill ratios inside one panel row
+--      are correctly aligned. No shift needed.
+--    - bill_outstanding_amt and invoice_amt carry the SAME alignment, so the
+--      0.40 x med_invoice materiality floor is compared against a balance that
+--      measures the same thing. This is the one place a mismatch would have
+--      been silent and it is clean.
+--    - med_invoice is a median across months, so the one-month window shift
+--      does not move it. Invoices 140401..140406 are usage 140312..140405,
+--      still entirely clear of the 140412 shock.
+--    - THE ONE RULE FOR PYTHON: invoice_mN and totrev_mN in the same row are
+--      DIFFERENT USAGE MONTHS. Never ratio, difference or correlate them
+--      against each other, and never build a "billed vs used" feature from the
+--      pair. To compare them, line invoice_m(N+1) up with totrev_mN.
+--
 --  NO percent character anywhere (Python drivers read it as a format spec).
---  NO CASE expressions (IF and FILTER instead).
+--  NO CASE expressions - IF and FILTER are used instead.
 --  AMOUNTS ARE IN RIAL.
 -- ============================================================================
 
@@ -77,7 +103,7 @@ FROM (
       -- time, and for an active postpaid subscriber there is almost always a
       -- bill outstanding, so requiring zero removes nearly the whole base.
       -- The "not barred in the 60 days before T0" gate below already covers
-      -- the case this was meant to catch. Re-enable only if G1 in
+      -- the pattern this was meant to catch. Re-enable only if G1 in
       -- 08_gate_funnel.sql shows it keeps a sensible share.
       -- AND   COALESCE(bill_outstanding_amt, 0) = 0
 ) s
@@ -115,7 +141,7 @@ INNER JOIN (
     -- bill perfectly normally.
     HAVING APPROX_PERCENTILE(invoice_amt, 0.5) FILTER (WHERE invoice_amt > 0) > 0
 ) m ON m.sbrp_id = s.sbrp_id
--- GATE: not churned, and not barred in the 60 days before T0.
+-- GATE: not churned at any point in the feature window.
 -- stat 4 and 8 are churn; stat 9 is a TWO-WAY BAR and belongs in the label,
 -- so it must not be filtered as churn.
 LEFT JOIN (
@@ -125,10 +151,21 @@ LEFT JOIN (
       AND  sbrp_typ_id = 1
       AND  sbrp_stat_id IN (4, 8)
 ) churn ON churn.sbrp_id = s.sbrp_id
+-- GATE: barred in the LAST WEEK of the feature window, i.e. still cut off
+-- going into T0. Deliberately narrow, for two reasons:
+--   1. A one-way bar is overwhelmingly a mid-cycle ceiling hit, which is a
+--      large and largely benign population. Gating on 60 days of any bar
+--      deletes them from the book for no risk reason.
+--   2. Bars earlier in the window are FEATURES - n_nonpay_bar_months_6m and
+--      n_ceiling_bar_months_6m carry them. Removing those subscribers is
+--      exactly the selection mistake in the original pipeline: it strips the
+--      bad-payment examples the model has to learn from.
+-- So: barred last week blocks origination, barred before that does not.
+-- Window ends at 14040631 - no day of the outcome window is touched.
 LEFT JOIN (
     SELECT DISTINCT sbrp_id
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14040501 AND 14040631
+    WHERE  day_key BETWEEN 14040625 AND 14040631
       AND  sbrp_typ_id = 1
       AND  sbrp_stat_id IN (3, 9)
 ) barred ON barred.sbrp_id = s.sbrp_id
@@ -179,14 +216,30 @@ SELECT  d.sbrp_id,
         -- ---- bars, by status. NOT filtered on stat: that is the point.
         COUNT(*) FILTER (WHERE d.sbrp_stat_id = 3)                    AS oneway_days,
         COUNT(*) FILTER (WHERE d.sbrp_stat_id = 9)                    AS twoway_days,
-        -- a bar that began in a month carrying an overdue bill is non-payment;
-        -- one with no overdue bill behind it is the credit ceiling
+        -- 4 and 8 are churn, not a bar. Collected here so STEP 8 does not
+        -- have to scan the daily fact a second time for them.
+        COUNT(*) FILTER (WHERE d.sbrp_stat_id IN (4, 8))              AS churn_days,
+        -- WHY A BAR HAPPENED. The two tests below are mutually exclusive and
+        -- together cover every stat=3 day, so no bar is silently dropped.
+        -- NON-PAYMENT, either of:
+        --   (a) more than one bill stacked on the balance (> 1.5 x med_invoice).
+        --       A single bill can never exceed that, so this can only be a
+        --       missed bill, and it is non-payment WHATEVER day it is seen -
+        --       a mid-cycle bar on the 10th with last month's bill still on
+        --       the balance is a bad payer, not a ceiling hit.
+        --   (b) a material balance still open past the due date (day > 15).
+        -- CREDIT CEILING = everything else: barred while nothing is overdue
+        -- and nothing is stacked. This is the subscriber who burned through
+        -- the in-cycle allowance, which the user flagged as a sensitive
+        -- feature and must NOT be read as bad payment behaviour.
         MAX(IF(d.sbrp_stat_id = 3
-               AND d.bill_outstanding_amt > 0.40 * b.med_invoice
-               AND MOD(d.day_key, 100) > 15, 1, 0))                   AS nonpay_bar_day,
+               AND (d.bill_outstanding_amt > 1.5 * b.med_invoice
+                    OR (d.bill_outstanding_amt > 0.40 * b.med_invoice
+                        AND MOD(d.day_key, 100) > 15)), 1, 0))        AS nonpay_bar_day,
         MAX(IF(d.sbrp_stat_id = 3
-               AND d.bill_outstanding_amt <= 0.40 * b.med_invoice, 1, 0))
-                                                                      AS ceiling_bar_day,
+               AND NOT (d.bill_outstanding_amt > 1.5 * b.med_invoice
+                        OR (d.bill_outstanding_amt > 0.40 * b.med_invoice
+                            AND MOD(d.day_key, 100) > 15)), 1, 0))    AS ceiling_bar_day,
         -- ---- ceiling pressure
         MAX(d.unbill_outstanding_amt)                                 AS unbill_max,
         AVG(d.unbill_outstanding_amt)                                 AS unbill_avg
@@ -197,7 +250,8 @@ WHERE   d.day_key BETWEEN 14040101 AND 14050131    -- features AND watch window
 GROUP BY d.sbrp_id, d.day_key / 100,
          (d.day_key / 10000) * 12 + MOD(d.day_key / 100, 100)
 ;
---  If your engine has no MAX_BY, run STEP 2b instead and join it in.
+--  STEP 2b below is a fallback for engines without MAX_BY. Trino has it, so
+--  SKIP STEP 2b - do not run it.
 
 
 -- ---------------------------------------------------------------------------
@@ -335,6 +389,9 @@ WITH mth AS (
     GROUP BY c.sbrp_id, c.month_key
 )
 SELECT  sbrp_id,
+        -- invoice_mN is the bill for the USAGE OF MONTH N-1 (confirmed).
+        -- totrev_mN below is the usage OF MONTH N. The two series are one month
+        -- apart: do not combine them inside a row. See the header.
         MAX(invoice_amt) FILTER (WHERE month_key=140401) AS invoice_m1,
         MAX(invoice_amt) FILTER (WHERE month_key=140402) AS invoice_m2,
         MAX(invoice_amt) FILTER (WHERE month_key=140403) AS invoice_m3,
@@ -477,13 +534,33 @@ run_len AS (
     FROM   runs WHERE debt_days > 0
     GROUP BY sbrp_id, run_id
 ),
+twoway_consec AS (
+    -- "two-way barred two months RUNNING" as specified. Two separated months
+    -- are NOT this. month_idx = prev_idx + 1 is required so a month missing
+    -- from the rollup cannot make two distant months look adjacent.
+    SELECT   sbrp_id,
+             MAX(IF(tw = 1 AND prev_tw = 1 AND month_idx = prev_idx + 1, 1, 0))
+                                                             AS twoway_2consec
+    FROM (
+        SELECT  sbrp_id, month_idx,
+                IF(twoway_days > 0, 1, 0)                    AS tw,
+                LAG(IF(twoway_days > 0, 1, 0)) OVER (
+                    PARTITION BY sbrp_id ORDER BY month_idx)  AS prev_tw,
+                LAG(month_idx) OVER (
+                    PARTITION BY sbrp_id ORDER BY month_idx)  AS prev_idx
+        FROM    out
+    ) t
+    GROUP BY sbrp_id
+),
 churned AS (
-    -- churn only. stat 9 is a two-way bar and belongs in the label.
-    SELECT DISTINCT sbrp_id
-    FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14040701 AND 14050131
-      AND  sbrp_typ_id = 1
-      AND  sbrp_stat_id IN (4, 8)
+    -- churn only. stat 9 is a two-way bar and belongs in the label, not here.
+    -- Read off the rollup - same answer as scanning the daily fact, because
+    -- the rollup already covers every day of this window for every base
+    -- subscriber and is not filtered on status.
+    SELECT   sbrp_id
+    FROM     out
+    GROUP BY sbrp_id
+    HAVING   SUM(churn_days) > 0
 ),
 agg AS (
     SELECT  o.sbrp_id,
@@ -498,10 +575,12 @@ agg AS (
             COUNT(*) FILTER (WHERE o.twoway_days > 0)       AS twoway_months_out,
             SUM(o.oneway_days)                              AS oneway_days_out,
             SUM(o.twoway_days)                              AS twoway_days_out,
-            MAX(IF(c.sbrp_id IS NULL, 0, 1))                AS churned_flag
+            MAX(IF(c.sbrp_id IS NULL, 0, 1))                AS churned_flag,
+            MAX(COALESCE(t.twoway_2consec, 0))              AS twoway_2consec
     FROM        out o
-    LEFT JOIN   run_len r ON r.sbrp_id = o.sbrp_id
-    LEFT JOIN   churned c ON c.sbrp_id = o.sbrp_id
+    LEFT JOIN   run_len r       ON r.sbrp_id = o.sbrp_id
+    LEFT JOIN   churned c       ON c.sbrp_id = o.sbrp_id
+    LEFT JOIN   twoway_consec t ON t.sbrp_id = o.sbrp_id
     GROUP BY o.sbrp_id
 )
 SELECT  sbrp_id,
@@ -515,7 +594,9 @@ SELECT  sbrp_id,
         had_nonpay_oneway                                  AS rule3_nonpay_bar,
         escalated_twoway                                   AS rule4_escalated,
         -- the candidates, most to least conservative
-        IF(twoway_months_out >= 2, 1, 0)                   AS y_twoway_2m,
+        twoway_2consec                                     AS y_twoway_2m,
+        -- the non-consecutive version, kept only so the two can be compared
+        IF(twoway_months_out >= 2, 1, 0)                   AS y_twoway_any2m,
         IF(escalated_twoway = 1, 1, 0)                     AS y_severe,
         IF(max_dpd_out >= 60 OR had_nonpay_oneway = 1, 1, 0)                     AS y_strict,
         IF(max_dpd_out >= 60 OR n_late_out >= 2 OR had_nonpay_oneway = 1, 1, 0)  AS y_v1,
@@ -524,7 +605,9 @@ SELECT  sbrp_id,
         IF(max_dpd_out < 60 AND had_nonpay_oneway = 0 AND n_late_out = 1, 1, 0)  AS indeterminate
 FROM    agg
 WHERE   churned_flag  = 0       -- censored outcome
-  AND   n_months_seen >= 6      -- incomplete watch window
+  AND   n_months_seen >= 6      -- the window is 7 months; one missing month
+                                -- is tolerated, two is an incomplete outcome.
+                                -- G4 in STEP 9 reports the 7-month share.
 ;
 
 
@@ -535,8 +618,8 @@ DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_dataset_c1;
 CREATE TABLE dwbi_temp40_db.dcb3_dataset_c1 WITH (format='PARQUET') AS
 SELECT  '140407' AS obs_cohort, b.sbrp_id, b.med_invoice,
         dpd.*, bar.*, pan.*, pay.*, pit.*,
-        lab.y_twoway_2m, lab.y_severe, lab.y_strict, lab.y_v1, lab.y_v2,
-        lab.y_loose, lab.indeterminate,
+        lab.y_twoway_2m, lab.y_twoway_any2m, lab.y_severe, lab.y_strict,
+        lab.y_v1, lab.y_v2, lab.y_loose, lab.indeterminate,
         lab.max_dpd_out, lab.n_late_out, lab.total_debt_days_out,
         lab.oneway_days_out, lab.twoway_days_out, lab.twoway_months_out,
         lab.had_nonpay_oneway, lab.n_nonpay_bar_months, lab.escalated_twoway,
@@ -559,7 +642,8 @@ LEFT  JOIN  dwbi_temp40_db.dcb3_pit    pit ON pit.sbrp_id = b.sbrp_id
 SELECT COUNT(*) AS n_rows, COUNT(DISTINCT sbrp_id) AS n_subs
 FROM   dwbi_temp40_db.dcb3_dataset_c1;
 
-SELECT AVG(y_twoway_2m) AS bad_twoway_2m, AVG(y_severe) AS bad_severe,
+SELECT AVG(y_twoway_2m) AS bad_twoway_2m,
+       AVG(y_twoway_any2m) AS bad_twoway_any2m, AVG(y_severe) AS bad_severe,
        AVG(y_strict)    AS bad_strict,    AVG(y_v1)     AS bad_v1,
        AVG(y_v2)        AS bad_v2,        AVG(y_loose)  AS bad_loose,
        AVG(indeterminate) AS indet
@@ -575,3 +659,10 @@ SELECT had_nonpay_oneway, had_ceiling_oneway, COUNT(*) AS n,
        AVG(max_dpd_out) AS avg_dpd, AVG(y_v1) AS bad_rate
 FROM   dwbi_temp40_db.dcb3_dataset_c1
 GROUP BY 1,2 ORDER BY n DESC;
+
+-- G4  completeness of the outcome window. 7 is the full window. If the 6-month
+-- group is large, the tolerance in STEP 8 is carrying real censoring and should
+-- be tightened to 7.
+SELECT n_months_seen, COUNT(*) AS n, AVG(y_v1) AS bad_rate
+FROM   dwbi_temp40_db.dcb3_label
+GROUP BY 1 ORDER BY 1;
