@@ -94,7 +94,12 @@ SELECT  s.sbrp_id,
 FROM (
     SELECT  sbrp_id, age_on_net_months
     FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
-    WHERE   month_key    = 140404      -- the month immediately before T0
+    -- 140406 is the LAST month before T0=140407, so this snapshot is the
+    -- state the lender sees at the decision point. It was 140404 - three
+    -- months early, left over from an older calendar. That made the active
+    -- and permanent tests fire at the wrong point in time and shipped a
+    -- stale age_on_net_months into the dataset.
+    WHERE   month_key    = 140406      -- the month immediately before T0
       AND   sbrp_stat_id = 2           -- GATE: active at T0 (point in time only)
       AND   sbrp_typ_id  = 1           -- permanent
       AND   age_on_net_months >= 12
