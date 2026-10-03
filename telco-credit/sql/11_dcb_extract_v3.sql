@@ -44,32 +44,58 @@
 --    earlier. G5 in STEP 9 counts them so this stays verified rather than
 --    assumed.
 --
---  CONFIRMED BILLING SEMANTICS - the whole file rests on these
---    a. bill_outstanding_amt (DAILY fact) = the issued bill, due the 15th of
---       the next month. Goes to 0 the moment it is paid, INCLUDING by a
---       mid-cycle payment. Populated in ALL 30 months.
---    b. unbill_outstanding_amt = that bill PLUS the current month's running
---       usage, so it is live exposure, not an arrear.
---    c. payment_due_amt (v_fact_cust_bil_daily, cust_bil_typ_id = 2) = the
---       END-OF-CYCLE bill. Carries a value only on the LAST DAY of the month,
---       and is keyed by sbrp_id. Stamped at the end of month M it is the usage
---       OF MONTH M, due the 15th of M+1. THIS IS NOW THE BILL SOURCE.
---    d. tot_rev stamped month M (MONTHLY fact) = the usage OF MONTH M.
---    e. payable_amt and invoice_amt on the MONTHLY fact are NOT USED. They are
---       loaded in only 14 of 30 months and empty across 140312..140409, with an
---       identical gap in both - zero months disagree - so it is a loading gap
---       in that table, not a column-naming mistake. Anchoring anything there
---       made the calendar hostage to the gap and collapsed the base to 1371
---       rows. Do not reintroduce either column.
+--  CONFIRMED MECHANICS - the whole file rests on these
 --
---  WHAT (c) AND (d) TOGETHER MEAN
---    - payment_due_amt(M) is the very bill that sits in the daily
---      bill_outstanding_amt through month M+1, so the materiality threshold
---      and the balance it is tested against are the SAME quantity.
---    - billed_mN, pmnt_mN and totrev_mN in the panel are all stamped on month
---      N and all describe the usage OF MONTH N. They are mutually comparable
---      inside a row. This was NOT true of the old payable_mN, which was the
---      usage of month N-1 and one month out of step with its neighbours.
+--  HOW A POSTPAID SIM ACTUALLY WORKS HERE
+--    Usage (packages, calls, SMS) is either CASH or NON-CASH.
+--      - CASH usage NEVER reaches the bill.
+--      - NON-CASH usage accrues against the SIM's CREDIT CEILING.
+--    available_credit is that ceiling - the operator's own credit limit for the
+--    SIM, set from SIM value, SIM age and similar. It is a live credit decision
+--    the operator already makes and already collects on, which makes it the
+--    best benchmark there is for our own limit.
+--    When non-cash usage crosses the ceiling the line is ONE-WAY BARRED
+--    (stat=3) and stays barred until the subscriber pays. Paying frees
+--    headroom. At month end whatever non-cash is still unsettled becomes the
+--    end-of-cycle bill. Unpaid by the 15th of the next month, it becomes debt -
+--    carried on in the SAME bill_outstanding_amt, so the DPD logic is unchanged.
+--
+--  WHAT THAT MEANS FOR THE LABEL, AND IT COST A RULE
+--    A one-way bar has exactly ONE cause: the ceiling. There is no
+--    "non-payment one-way bar". So barring often says only that usage is high
+--    relative to a low ceiling - which describes a HEAVY, VALUABLE customer,
+--    not a delinquent one. rule3_nonpay_bar fired on exactly that and has been
+--    DELETED, along with the nonpay/ceiling day classification behind it.
+--    The signal in a bar is its DURATION: pay-and-reconnect-same-day is a good
+--    payer on a tight ceiling; twenty days barred is someone struggling.
+--    Delinquency is measured only from payment timing - DPD past the 15th,
+--    repeated lateness - and from the two-way bar (stat=4).
+--
+--  THE COLUMNS
+--    a. bill_outstanding_amt (DAILY) = the issued bill, due the 15th of the
+--       next month, and the debt it becomes afterwards. Zeroed by any payment
+--       including a mid-cycle one. Populated in ALL 30 months.
+--    b. unbill_outstanding_amt = that bill plus the running month's usage, so
+--       it is the live exposure measured against available_credit.
+--    c. payment_due_amt on v_fact_cust_bil_daily, keyed by sbrp_id:
+--         cust_bil_typ_id = 2  END-OF-CYCLE bill, last day of the month only.
+--                              Stamped at the end of month M it is the usage OF
+--                              MONTH M, due the 15th of M+1.
+--         cust_bil_typ_id = 3  MID-CYCLE bill. Does NOT land on the month end,
+--                              which is why the old MOD(day_key,100) >= 28 cost
+--                              guard had to go - it deleted every one of them.
+--       Both are NON-CASH only.
+--    d. tot_rev (MONTHLY) stamped month M = TOTAL usage of month M, cash AND
+--       non-cash. So billed/tot_rev is the NON-CASH SHARE, not a mid-cycle
+--       measure. Mid-cycle intensity comes from bill type 3 against type 2.
+--    e. pmnt_amt on v_fact_pmnt_adjmt = payments that land on the bill. Prepaid
+--       credit has no part in this project while sbrp_typ_id = 1, so
+--       paid_total is not inflated by top-ups.
+--    f. payable_amt and invoice_amt on the MONTHLY fact are NOT USED - loaded
+--       in only 14 of 30 months, empty across 140312..140409, identical gap in
+--       both. Do not reintroduce either.
+--    g. cust_pmnt_typ_id is NOT interpreted. "4 end of cycle, 6 mid cycle" was
+--       my own invention and the data contradicts it.
 --
 
 --  NO percent character anywhere (Python drivers read it as a format spec).
@@ -343,27 +369,19 @@ SELECT  d.sbrp_id,
         -- in debt, so these are the worst outcome in the book, not censoring.
         COUNT(*) FILTER (WHERE d.sbrp_stat_id = 8)                    AS queue_days,
         COUNT(*) FILTER (WHERE d.sbrp_stat_id = 9)                    AS reclaim_days,
-        -- WHY A BAR HAPPENED. The two tests below are mutually exclusive and
-        -- together cover every stat=3 day, so no bar is silently dropped.
-        -- NON-PAYMENT, either of:
-        --   (a) more than one bill stacked on the balance (> 1.5 x med_invoice).
-        --       A single bill can never exceed that, so this can only be a
-        --       missed bill, and it is non-payment WHATEVER day it is seen -
-        --       a mid-cycle bar on the 10th with last month's bill still on
-        --       the balance is a bad payer, not a ceiling hit.
-        --   (b) a material balance still open past the due date (day > 15).
-        -- CREDIT CEILING = everything else: barred while nothing is overdue
-        -- and nothing is stacked. This is the subscriber who burned through
-        -- the in-cycle allowance, which the user flagged as a sensitive
-        -- feature and must NOT be read as bad payment behaviour.
-        MAX(IF(d.sbrp_stat_id = 3
-               AND (d.bill_outstanding_amt > 1.5 * r.med_bill
-                    OR (d.bill_outstanding_amt > 0.40 * r.med_bill
-                        AND MOD(d.day_key, 100) > 15)), 1, 0))        AS nonpay_bar_day,
-        MAX(IF(d.sbrp_stat_id = 3
-               AND NOT (d.bill_outstanding_amt > 1.5 * r.med_bill
-                        OR (d.bill_outstanding_amt > 0.40 * r.med_bill
-                            AND MOD(d.day_key, 100) > 15)), 1, 0))    AS ceiling_bar_day,
+        -- NO "why a bar happened" SPLIT ANY MORE. This used to classify each
+        -- stat=3 day as non-payment or ceiling, from the balance and the day of
+        -- month. CONFIRMED: a one-way bar comes from ONE mechanism only -
+        -- monthly usage crossing the SIM's credit ceiling. There is no such
+        -- thing as a non-payment one-way bar. An unpaid bill only matters here
+        -- because it eats ceiling headroom and brings the breach forward.
+        --
+        -- That makes the bar ITSELF a near-neutral event, and labelling it as
+        -- delinquency was labelling HEAVY, VALUABLE USERS as bad: a low ceiling
+        -- against high usage bars often and says nothing about willingness to
+        -- pay. What carries the signal is HOW LONG the bar lasts - a subscriber
+        -- who pays and reconnects the same day is a good payer on a tight
+        -- ceiling; one barred for twenty days is struggling. STEP 4 builds that.
         -- ---- ceiling pressure
         MAX(d.unbill_outstanding_amt)                                 AS unbill_max,
         AVG(d.unbill_outstanding_amt)                                 AS unbill_avg
@@ -469,8 +487,8 @@ CREATE TABLE dwbi_temp40_db.dcb3_bars WITH (format='PARQUET') AS
 SELECT  sbrp_id,
         SUM(oneway_days)                                      AS oneway_days_6m,
         SUM(twoway_days)                                      AS twoway_days_6m,
-        SUM(nonpay_bar_day)                                   AS n_nonpay_bar_months_6m,
-        SUM(ceiling_bar_day)                                  AS n_ceiling_bar_months_6m,
+        -- months in which the ceiling was breached at all
+        COUNT(*) FILTER (WHERE oneway_days > 0)               AS n_ceiling_months_6m,
         COUNT(*) FILTER (WHERE oneway_days > 0 OR twoway_days > 0)
                                                               AS n_barred_months_6m,
         -- recency, in months before T0
@@ -560,8 +578,19 @@ SELECT  sbrp_id,
         SUM(intl_cl_cnt)                                 AS intl_cl_cnt_6m,
         STDDEV_SAMP(tot_rev)                             AS totrev_std_6m,
         STDDEV_SAMP(data_gb)                             AS data_gb_std_6m,
+        SUM(billed_amt)                                  AS billed_6m,
         SUM(mc_billed_amt)                               AS mc_billed_6m,
+        -- genuine mid-cycle intensity, from the BILL TYPES (3 vs 2)
         SUM(mc_billed_amt) / NULLIF(SUM(billed_amt), 0)   AS midcycle_billed_share_6m,
+        -- NON-CASH SHARE OF USAGE. CONFIRMED: tot_rev is TOTAL usage, cash and
+        -- non-cash both, while only NON-CASH usage reaches the bill. So this
+        -- ratio is the non-cash share - the part of their spending that runs on
+        -- the operator's credit. It is NOT a mid-cycle measure; an earlier note
+        -- in this file called it one, which was wrong.
+        -- It matters for lending: a subscriber who pays cash for most of their
+        -- usage has a small bill and a small apparent exposure, but their real
+        -- spending power is the whole of tot_rev.
+        SUM(billed_amt) / NULLIF(SUM(tot_rev), 0)         AS noncash_share_6m,
         COUNT(*)                                         AS n_months_seen
 -- FULL OUTER on the month key so a subscriber-month present in one source but
 -- not the other is still kept. An INNER JOIN here would silently drop months,
@@ -652,16 +681,24 @@ SELECT  c.sbrp_id,
         COALESCE(c.advance_pmnt_amt,0)                           AS advance_pmnt_amt,
         COALESCE(c.bill_outstanding_amt,0)                       AS bill_outstanding_amt,
         COALESCE(c.unbill_outstanding_amt,0)                     AS unbill_outstanding_amt,
+        -- THE REAL CEILING. available_credit is the operator's own credit limit
+        -- for this SIM, set from SIM value, SIM age and the rest. It is the
+        -- quantity whose breach causes the one-way bar, so it is the only
+        -- correct ceiling - and it is also the best available benchmark for our
+        -- own loan limit, since it is a live credit decision the operator is
+        -- already making and already collecting on.
+        COALESCE(c.available_credit,0)                           AS available_credit,
+        -- kept ONLY as a cross-check. This reconstruction from deposits and
+        -- limit components, with a 1.2 multiplier I invented, was standing in
+        -- for available_credit before it was known to exist. If the two differ
+        -- widely, trust available_credit and drop this.
         (COALESCE(c.non_rfndable_dpos_amt,0) + COALESCE(c.initial_cred_lim_amt,0)) * 1.2
           + COALESCE(c.rfndable_dpos_amt,0) + COALESCE(c.advance_pmnt_amt,0)
-          + COALESCE(c.temporary_cred_lim_amt,0)                 AS credit_ceiling,
-        -- unbill against the ceiling IS the mid-cycle bar's trigger condition,
-        -- so this measures how close to the edge the subscriber habitually runs
-        COALESCE(c.unbill_outstanding_amt,0) /
-          NULLIF((COALESCE(c.non_rfndable_dpos_amt,0)
-                  + COALESCE(c.initial_cred_lim_amt,0)) * 1.2
-                 + COALESCE(c.rfndable_dpos_amt,0) + COALESCE(c.advance_pmnt_amt,0)
-                 + COALESCE(c.temporary_cred_lim_amt,0), 0)      AS ceiling_utilisation,
+          + COALESCE(c.temporary_cred_lim_amt,0)                 AS ceiling_reconstructed,
+        -- unbilled usage against the ceiling IS the bar's trigger condition, so
+        -- this is how close to the edge the subscriber habitually runs.
+        COALESCE(c.unbill_outstanding_amt,0)
+          / NULLIF(COALESCE(c.available_credit,0), 0)            AS ceiling_utilisation,
         COALESCE(c.debt_scr, 0)                                  AS debt_scr,
         COALESCE(c.suspend_scr, 0)                               AS suspend_scr
 FROM        dwbi_fact_db.v_fact_sbrp_mthly_cip c
@@ -738,9 +775,6 @@ agg AS (
             GREATEST(COALESCE(MAX(r.run_days), 0) - 15, 0)  AS max_dpd_out,
             SUM(o.open_after_grace)                         AS n_late_out,
             SUM(o.debt_days)                                AS total_debt_days_out,
-            MAX(o.nonpay_bar_day)                           AS had_nonpay_oneway,
-            SUM(o.nonpay_bar_day)                           AS n_nonpay_bar_months,
-            MAX(o.ceiling_bar_day)                          AS had_ceiling_oneway,
             MAX(IF(o.twoway_days > 0, 1, 0))                AS escalated_twoway,
             COUNT(*) FILTER (WHERE o.twoway_days > 0)       AS twoway_months_out,
             SUM(o.oneway_days)                              AS oneway_days_out,
@@ -757,12 +791,12 @@ agg AS (
 SELECT  sbrp_id,
         n_months_seen, max_dpd_out, n_late_out, total_debt_days_out,
         oneway_days_out, twoway_days_out, twoway_months_out,
-        had_nonpay_oneway, n_nonpay_bar_months, escalated_twoway,
-        had_ceiling_oneway,
+        escalated_twoway,
         -- rule components, stored so a variant can be re-chosen without re-querying
         IF(max_dpd_out >= 60, 1, 0)                        AS rule1_dpd60,
         IF(n_late_out  >= 2,  1, 0)                        AS rule2_late,
-        had_nonpay_oneway                                  AS rule3_nonpay_bar,
+        -- rule3_nonpay_bar DELETED. It fired on a one-way bar, which is only
+        -- ever a credit-ceiling breach, so it was marking heavy users bad.
         escalated_twoway                                   AS rule4_escalated,
         -- the candidates, most to least conservative
         -- Every rule below is built on statuses 3 and 4 and on payment
@@ -771,11 +805,11 @@ SELECT  sbrp_id,
         -- the non-consecutive version, kept only so the two can be compared
         IF(twoway_months_out >= 2, 1, 0)                   AS y_twoway_any2m,
         IF(escalated_twoway = 1, 1, 0)                     AS y_severe,
-        IF(max_dpd_out >= 60 OR had_nonpay_oneway = 1, 1, 0)                     AS y_strict,
-        IF(max_dpd_out >= 60 OR n_late_out >= 2 OR had_nonpay_oneway = 1, 1, 0)  AS y_v1,
-        IF(max_dpd_out >= 60 OR n_late_out >= 3 OR had_nonpay_oneway = 1, 1, 0)  AS y_v2,
+        IF(max_dpd_out >= 60, 1, 0)                     AS y_strict,
+        IF(max_dpd_out >= 60 OR n_late_out >= 2, 1, 0)  AS y_v1,
+        IF(max_dpd_out >= 60 OR n_late_out >= 3, 1, 0)  AS y_v2,
         IF(n_late_out >= 2, 1, 0)                                                AS y_loose,
-        IF(max_dpd_out < 60 AND had_nonpay_oneway = 0 AND n_late_out = 1, 1, 0)  AS indeterminate
+        IF(max_dpd_out < 60 AND n_late_out = 1, 1, 0)  AS indeterminate
 FROM    agg
 -- EXCLUDE the reclamation path, per the business rule. This is the ONE
 -- status-based exclusion in the label; two-way bars stay and are labelled.
@@ -808,9 +842,8 @@ SELECT  '140405' AS obs_cohort, b.sbrp_id, r.med_bill,
         lab.y_v1, lab.y_v2, lab.y_loose, lab.indeterminate,
         lab.max_dpd_out, lab.n_late_out, lab.total_debt_days_out,
         lab.oneway_days_out, lab.twoway_days_out, lab.twoway_months_out,
-        lab.had_nonpay_oneway, lab.n_nonpay_bar_months, lab.escalated_twoway,
-        lab.had_ceiling_oneway,
-        lab.rule1_dpd60, lab.rule2_late, lab.rule3_nonpay_bar, lab.rule4_escalated
+        lab.escalated_twoway,
+        lab.rule1_dpd60, lab.rule2_late, lab.rule4_escalated
 FROM        dwbi_temp40_db.dcb3_base    b
 INNER JOIN  dwbi_temp40_db.dcb3_billref r   ON r.sbrp_id = b.sbrp_id
 INNER JOIN  dwbi_temp40_db.dcb3_label   lab ON lab.sbrp_id = b.sbrp_id
@@ -836,16 +869,21 @@ SELECT AVG(y_twoway_2m) AS bad_twoway_2m,
        AVG(indeterminate) AS indet
 FROM   dwbi_temp40_db.dcb3_dataset_c1;      -- target band: 5 to 15 pct
 
-SELECT rule1_dpd60, rule2_late, rule3_nonpay_bar, rule4_escalated, COUNT(*) AS n
+SELECT rule1_dpd60, rule2_late, rule4_escalated, COUNT(*) AS n
 FROM   dwbi_temp40_db.dcb3_dataset_c1
-GROUP BY 1,2,3,4 ORDER BY n DESC;
+GROUP BY 1,2,3 ORDER BY n DESC;
 
--- ceiling bars must look DIFFERENT from non-payment bars. If both groups show
--- the same bad rate, the split is not working and the floor needs revisiting.
-SELECT had_nonpay_oneway, had_ceiling_oneway, COUNT(*) AS n,
-       AVG(max_dpd_out) AS avg_dpd, AVG(y_v1) AS bad_rate
-FROM   dwbi_temp40_db.dcb3_dataset_c1
-GROUP BY 1,2 ORDER BY n DESC;
+-- CEILING PRESSURE MUST NOT PREDICT THE LABEL BY ITSELF. A one-way bar is a
+-- ceiling breach, so breaching often should NOT on its own mean bad. If the bad
+-- rate rises steeply with the number of ceiling months, the label is still
+-- picking up heavy usage rather than delinquency and needs another look. What
+-- SHOULD separate is how long each bar lasted.
+SELECT  n_ceiling_months_6m,
+        COUNT(*)                            AS n,
+        AVG(y_v1)                           AS bad_rate,
+        AVG(avg_barred_days_per_spell)      AS avg_days_barred
+FROM    dwbi_temp40_db.dcb3_dataset_c1
+GROUP BY 1 ORDER BY 1;
 
 -- G5  WHAT THE 8/9 EXCLUSION COSTS. These subscribers are dropped from the
 -- label by rule. The point of this check is that they should be FEW, and
