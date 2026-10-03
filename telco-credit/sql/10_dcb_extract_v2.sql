@@ -1,4 +1,16 @@
 -- ============================================================================
+--  NOTE ON THE PERCENT SIGN
+--  This file deliberately contains no percent character anywhere - not in SQL,
+--  not in string literals, not in comments. Python DB drivers (pyhive, trino,
+--  presto, PyMySQL) default to pyformat/format paramstyle and run printf-style
+--  substitution over the whole statement before sending it, so a stray percent
+--  sign raises "unsupported format character". Modulo is therefore written
+--  MOD(x, y), and percentages are spelled "pct".
+--  Keep it that way when editing - or pass the SQL parameter-free, e.g.
+--      cursor.execute(sql)            with paramstyle set to 'qmark'/'named'
+--      sqlalchemy: conn.execute(text(sql))
+--      or simply sql.replace(chr(37), chr(37)*2) before execute()
+-- ============================================================================
 --  DCB credit dataset - rewritten extraction          (Trino / Presto syntax)
 --
 --  Replaces the 38-step temp_baseeN chain. Same source tables, same dialect.
@@ -199,7 +211,7 @@ CREATE TABLE dwbi_temp40_db.dcb_c1_dpd WITH (format='PARQUET') AS
 --   >>> SET THIS FROM DIAGNOSTIC D1 in 04_balance_semantics_check.sql <<<
 --   If the balance turns out to be whole unpaid bills only - which is what we
 --   now expect, since ANY payment zeroes it, mid-cycle included - then small
---   remainders never appear and the floor should be near zero (0.05). A 25%
+--   remainders never appear and the floor should be near zero (0.05). A 25pct
 --   floor would then be discarding real debt. Keep 0.25 only if D1 shows a
 --   visible mass below a quarter of a bill. Both literals below must match.
 WITH med AS (
@@ -438,7 +450,7 @@ overdue AS (
     SELECT  dd.sbrp_id,
             dd.day_key,
             MAX(CASE WHEN COALESCE(dd.bill_outstanding_amt,0) > 0
-                      AND dd.day_key % 100 > 15 THEN 1 ELSE 0 END)
+                      AND MOD(dd.day_key, 100) > 15 THEN 1 ELSE 0 END)
                 OVER (PARTITION BY dd.sbrp_id ORDER BY dd.day_key
                       ROWS BETWEEN 3 PRECEDING AND CURRENT ROW)   AS past_due,
             MAX(CASE WHEN COALESCE(dd.bill_outstanding_amt,0)
@@ -521,7 +533,7 @@ WITH pm AS (
                                                                          AS paid_endcycle,
             COUNT(*)                                                     AS n_payments,
             COUNT(*) FILTER (WHERE cust_pmnt_typ_id = 6)                 AS n_midcycle_payments,
-            MIN(day_key % 100)                                           AS first_pay_day
+            MIN(MOD(day_key, 100))                                           AS first_pay_day
     FROM    dwbi_fact_db.v_fact_pmnt_adjmt
     WHERE   cust_pmnt_typ_id IN (4, 6)
       AND   bllg_pmnt_stat_id = 2
@@ -693,13 +705,13 @@ WITH omed AS (
 ),
 od AS (
     SELECT  dd.sbrp_id, dd.day_key, dd.day_key / 100 AS month_key,
-            -- the same 25%-of-own-bill materiality floor as the feature window
+            -- the same 25pct-of-own-bill materiality floor as the feature window
             CASE WHEN COALESCE(dd.bill_outstanding_amt,0)
                       > 0.25 * COALESCE(om.med_invoice,0)
                  THEN 1 ELSE 0 END AS in_debt,
             -- past due = still outstanding after the 15th of the billing month
             CASE WHEN COALESCE(dd.bill_outstanding_amt,0) > 0
-                  AND dd.day_key % 100 > 15 THEN 1 ELSE 0 END                AS past_due,
+                  AND MOD(dd.day_key, 100) > 15 THEN 1 ELSE 0 END                AS past_due,
             ROW_NUMBER() OVER (PARTITION BY dd.sbrp_id ORDER BY dd.day_key)  AS rn
     FROM        dwbi_fact_db.v_fact_sbrp_daily_cip dd
     LEFT JOIN   omed om ON om.sbrp_id = dd.sbrp_id
@@ -758,7 +770,7 @@ out_typical AS (
 overdue_by_month AS (
     SELECT  dd.sbrp_id, dd.day_key,
             MAX(CASE WHEN COALESCE(dd.bill_outstanding_amt,0) > 0
-                      AND dd.day_key % 100 > 15 THEN 1 ELSE 0 END)
+                      AND MOD(dd.day_key, 100) > 15 THEN 1 ELSE 0 END)
                 OVER (PARTITION BY dd.sbrp_id ORDER BY dd.day_key
                       ROWS BETWEEN 3 PRECEDING AND CURRENT ROW)  AS past_due,
             MAX(CASE WHEN COALESCE(dd.bill_outstanding_amt,0)
@@ -858,7 +870,7 @@ SELECT  sbrp_id,
         -- 6-month watch it can only fire for bars that started in the first two
         -- months (one-way -> +3 to escalate -> +1 more to persist), so roughly a
         -- third of the window is observable and failures later in it are scored
-        -- "good". Expect ~1-2%: a loss-severity label, not a decision label.
+        -- "good". Expect ~1-2pct: a loss-severity label, not a decision label.
         CASE WHEN twoway_months_out >= 2 THEN 1 ELSE 0 END        AS y_twoway_2m,
         -- severe: the escalation completed at all
         CASE WHEN escalated_twoway = 1 THEN 1 ELSE 0 END          AS y_severe,
@@ -974,7 +986,7 @@ SELECT AVG(y_twoway_2m) AS bad_twoway_2m, AVG(y_severe) AS bad_severe,
        AVG(y_strict) AS bad_strict,
        AVG(y_v1)     AS bad_v1,     AVG(y_v2)     AS bad_v2,
        AVG(y_loose)  AS bad_loose,  AVG(indeterminate) AS indet
-FROM   dwbi_temp40_db.dcb_dataset_c1;      -- target band: 5% - 15%
+FROM   dwbi_temp40_db.dcb_dataset_c1;      -- target band: 5pct - 15pct
 
 SELECT rule1_dpd60, rule2_late, rule3_nonpay_bar, rule4_escalated, COUNT(*) AS n
 FROM   dwbi_temp40_db.dcb_dataset_c1
@@ -982,7 +994,7 @@ GROUP BY 1,2,3,4 ORDER BY n DESC;          -- if rule2 dominates, 15 days is too
 
 -- Does the one-way / two-way split behave as expected? Of the subscribers who
 -- took a non-payment one-way bar, what share escalated inside the window?
--- Anything near 100% means the two columns are the same event recorded twice;
+-- Anything near 100pct means the two columns are the same event recorded twice;
 -- a share around a third to a half is the normal dunning funnel.
 SELECT had_nonpay_oneway,
        COUNT(*)              AS n,
