@@ -22,6 +22,28 @@
 --       across months wherever the bill was still open at month end. Same
 --       answer, about thirty times less sorting.
 --
+--  CONFIRMED SUBSCRIBER STATUS LADDER (sbrp_stat_id) - CORRECTED
+--      2  active
+--      3  one-way bar      (outgoing barred)
+--      4  TWO-WAY bar      (fully cut off)
+--      8  queued for number reclamation
+--      9  number reclaimed
+--    An earlier message in the project said 9 was the two-way bar. It is not;
+--    the user corrected it to 4. Every status test in this file was rebuilt on
+--    the ladder above.
+--
+--    8 and 9 are reached only after roughly five to six months of no activity
+--    WHILE IN DEBT.
+--
+--    BUSINESS RULE, SET BY THE USER: 8 and 9 are ALWAYS EXCLUDED, never
+--    labelled. Only 3 and 4 matter. A reclaimed number has no relationship
+--    left to observe, so the remaining outcome period is genuinely censored.
+--    The cost of excluding them is near zero in any case: reaching 8 takes
+--    five to six months, and the outcome window is seven, so anyone who gets
+--    there was already flagged bad by the two-way bar or by DPD >= 60 months
+--    earlier. G5 in STEP 9 counts them so this stays verified rather than
+--    assumed.
+--
 --  CONFIRMED BILLING SEMANTICS - the whole file rests on these four
 --    a. bill_outstanding_amt  = the issued bill, due the 15th of the NEXT month.
 --       Goes to 0 the moment it is paid, INCLUDING by a mid-cycle payment.
@@ -89,10 +111,10 @@
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_base;
 CREATE TABLE dwbi_temp40_db.dcb3_base WITH (format='PARQUET') AS
 SELECT  s.sbrp_id,
-        s.age_on_net_months,
+        ten.tenure_at_t0 AS age_on_net_months,
         m.med_invoice
 FROM (
-    SELECT  sbrp_id, age_on_net_months
+    SELECT  sbrp_id
     FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
     -- 140406 is the LAST month before T0=140407, so this snapshot is the
     -- state the lender sees at the decision point. It was 140404 - three
@@ -102,7 +124,11 @@ FROM (
     WHERE   month_key    = 140406      -- the month immediately before T0
       AND   sbrp_stat_id = 2           -- GATE: active at T0 (point in time only)
       AND   sbrp_typ_id  = 1           -- permanent
-      AND   age_on_net_months >= 12
+      -- The tenure test USED to sit here as age_on_net_months >= 12. That
+      -- column is NULL for part of the rows and NULL >= 12 evaluates to NULL,
+      -- so the test silently deleted every subscriber with a MISSING tenure
+      -- instead of only the short-tenured ones. It now lives in the join
+      -- below, where the value is recovered rather than assumed.
       -- GATE: no open bill at T0 - DISABLED by default.
       -- In the monthly fact this column appears to be the balance at snapshot
       -- time, and for an active postpaid subscriber there is almost always a
@@ -112,6 +138,23 @@ FROM (
       -- 08_gate_funnel.sql shows it keeps a sensible share.
       -- AND   COALESCE(bill_outstanding_amt, 0) = 0
 ) s
+-- TENURE, RECOVERED rather than read from one possibly-NULL cell.
+-- Take the most recent NON-NULL age_on_net_months anywhere in the feature
+-- window and roll it forward to 140406. Every month here is in year 1404, so
+-- the month number is MOD(month_key, 100) and the roll-forward is 6 minus it.
+-- A subscriber with no non-null tenure in any of the six months still cannot
+-- pass, but that is now an explicit inner join rather than a silent NULL.
+INNER JOIN (
+    SELECT  sbrp_id,
+            MAX_BY(age_on_net_months, month_key)
+              + (6 - MOD(MAX(month_key), 100))            AS tenure_at_t0
+    FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
+    WHERE   month_key BETWEEN 140401 AND 140406
+      AND   sbrp_typ_id = 1
+      AND   age_on_net_months IS NOT NULL
+    GROUP BY sbrp_id
+) ten ON ten.sbrp_id = s.sbrp_id
+     AND ten.tenure_at_t0 >= 12
 -- GATE: the economic floor from the original DCB pipeline - average revenue
 -- over the last three months above 1,000,000 Rial (100k Toman). This is what
 -- took the base from 36M to under 7M there, and leaving it out is why the base
@@ -146,16 +189,30 @@ INNER JOIN (
     -- bill perfectly normally.
     HAVING APPROX_PERCENTILE(invoice_amt, 0.5) FILTER (WHERE invoice_amt > 0) > 0
 ) m ON m.sbrp_id = s.sbrp_id
--- GATE: not churned at any point in the feature window.
--- stat 4 and 8 are churn; stat 9 is a TWO-WAY BAR and belongs in the label,
--- so it must not be filtered as churn.
+-- GATE: never touched the reclamation path, ANYWHERE in the project window.
+-- Per the business rule these subscribers do not enter the project at all, so
+-- the window here is the FULL 14040101..14050131 - features and outcome both -
+-- not just the feature months. That makes this one gate the single place the
+-- rule is enforced, and the label-level check in STEP 8 becomes a cheap
+-- redundant safety net rather than the thing doing the work.
+-- One honest note: screening on outcome-window status is look-ahead - at T0 the
+-- lender cannot know who will later be reclaimed. It is the user's rule and the
+-- affected count is tiny (reaching 8 takes five to six months, and anyone who
+-- gets there is already bad on the two-way bar), but G5 in STEP 9 measures it
+-- rather than assuming.
+-- NOTE what is NOT here any more: this anti-join used to read IN (4, 8), and
+-- on the corrected ladder 4 is a TWO-WAY BAR. So it was deleting every
+-- subscriber who was ever fully cut off in six months - the single biggest
+-- reason the base came back at 1371 rows, and the exact selection mistake
+-- this project exists to avoid, since it strips the bad payers the model has
+-- to learn from. Two-way bars are now features and label rules, never gates.
 LEFT JOIN (
     SELECT DISTINCT sbrp_id
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14040101 AND 14040631
+    WHERE  day_key BETWEEN 14040101 AND 14050131
       AND  sbrp_typ_id = 1
-      AND  sbrp_stat_id IN (4, 8)
-) churn ON churn.sbrp_id = s.sbrp_id
+      AND  sbrp_stat_id IN (8, 9)
+) reclaim ON reclaim.sbrp_id = s.sbrp_id
 -- GATE: barred in the LAST WEEK of the feature window, i.e. still cut off
 -- going into T0. Deliberately narrow, for two reasons:
 --   1. A one-way bar is overwhelmingly a mid-cycle ceiling hit, which is a
@@ -172,10 +229,10 @@ LEFT JOIN (
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
     WHERE  day_key BETWEEN 14040625 AND 14040631
       AND  sbrp_typ_id = 1
-      AND  sbrp_stat_id IN (3, 9)
+      AND  sbrp_stat_id IN (3, 4)      -- one-way or two-way bar. NOT 9.
 ) barred ON barred.sbrp_id = s.sbrp_id
-WHERE   churn.sbrp_id  IS NULL
-  AND   barred.sbrp_id IS NULL
+WHERE   reclaim.sbrp_id IS NULL
+  AND   barred.sbrp_id  IS NULL
 ;
 
 
@@ -218,12 +275,13 @@ SELECT  d.sbrp_id,
         -- carried = more than one bill stacked, which only happens on a miss
         COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 1.5 * b.med_invoice)
                                                                       AS carried_days,
-        -- ---- bars, by status. NOT filtered on stat: that is the point.
+        -- ---- the status ladder. NOT filtered on stat: that is the point.
         COUNT(*) FILTER (WHERE d.sbrp_stat_id = 3)                    AS oneway_days,
-        COUNT(*) FILTER (WHERE d.sbrp_stat_id = 9)                    AS twoway_days,
-        -- 4 and 8 are churn, not a bar. Collected here so STEP 8 does not
-        -- have to scan the daily fact a second time for them.
-        COUNT(*) FILTER (WHERE d.sbrp_stat_id IN (4, 8))              AS churn_days,
+        COUNT(*) FILTER (WHERE d.sbrp_stat_id = 4)                    AS twoway_days,
+        -- TERMINAL NON-PAYMENT. Reached only after months of no activity while
+        -- in debt, so these are the worst outcome in the book, not censoring.
+        COUNT(*) FILTER (WHERE d.sbrp_stat_id = 8)                    AS queue_days,
+        COUNT(*) FILTER (WHERE d.sbrp_stat_id = 9)                    AS reclaim_days,
         -- WHY A BAR HAPPENED. The two tests below are mutually exclusive and
         -- together cover every stat=3 day, so no bar is silently dropped.
         -- NON-PAYMENT, either of:
@@ -557,15 +615,17 @@ twoway_consec AS (
     ) t
     GROUP BY sbrp_id
 ),
-churned AS (
-    -- churn only. stat 9 is a two-way bar and belongs in the label, not here.
-    -- Read off the rollup - same answer as scanning the daily fact, because
-    -- the rollup already covers every day of this window for every base
-    -- subscriber and is not filtered on status.
-    SELECT   sbrp_id
+reclaimed AS (
+    -- EXCLUSION list, per the business rule: a subscriber who reached 8 or 9
+    -- in the outcome window is dropped, not labelled. Read off the rollup, so
+    -- no second scan of the daily fact. These are the ONLY statuses excluded -
+    -- 3 and 4 are label rules, and the old version of this CTE wrongly had 4
+    -- in here, which deleted every two-way bar from the label.
+    SELECT   sbrp_id,
+             MAX(IF(queue_days   > 0, 1, 0)) AS hit_queue,
+             MAX(IF(reclaim_days > 0, 1, 0)) AS hit_reclaim
     FROM     out
     GROUP BY sbrp_id
-    HAVING   SUM(churn_days) > 0
 ),
 agg AS (
     SELECT  o.sbrp_id,
@@ -580,11 +640,12 @@ agg AS (
             COUNT(*) FILTER (WHERE o.twoway_days > 0)       AS twoway_months_out,
             SUM(o.oneway_days)                              AS oneway_days_out,
             SUM(o.twoway_days)                              AS twoway_days_out,
-            MAX(IF(c.sbrp_id IS NULL, 0, 1))                AS churned_flag,
+            MAX(COALESCE(x.hit_queue, 0))                   AS hit_queue,
+            MAX(COALESCE(x.hit_reclaim, 0))                 AS hit_reclaim,
             MAX(COALESCE(t.twoway_2consec, 0))              AS twoway_2consec
     FROM        out o
     LEFT JOIN   run_len r       ON r.sbrp_id = o.sbrp_id
-    LEFT JOIN   churned c       ON c.sbrp_id = o.sbrp_id
+    LEFT JOIN   reclaimed x     ON x.sbrp_id = o.sbrp_id
     LEFT JOIN   twoway_consec t ON t.sbrp_id = o.sbrp_id
     GROUP BY o.sbrp_id
 )
@@ -599,6 +660,8 @@ SELECT  sbrp_id,
         had_nonpay_oneway                                  AS rule3_nonpay_bar,
         escalated_twoway                                   AS rule4_escalated,
         -- the candidates, most to least conservative
+        -- Every rule below is built on statuses 3 and 4 and on payment
+        -- timing. 8 and 9 never appear - those rows are excluded by the WHERE.
         twoway_2consec                                     AS y_twoway_2m,
         -- the non-consecutive version, kept only so the two can be compared
         IF(twoway_months_out >= 2, 1, 0)                   AS y_twoway_any2m,
@@ -609,7 +672,10 @@ SELECT  sbrp_id,
         IF(n_late_out >= 2, 1, 0)                                                AS y_loose,
         IF(max_dpd_out < 60 AND had_nonpay_oneway = 0 AND n_late_out = 1, 1, 0)  AS indeterminate
 FROM    agg
-WHERE   churned_flag  = 0       -- censored outcome
+-- EXCLUDE the reclamation path, per the business rule. This is the ONE
+-- status-based exclusion in the label; two-way bars stay and are labelled.
+WHERE   hit_queue   = 0
+  AND   hit_reclaim = 0
   AND   n_months_seen >= 6      -- the window is 7 months; one missing month
                                 -- is tolerated, two is an incomplete outcome.
                                 -- G4 in STEP 9 reports the 7-month share.
@@ -664,6 +730,20 @@ SELECT had_nonpay_oneway, had_ceiling_oneway, COUNT(*) AS n,
        AVG(max_dpd_out) AS avg_dpd, AVG(y_v1) AS bad_rate
 FROM   dwbi_temp40_db.dcb3_dataset_c1
 GROUP BY 1,2 ORDER BY n DESC;
+
+-- G5  WHAT THE 8/9 EXCLUSION COSTS. These subscribers are dropped from the
+-- label by rule. The point of this check is that they should be FEW, and
+-- nearly all of them should already be bad on the two-way bar - if so, the
+-- exclusion loses no information. If excl_subs is large, say so and we will
+-- revisit it.
+SELECT  COUNT(DISTINCT sbrp_id)                                     AS base_subs,
+        COUNT(DISTINCT sbrp_id) FILTER (WHERE queue_days > 0
+                                           OR reclaim_days > 0)     AS excl_subs,
+        COUNT(DISTINCT sbrp_id) FILTER (WHERE (queue_days > 0
+                                           OR reclaim_days > 0)
+                                          AND twoway_days > 0)      AS excl_also_twoway
+FROM    dwbi_temp40_db.dcb3_daily_rollup
+WHERE   month_key BETWEEN 140407 AND 140501;
 
 -- G4  completeness of the outcome window. 7 is the full window. If the 6-month
 -- group is large, the tolerance in STEP 8 is carrying real censoring and should
