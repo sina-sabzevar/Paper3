@@ -163,54 +163,120 @@ GROUP BY sbrp_id
 ;
 
 -- ----------------------------------------------------------------------------
--- STEP 3  DPD PANEL  - the strongest signal, and the one currently missing
+-- STEP 3  DPD, DEBT SPELLS AND CEILING PRESSURE
 --
---  ASSUMPTION TO CONFIRM: v_fact_cust_bil_daily holds, per day, the outstanding
---  balance (debit_amt) of billing cycle `bilcycl`. If so, days-past-due is the
---  number of days that balance stayed above the materiality threshold.
---  If the table has no day_key, use the fallback in STEP 3b instead.
+--  BILLING CYCLE (confirmed):
+--    usage accrues 1st of month M to 1st of M+1
+--    the bill lands in bill_outstanding_amt at the start of M+1
+--    it is payable without penalty until the 15th of M+1
+--    paying clears bill_outstanding_amt to zero
 --
---  DEBT_MIN_RIAL = 200,000 Rial (20,000 Toman) - the same materiality floor the
---  existing khosh-hesabi score uses, so the two stay comparable.
+--  So days past due follow directly from how long that balance stays above zero:
+--
+--      DPD  =  length of the unbroken run of days with bill_outstanding_amt > 0
+--              MINUS the 15-day grace
+--
+--  A subscriber who pays on the 10th has a 10-day run -> DPD 0.
+--  One who pays on the 10th of the following month has a ~40-day run -> DPD 25.
+--  One who never pays has runs that merge across months and keep growing, which
+--  is exactly right.
+--
+--  unbill_outstanding_amt is the live balance: last month's bill plus this
+--  month's usage so far. Its ratio to the credit ceiling is literally the
+--  quantity that triggers the mid-cycle bar, so it measures how close to the
+--  edge the subscriber lives - a feature we had no way to build before.
 -- ----------------------------------------------------------------------------
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_dpd;
 CREATE TABLE dwbi_temp40_db.dcb_c1_dpd WITH (format='PARQUET') AS
 WITH d AS (
     SELECT  sbrp_id,
-            bilcycl,
-            COUNT(*) FILTER (WHERE debit_amt > 200000) AS dpd_days,
-            MAX(debit_amt)                             AS max_debt_amt
-    FROM    dwbi_fact_db.v_fact_cust_bil_daily
-    WHERE   bilcycl IN (140308,140309,140310,140311,140312,
-                        140401,140402,140403,140404)
-      AND   cust_bil_typ_id = '983116577831777608312765670515538102764700000000'
+            day_key,
+            day_key / 100                                   AS month_key,
+            COALESCE(bill_outstanding_amt, 0)               AS bill_out,
+            COALESCE(unbill_outstanding_amt, 0)             AS unbill_out,
+            CASE WHEN COALESCE(bill_outstanding_amt,0) > 0 THEN 1 ELSE 0 END AS in_debt,
+            ROW_NUMBER() OVER (PARTITION BY sbrp_id ORDER BY day_key)        AS rn
+    FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
+    WHERE   day_key BETWEEN 14030801 AND 14040431
       AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
-    GROUP BY sbrp_id, bilcycl
+),
+-- gaps and islands: consecutive in-debt days share a group key
+grp AS (
+    SELECT  d.*,
+            rn - ROW_NUMBER() OVER (PARTITION BY sbrp_id, in_debt ORDER BY day_key) AS spell_id
+    FROM    d
+),
+spells AS (
+    SELECT  sbrp_id, spell_id,
+            COUNT(*)        AS run_days,
+            MIN(day_key)    AS run_start,
+            MAX(day_key)    AS run_end,
+            MAX(bill_out)   AS spell_max_debt
+    FROM    grp
+    WHERE   in_debt = 1
+    GROUP BY sbrp_id, spell_id
+),
+spell_agg AS (
+    SELECT  sbrp_id,
+            MAX(run_days)                              AS max_debt_run_days,
+            COUNT(*)                                   AS n_debt_spells_9m,
+            SUM(run_days)                              AS total_debt_days_9m,
+            MAX(spell_max_debt)                        AS max_debt_amt_9m,
+            -- DPD = run length beyond the 15-day grace
+            GREATEST(MAX(run_days) - 15, 0)            AS max_dpd_9m,
+            COUNT(*) FILTER (WHERE run_days > 30)      AS n_spells_over_grace,
+            MAX(run_end)                               AS last_debt_day
+    FROM    spells
+    GROUP BY sbrp_id
+),
+-- per-month debt days, so the panel keeps the monthly shape
+monthly AS (
+    SELECT  sbrp_id, month_key,
+            COUNT(*) FILTER (WHERE in_debt = 1)        AS debt_days,
+            MAX(bill_out)                              AS bill_out_max,
+            MAX(unbill_out)                            AS unbill_out_max,
+            AVG(unbill_out)                            AS unbill_out_avg
+    FROM    d
+    GROUP BY sbrp_id, month_key
 )
-SELECT  sbrp_id,
-        MAX(CASE WHEN bilcycl=140308 THEN dpd_days END) AS dpd_m1,
-        MAX(CASE WHEN bilcycl=140309 THEN dpd_days END) AS dpd_m2,
-        MAX(CASE WHEN bilcycl=140310 THEN dpd_days END) AS dpd_m3,
-        MAX(CASE WHEN bilcycl=140311 THEN dpd_days END) AS dpd_m4,
-        MAX(CASE WHEN bilcycl=140312 THEN dpd_days END) AS dpd_m5,
-        MAX(CASE WHEN bilcycl=140401 THEN dpd_days END) AS dpd_m6,
-        MAX(CASE WHEN bilcycl=140402 THEN dpd_days END) AS dpd_m7,
-        MAX(CASE WHEN bilcycl=140403 THEN dpd_days END) AS dpd_m8,
-        MAX(CASE WHEN bilcycl=140404 THEN dpd_days END) AS dpd_m9,
-        MAX(max_debt_amt)                               AS max_debt_amt_9m,
-        MAX(dpd_days)                                   AS max_dpd_9m,
-        COUNT(*) FILTER (WHERE dpd_days > 15)           AS n_late_months_9m,
-        COUNT(*) FILTER (WHERE dpd_days = 0)            AS n_ontime_months_9m
-FROM    d
-GROUP BY sbrp_id
+SELECT  COALESCE(sa.sbrp_id, m.sbrp_id)                AS sbrp_id,
+        sa.max_dpd_9m, sa.max_debt_run_days, sa.n_debt_spells_9m,
+        sa.total_debt_days_9m, sa.max_debt_amt_9m,
+        sa.n_spells_over_grace, sa.last_debt_day,
+        -- monthly debt-day panel: m1 oldest .. m9 newest
+        MAX(CASE WHEN m.month_key=140308 THEN m.debt_days END) AS debtdays_m1,
+        MAX(CASE WHEN m.month_key=140309 THEN m.debt_days END) AS debtdays_m2,
+        MAX(CASE WHEN m.month_key=140310 THEN m.debt_days END) AS debtdays_m3,
+        MAX(CASE WHEN m.month_key=140311 THEN m.debt_days END) AS debtdays_m4,
+        MAX(CASE WHEN m.month_key=140312 THEN m.debt_days END) AS debtdays_m5,
+        MAX(CASE WHEN m.month_key=140401 THEN m.debt_days END) AS debtdays_m6,
+        MAX(CASE WHEN m.month_key=140402 THEN m.debt_days END) AS debtdays_m7,
+        MAX(CASE WHEN m.month_key=140403 THEN m.debt_days END) AS debtdays_m8,
+        MAX(CASE WHEN m.month_key=140404 THEN m.debt_days END) AS debtdays_m9,
+        -- months settled inside the grace window, and months that ran past it
+        COUNT(*) FILTER (WHERE m.debt_days BETWEEN 1 AND 15)   AS n_months_within_grace,
+        COUNT(*) FILTER (WHERE m.debt_days > 15)               AS n_late_months_9m,
+        COUNT(*) FILTER (WHERE m.debt_days = 0)                AS n_ontime_months_9m,
+        -- CEILING PRESSURE: the quantity that fires the mid-cycle bar
+        MAX(m.unbill_out_max)                                  AS unbill_peak_9m,
+        AVG(m.unbill_out_avg)                                  AS unbill_avg_9m
+FROM        spell_agg sa
+FULL JOIN   monthly   m ON m.sbrp_id = sa.sbrp_id
+GROUP BY COALESCE(sa.sbrp_id, m.sbrp_id),
+         sa.max_dpd_9m, sa.max_debt_run_days, sa.n_debt_spells_9m,
+         sa.total_debt_days_9m, sa.max_debt_amt_9m,
+         sa.n_spells_over_grace, sa.last_debt_day
 ;
+--  A subscriber with no row in spell_agg never carried debt at all - the best
+--  case, not a missing value. max_dpd_9m is NULL there and becomes 0 in Python.
 
 -- ----------------------------------------------------------------------------
 -- STEP 3b  FALLBACK DPD, from payment dates instead of daily debt
 --
---  Run this INSTEAD of STEP 3 if v_fact_cust_bil_daily turns out to have no
---  day_key. v_fact_pmnt_adjmt does carry one, so the settlement date can be
---  recovered from the payments themselves.
+--  OPTIONAL now. STEP 3 derives DPD from the daily bill_outstanding_amt, which
+--  is the authoritative source. Keep this as a cross-check: the two should
+--  agree closely, and a large gap means the grace rule or the clearing
+--  behaviour is not what we assumed.
 --
 --  Method: for billing cycle M, walk the payments forward from the start of M
 --  and take the first day on which the running total covers that cycle's
@@ -310,16 +376,19 @@ WITH daily AS (
     WHERE   day_key BETWEEN 14030801 AND 14040431
       AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
 ),
--- past-due debt per month: an EARLIER billing cycle still unpaid
+-- PAST-DUE on a given day: the bill is still outstanding AND the 15-day grace
+-- has already passed. This is the exact test that separates the two kinds of
+-- bar - a non-payment bar can only happen while an overdue bill is open, while
+-- a ceiling bar fires on live usage with no overdue bill behind it.
 overdue AS (
-    SELECT  d.sbrp_id, d.day_key / 100 AS month_key, MAX(d.debit_amt) AS overdue_amt
-    FROM    dwbi_fact_db.v_fact_cust_bil_daily d
-    WHERE   d.day_key BETWEEN 14030801 AND 14040431
-      AND   d.bilcycl < d.day_key / 100
-      AND   d.debit_amt > 200000
-      AND   d.cust_bil_typ_id = '983116577831777608312765670515538102764700000000'
-      AND   d.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
-    GROUP BY d.sbrp_id, d.day_key / 100
+    SELECT  sbrp_id,
+            day_key,
+            CASE WHEN COALESCE(bill_outstanding_amt,0) > 0
+                  AND day_key % 100 > 15
+                 THEN 1 ELSE 0 END AS past_due
+    FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
+    WHERE   day_key BETWEEN 14030801 AND 14040431
+      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
 )
 SELECT  dl.sbrp_id,
         -- ---- spell counts: a "start" is the day the state changes into a bar
@@ -327,10 +396,10 @@ SELECT  dl.sbrp_id,
         COUNT(*) FILTER (WHERE dl.prev_stat <> 9 AND dl.sbrp_stat_id = 9)   AS n_twoway_starts_9m,
         -- the credit-relevant subset: a bar that began in a month carrying past-due debt
         COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                           AND ov.overdue_amt IS NOT NULL)                  AS n_nonpay_bar_starts_9m,
-        -- the ceiling subset: a bar with no past-due debt behind it. FEATURE ONLY.
+                           AND ov.past_due = 1)                             AS n_nonpay_bar_starts_9m,
+        -- the ceiling subset: barred with no overdue bill behind it. FEATURE ONLY.
         COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                           AND ov.overdue_amt IS NULL)                      AS n_ceiling_bar_starts_9m,
+                           AND COALESCE(ov.past_due,0) = 0)                 AS n_ceiling_bar_starts_9m,
         -- ---- time spent barred
         COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 3)                         AS oneway_days_9m,
         COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 9)                         AS twoway_days_9m,
@@ -343,7 +412,7 @@ SELECT  dl.sbrp_id,
                             THEN dl.day_key END)                            AS days_since_last_bar,
         MAX(dl.month_key) FILTER (WHERE dl.sbrp_stat_id = 9)                AS last_twoway_month
 FROM        daily dl
-LEFT JOIN   overdue ov ON ov.sbrp_id = dl.sbrp_id AND ov.month_key = dl.month_key
+LEFT JOIN   overdue ov ON ov.sbrp_id = dl.sbrp_id AND ov.day_key = dl.day_key
 GROUP BY dl.sbrp_id
 ;
 
@@ -381,7 +450,16 @@ SELECT  sbrp_id,
         -- the ceiling itself, WITHOUT netting off current debt
         (COALESCE(non_rfndable_dpos_amt,0) + COALESCE(initial_cred_lim_amt,0)) * 1.2
           + COALESCE(rfndable_dpos_amt,0) + COALESCE(advance_pmnt_amt,0)
-          + COALESCE(temporary_cred_lim_amt,0)                    AS credit_ceiling
+          + COALESCE(temporary_cred_lim_amt,0)                    AS credit_ceiling,
+        -- how close to the mid-cycle cut the subscriber habitually runs.
+        -- unbill_outstanding_amt vs the ceiling IS the trigger condition, so
+        -- this is the operator's own risk judgement expressed as a ratio.
+        COALESCE(unbill_outstanding_amt,0) /
+          NULLIF((COALESCE(non_rfndable_dpos_amt,0)
+                  + COALESCE(initial_cred_lim_amt,0)) * 1.2
+                 + COALESCE(rfndable_dpos_amt,0) + COALESCE(advance_pmnt_amt,0)
+                 + COALESCE(temporary_cred_lim_amt,0), 0)        AS ceiling_utilisation,
+        COALESCE(unbill_outstanding_amt,0)                       AS unbill_outstanding_amt
 FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
 WHERE   month_key = 140404                 -- last month before T0
   AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
@@ -487,46 +565,57 @@ ORDER BY month_key
 -- ============================================================================
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_label;
 CREATE TABLE dwbi_temp40_db.dcb_c1_label WITH (format='PARQUET') AS
-WITH outcome_dpd AS (
-    -- days past due per outcome bill, observed to the end of the watch window
-    SELECT  sbrp_id,
-            bilcycl,
-            COUNT(*) FILTER (WHERE debit_amt > 200000) AS dpd_days,
-            MAX(debit_amt)                             AS max_debt
-    FROM    dwbi_fact_db.v_fact_cust_bil_daily
-    WHERE   bilcycl IN (140405, 140406, 140407, 140408)
-      AND   day_key <= 14041130                  -- watch closes at 1404-11
-      AND   cust_bil_typ_id = '983116577831777608312765670515538102764700000000'
+WITH od AS (
+    SELECT  sbrp_id, day_key, day_key / 100 AS month_key,
+            CASE WHEN COALESCE(bill_outstanding_amt,0) > 0 THEN 1 ELSE 0 END AS in_debt,
+            -- past due = still outstanding after the 15th of the billing month
+            CASE WHEN COALESCE(bill_outstanding_amt,0) > 0 AND day_key % 100 > 15
+                 THEN 1 ELSE 0 END                                           AS past_due,
+            ROW_NUMBER() OVER (PARTITION BY sbrp_id ORDER BY day_key)        AS rn
+    FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
+    WHERE   day_key BETWEEN 14040501 AND 14041130        -- the watch window
       AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
-    GROUP BY sbrp_id, bilcycl
 ),
--- past-due debt carried INTO each month of the watch window: the test that
--- separates a non-payment bar from a credit-ceiling bar
-overdue_by_month AS (
+od_grp AS (
+    SELECT  od.*,
+            rn - ROW_NUMBER() OVER (PARTITION BY sbrp_id, in_debt ORDER BY day_key) AS spell_id
+    FROM    od
+),
+od_spells AS (
+    SELECT  sbrp_id, spell_id, COUNT(*) AS run_days
+    FROM    od_grp WHERE in_debt = 1
+    GROUP BY sbrp_id, spell_id
+),
+-- DPD = unbroken days carrying the bill, minus the 15-day grace
+outcome_dpd AS (
     SELECT  sbrp_id,
-            m.month_key,
-            MAX(d.debit_amt) AS overdue_amt
-    FROM    dwbi_fact_db.v_fact_cust_bil_daily d
-    CROSS JOIN (SELECT * FROM UNNEST(ARRAY[140405,140406,140407,140408,
-                                           140409,140410,140411]) AS t(month_key)) m
-    WHERE   d.bilcycl < m.month_key              -- an EARLIER cycle, i.e. past due
-      AND   d.day_key BETWEEN m.month_key * 100 + 1 AND m.month_key * 100 + 31
-      AND   d.debit_amt > 200000
-      AND   d.cust_bil_typ_id = '983116577831777608312765670515538102764700000000'
-      AND   d.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
-    GROUP BY d.sbrp_id, m.month_key
+            GREATEST(MAX(run_days) - 15, 0) AS max_dpd_out,
+            COUNT(*) FILTER (WHERE run_days > 30) AS n_late_out,
+            COUNT(*)                              AS n_debt_spells_out,
+            SUM(run_days)                         AS total_debt_days_out
+    FROM    od_spells
+    GROUP BY sbrp_id
+),
+-- months observed, so an incomplete watch window can be dropped
+outcome_cover AS (
+    SELECT sbrp_id, COUNT(DISTINCT month_key) AS n_months_seen
+    FROM   od GROUP BY sbrp_id
+),
+-- past-due state per day, for separating the two kinds of bar
+overdue_by_month AS (
+    SELECT sbrp_id, day_key, past_due FROM od
 ),
 -- bars in the outcome window, read from daily status (3 = one-way, 9 = two-way)
 outcome_bar AS (
     SELECT  dl.sbrp_id,
             -- ONE-WAY BAR WITH PAST-DUE DEBT = the credit event, and the trigger
             MAX(CASE WHEN dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                      AND ov.overdue_amt IS NOT NULL THEN 1 ELSE 0 END) AS had_nonpay_oneway,
+                      AND ov.past_due = 1 THEN 1 ELSE 0 END)            AS had_nonpay_oneway,
             COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                               AND ov.overdue_amt IS NOT NULL)          AS n_nonpay_bar_starts,
-            -- a bar with no past-due debt behind it = the ceiling. FEATURE ONLY.
+                               AND ov.past_due = 1)                     AS n_nonpay_bar_starts,
+            -- a bar with no overdue bill behind it = the ceiling. FEATURE ONLY.
             MAX(CASE WHEN dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                      AND ov.overdue_amt IS NULL THEN 1 ELSE 0 END)     AS had_ceiling_oneway,
+                      AND COALESCE(ov.past_due,0) = 0 THEN 1 ELSE 0 END) AS had_ceiling_oneway,
             -- escalation: severity, not the trigger
             MAX(CASE WHEN dl.sbrp_stat_id = 9 THEN 1 ELSE 0 END)        AS escalated_twoway,
             COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 3)                 AS oneway_days_out,
@@ -542,7 +631,7 @@ outcome_bar AS (
           AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
     ) dl
     LEFT JOIN overdue_by_month ov ON ov.sbrp_id = dl.sbrp_id
-                                 AND ov.month_key = dl.month_key
+                                 AND ov.day_key  = dl.day_key
     GROUP BY dl.sbrp_id
 ),
 outcome_pay AS (
@@ -565,9 +654,10 @@ churned AS (
 ),
 agg AS (
     SELECT  b.sbrp_id,
-            COUNT(o.bilcycl)                                  AS n_bills_seen,
-            COALESCE(MAX(o.dpd_days), 0)                      AS max_dpd_out,
-            COUNT(o.bilcycl) FILTER (WHERE o.dpd_days > 15)   AS n_late_out,
+            COALESCE(MAX(oc.n_months_seen), 0)                AS n_months_seen,
+            COALESCE(MAX(o.max_dpd_out), 0)                   AS max_dpd_out,
+            COALESCE(MAX(o.n_late_out), 0)                    AS n_late_out,
+            COALESCE(MAX(o.total_debt_days_out), 0)           AS total_debt_days_out,
             COALESCE(MAX(ob.had_nonpay_oneway), 0)            AS had_nonpay_oneway,
             COALESCE(MAX(ob.n_nonpay_bar_starts), 0)          AS n_nonpay_bar_starts,
             COALESCE(MAX(ob.had_ceiling_oneway), 0)           AS had_ceiling_oneway,
@@ -578,14 +668,15 @@ agg AS (
             MAX(op.paid_out) / NULLIF(MAX(op.invoice_out), 0) AS pay_ratio_out,
             MAX(CASE WHEN ch.sbrp_id IS NOT NULL THEN 1 ELSE 0 END) AS churned_flag
     FROM        dwbi_temp40_db.dcb_c1_base b
-    LEFT JOIN   outcome_dpd  o  ON o.sbrp_id  = b.sbrp_id
-    LEFT JOIN   outcome_bar  ob ON ob.sbrp_id = b.sbrp_id
+    LEFT JOIN   outcome_dpd   o  ON o.sbrp_id  = b.sbrp_id
+    LEFT JOIN   outcome_cover oc ON oc.sbrp_id = b.sbrp_id
+    LEFT JOIN   outcome_bar   ob ON ob.sbrp_id = b.sbrp_id
     LEFT JOIN   outcome_pay  op ON op.sbrp_id = b.sbrp_id
     LEFT JOIN   churned      ch ON ch.sbrp_id = b.sbrp_id
     GROUP BY b.sbrp_id
 )
 SELECT  sbrp_id,
-        n_bills_seen, max_dpd_out, n_late_out, pay_ratio_out,
+        n_months_seen, max_dpd_out, n_late_out, total_debt_days_out, pay_ratio_out,
         oneway_days_out, twoway_days_out, twoway_months_out,
         had_nonpay_oneway, n_nonpay_bar_starts, escalated_twoway,
         had_ceiling_oneway,                        -- ceiling events: feature, never label
@@ -621,7 +712,7 @@ SELECT  sbrp_id,
                   AND n_late_out = 1 THEN 1 ELSE 0 END            AS indeterminate
 FROM    agg
 WHERE   churned_flag = 0          -- censored outcome
-  AND   n_bills_seen = 4          -- incomplete outcome window
+  AND   n_months_seen >= 6        -- incomplete watch window
 ;
 
 -- ----------------------------------------------------------------------------
@@ -686,7 +777,7 @@ SELECT  '140405'                   AS obs_cohort,
         a.*,
         l.y_twoway_2m, l.y_severe, l.y_strict, l.y_v1, l.y_v2, l.y_loose,
         l.indeterminate,
-        l.max_dpd_out, l.n_late_out, l.pay_ratio_out,
+        l.max_dpd_out, l.n_late_out, l.total_debt_days_out, l.pay_ratio_out,
         l.oneway_days_out, l.twoway_days_out, l.twoway_months_out,
         l.had_nonpay_oneway, l.n_nonpay_bar_starts, l.escalated_twoway,
         l.had_ceiling_oneway,
