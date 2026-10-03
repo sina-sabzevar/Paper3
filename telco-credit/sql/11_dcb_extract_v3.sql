@@ -28,13 +28,32 @@
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
---  COHORT C1   <<< the only block to edit between runs
---    T0                 140405
---    feature months     140308 .. 140404   (9)
---    label bills        140405 .. 140408   (4)
---    watch through      140411
---    daily window       14030801 .. 14041130
---  Shock months to avoid in a clean cohort: 140412, 140501, 140502
+--  COHORT CALENDAR   <<< the only block to edit between runs
+--
+--  Data starts at 1404-01; 1403 is gone. Now is 1405-07, so the last closed
+--  month is 140506 and a watch window that must close by then puts the latest
+--  usable T0 at 140412. The revenue shock sits at 140412, 140501 and 140502 -
+--  squarely on top of every recent watch window.
+--
+--  NO cohort is free of it. With a 12-month feature window there is no valid T0
+--  at all, and with 9 months the earliest is 140410, whose BILLS fall in the
+--  shock. A 6-month window is the trade that keeps the bills clean.
+--
+--  C1  T0 140407   features 140401..140406   bills 140407..140410   watch 140501
+--      features clean, bills clean, only the observation period touches the shock
+--  C2  T0 140410   features 140404..140409   bills 140410..140501   watch 140504
+--      the stress cohort - hold it out and use it to measure degradation
+--
+--  Shock in the WATCH window inflates the bad rate, which makes the model
+--  conservative. Shock in the FEATURE window would distort the limit engine and
+--  over-lend. Only the first is acceptable, and only the first happens here.
+--
+--  THIS RUN = C1
+--    feature months  140401 140402 140403 140404 140405 140406
+--    T0              140407
+--    label bills     140407 140408 140409 140410
+--    watch through   140501
+--    daily window    14040101 .. 14050131
 -- ---------------------------------------------------------------------------
 
 
@@ -53,16 +72,43 @@ FROM (
       AND   sbrp_stat_id = 2           -- GATE: active at T0 (point in time only)
       AND   sbrp_typ_id  = 1           -- permanent
       AND   age_on_net_months >= 12
+      -- GATE: no open bill at T0. Lending to someone already behind is not a
+      -- modelling question.
+      AND   COALESCE(bill_outstanding_amt, 0) = 0
 ) s
+-- GATE: the economic floor from the original DCB pipeline - average revenue
+-- over the last three months above 1,000,000 Rial (100k Toman). This is what
+-- took the base from 36M to under 7M there, and leaving it out is why the base
+-- came back at 21M. It is a ticket-size floor, not a risk filter: below it the
+-- loan is too small to carry its own opex.
 INNER JOIN (
-    SELECT  sbrp_id, APPROX_PERCENTILE(invoice_amt, 0.5) AS med_invoice
+    SELECT  sbrp_id
+    FROM (  SELECT  sbrp_id,
+                    SUM(COALESCE(voi_pkg_rev,0) + COALESCE(voi_payg_rev,0)
+                        - COALESCE(intl_roam_voi_rev,0)) / 1.1
+                  + SUM(COALESCE(tot_sms_rev,0) - COALESCE(tot_sms_tax,0)
+                        - COALESCE(intl_roam_sms_rev,0))
+                  + SUM(COALESCE(tot_data_rev,0) - COALESCE(tot_data_tax,0)
+                        - COALESCE(post_intl_roam_data_rev,0)
+                        - COALESCE(pre_intl_roam_data_rev,0))  AS rev_3m
+            FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
+            WHERE   month_key BETWEEN 140404 AND 140406
+              AND   sbrp_typ_id = 1
+            GROUP BY sbrp_id ) r
+    WHERE   r.rev_3m / 3 > 1000000
+) rev ON rev.sbrp_id = s.sbrp_id
+INNER JOIN (
+    SELECT  sbrp_id, APPROX_PERCENTILE(invoice_amt, 0.5) FILTER (WHERE invoice_amt > 0) AS med_invoice
     FROM (  SELECT sbrp_id, month_key, MAX(COALESCE(invoice_amt,0)) AS invoice_amt
             FROM   dwbi_fact_db.v_fact_sbrp_mthly_cip
-            WHERE  month_key BETWEEN 140308 AND 140404
+            WHERE  month_key BETWEEN 140401 AND 140406
               AND  sbrp_typ_id = 1
             GROUP BY sbrp_id, month_key ) a
     GROUP BY sbrp_id
-    HAVING APPROX_PERCENTILE(invoice_amt, 0.5) > 0
+    -- median over the months that actually carried a bill. A plain median is
+    -- dragged to zero by the zero months, which would drop subscribers who
+    -- bill perfectly normally.
+    HAVING APPROX_PERCENTILE(invoice_amt, 0.5) FILTER (WHERE invoice_amt > 0) > 0
 ) m ON m.sbrp_id = s.sbrp_id
 -- GATE: not churned, and not barred in the 60 days before T0.
 -- stat 4 and 8 are churn; stat 9 is a TWO-WAY BAR and belongs in the label,
@@ -70,14 +116,14 @@ INNER JOIN (
 LEFT JOIN (
     SELECT DISTINCT sbrp_id
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14030801 AND 14040431
+    WHERE  day_key BETWEEN 14040101 AND 14040631
       AND  sbrp_typ_id = 1
       AND  sbrp_stat_id IN (4, 8)
 ) churn ON churn.sbrp_id = s.sbrp_id
 LEFT JOIN (
     SELECT DISTINCT sbrp_id
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14040301 AND 14040431
+    WHERE  day_key BETWEEN 14040501 AND 14040631
       AND  sbrp_typ_id = 1
       AND  sbrp_stat_id IN (3, 9)
 ) barred ON barred.sbrp_id = s.sbrp_id
@@ -133,7 +179,7 @@ SELECT  d.sbrp_id,
         AVG(d.unbill_outstanding_amt)                                 AS unbill_avg
 FROM        dwbi_fact_db.v_fact_sbrp_daily_cip d
 INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = d.sbrp_id
-WHERE   d.day_key BETWEEN 14030801 AND 14041130    -- features AND watch window
+WHERE   d.day_key BETWEEN 14040101 AND 14050131    -- features AND watch window
   AND   d.sbrp_typ_id = 1
 GROUP BY d.sbrp_id, d.day_key / 100,
          (d.day_key / 10000) * 12 + MOD(d.day_key / 100, 100)
@@ -152,7 +198,7 @@ SELECT  e.sbrp_id,
 FROM (
     SELECT sbrp_id, day_key / 100 AS month_key, MAX(day_key) AS last_day
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14030801 AND 14041130
+    WHERE  day_key BETWEEN 14040101 AND 14050131
       AND  sbrp_typ_id = 1
       AND  sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb3_base)
     GROUP BY sbrp_id, day_key / 100
@@ -178,7 +224,7 @@ DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_dpd;
 CREATE TABLE dwbi_temp40_db.dcb3_dpd WITH (format='PARQUET') AS
 WITH feat AS (
     SELECT * FROM dwbi_temp40_db.dcb3_daily_rollup
-    WHERE  month_key BETWEEN 140308 AND 140404        -- feature window only
+    WHERE  month_key BETWEEN 140401 AND 140406        -- feature window only
 ),
 runs AS (
     SELECT  sbrp_id, month_idx, debt_days, open_at_month_end,
@@ -196,30 +242,27 @@ run_len AS (
     GROUP BY sbrp_id, run_id
 )
 SELECT  f.sbrp_id,
-        GREATEST(COALESCE(MAX(r.run_days), 0) - 15, 0)        AS max_dpd_9m,
+        GREATEST(COALESCE(MAX(r.run_days), 0) - 15, 0)        AS max_dpd_6m,
         COALESCE(MAX(r.run_days), 0)                          AS max_debt_run_days,
-        COUNT(r.run_id)                                       AS n_debt_spells_9m,
-        SUM(f.debt_days)                                      AS total_debt_days_9m,
+        COUNT(r.run_id)                                       AS n_debt_spells_6m,
+        SUM(f.debt_days)                                      AS total_debt_days_6m,
         -- LATE MONTH: open at month end. Same definition the label uses.
-        SUM(f.open_at_month_end)                              AS n_late_months_9m,
+        SUM(f.open_at_month_end)                              AS n_late_months_6m,
         -- settled inside the month but after the 15th: chronic mild lateness.
         -- A strong predictor, but not default behaviour - its own feature.
         COUNT(*) FILTER (WHERE f.open_at_month_end = 0 AND f.past_due_days > 0)
-                                                              AS n_mild_late_months_9m,
-        COUNT(*) FILTER (WHERE f.debt_days = 0)               AS n_ontime_months_9m,
-        MAX(f.bill_out_max)                                   AS max_debt_amt_9m,
-        MAX(f.unbill_max)                                     AS unbill_peak_9m,
-        AVG(f.unbill_avg)                                     AS unbill_avg_9m,
+                                                              AS n_mild_late_months_6m,
+        COUNT(*) FILTER (WHERE f.debt_days = 0)               AS n_ontime_months_6m,
+        MAX(f.bill_out_max)                                   AS max_debt_amt_6m,
+        MAX(f.unbill_max)                                     AS unbill_peak_6m,
+        AVG(f.unbill_avg)                                     AS unbill_avg_6m,
         -- monthly debt-day panel
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140308)  AS debtdays_m1,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140309)  AS debtdays_m2,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140310)  AS debtdays_m3,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140311)  AS debtdays_m4,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140312)  AS debtdays_m5,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140401)  AS debtdays_m6,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140402)  AS debtdays_m7,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140403)  AS debtdays_m8,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140404)  AS debtdays_m9
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140401) AS debtdays_m1,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140402) AS debtdays_m2,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140403) AS debtdays_m3,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140404) AS debtdays_m4,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140405) AS debtdays_m5,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140406) AS debtdays_m6
 FROM        feat f
 LEFT JOIN   run_len r ON r.sbrp_id = f.sbrp_id
 GROUP BY f.sbrp_id
@@ -232,12 +275,12 @@ GROUP BY f.sbrp_id
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_bars;
 CREATE TABLE dwbi_temp40_db.dcb3_bars WITH (format='PARQUET') AS
 SELECT  sbrp_id,
-        SUM(oneway_days)                                      AS oneway_days_9m,
-        SUM(twoway_days)                                      AS twoway_days_9m,
-        SUM(nonpay_bar_day)                                   AS n_nonpay_bar_months_9m,
-        SUM(ceiling_bar_day)                                  AS n_ceiling_bar_months_9m,
+        SUM(oneway_days)                                      AS oneway_days_6m,
+        SUM(twoway_days)                                      AS twoway_days_6m,
+        SUM(nonpay_bar_day)                                   AS n_nonpay_bar_months_6m,
+        SUM(ceiling_bar_day)                                  AS n_ceiling_bar_months_6m,
         COUNT(*) FILTER (WHERE oneway_days > 0 OR twoway_days > 0)
-                                                              AS n_barred_months_9m,
+                                                              AS n_barred_months_6m,
         -- recency, in months before T0
         MAX(month_idx) FILTER (WHERE oneway_days > 0 OR twoway_days > 0)
                                                               AS last_bar_month_idx,
@@ -246,7 +289,7 @@ SELECT  sbrp_id,
         CAST(SUM(oneway_days) AS DOUBLE)
           / NULLIF(COUNT(*) FILTER (WHERE oneway_days > 0), 0) AS avg_barred_days_per_spell
 FROM    dwbi_temp40_db.dcb3_daily_rollup
-WHERE   month_key BETWEEN 140308 AND 140404
+WHERE   month_key BETWEEN 140401 AND 140406
 GROUP BY sbrp_id
 ;
 
@@ -273,46 +316,37 @@ WITH mth AS (
             SUM(COALESCE(c.intl_cl_cnt,0))                           AS intl_cl_cnt
     FROM        dwbi_fact_db.v_fact_sbrp_mthly_cip c
     INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
-    WHERE   c.month_key BETWEEN 140308 AND 140404
+    WHERE   c.month_key BETWEEN 140401 AND 140406
       AND   c.sbrp_typ_id = 1
     GROUP BY c.sbrp_id, c.month_key
 )
 SELECT  sbrp_id,
-        MAX(invoice_amt) FILTER (WHERE month_key=140308) AS invoice_m1,
-        MAX(invoice_amt) FILTER (WHERE month_key=140309) AS invoice_m2,
-        MAX(invoice_amt) FILTER (WHERE month_key=140310) AS invoice_m3,
-        MAX(invoice_amt) FILTER (WHERE month_key=140311) AS invoice_m4,
-        MAX(invoice_amt) FILTER (WHERE month_key=140312) AS invoice_m5,
-        MAX(invoice_amt) FILTER (WHERE month_key=140401) AS invoice_m6,
-        MAX(invoice_amt) FILTER (WHERE month_key=140402) AS invoice_m7,
-        MAX(invoice_amt) FILTER (WHERE month_key=140403) AS invoice_m8,
-        MAX(invoice_amt) FILTER (WHERE month_key=140404) AS invoice_m9,
-        MAX(pmnt_amt)    FILTER (WHERE month_key=140308) AS pmnt_m1,
-        MAX(pmnt_amt)    FILTER (WHERE month_key=140309) AS pmnt_m2,
-        MAX(pmnt_amt)    FILTER (WHERE month_key=140310) AS pmnt_m3,
-        MAX(pmnt_amt)    FILTER (WHERE month_key=140311) AS pmnt_m4,
-        MAX(pmnt_amt)    FILTER (WHERE month_key=140312) AS pmnt_m5,
-        MAX(pmnt_amt)    FILTER (WHERE month_key=140401) AS pmnt_m6,
-        MAX(pmnt_amt)    FILTER (WHERE month_key=140402) AS pmnt_m7,
-        MAX(pmnt_amt)    FILTER (WHERE month_key=140403) AS pmnt_m8,
-        MAX(pmnt_amt)    FILTER (WHERE month_key=140404) AS pmnt_m9,
-        MAX(tot_rev)     FILTER (WHERE month_key=140308) AS totrev_m1,
-        MAX(tot_rev)     FILTER (WHERE month_key=140309) AS totrev_m2,
-        MAX(tot_rev)     FILTER (WHERE month_key=140310) AS totrev_m3,
-        MAX(tot_rev)     FILTER (WHERE month_key=140311) AS totrev_m4,
-        MAX(tot_rev)     FILTER (WHERE month_key=140312) AS totrev_m5,
-        MAX(tot_rev)     FILTER (WHERE month_key=140401) AS totrev_m6,
-        MAX(tot_rev)     FILTER (WHERE month_key=140402) AS totrev_m7,
-        MAX(tot_rev)     FILTER (WHERE month_key=140403) AS totrev_m8,
-        MAX(tot_rev)     FILTER (WHERE month_key=140404) AS totrev_m9,
-        SUM(data_gb)                                     AS data_gb_9m,
-        SUM(data_gb)   FILTER (WHERE month_key >= 140402) AS data_gb_3m,
-        SUM(voice_min)                                   AS voice_min_9m,
-        SUM(voice_min) FILTER (WHERE month_key >= 140402) AS voice_min_3m,
-        SUM(call_cnt)                                    AS call_cnt_9m,
-        SUM(intl_cl_cnt)                                 AS intl_cl_cnt_9m,
-        STDDEV_SAMP(tot_rev)                             AS totrev_std_9m,
-        STDDEV_SAMP(data_gb)                             AS data_gb_std_9m,
+        MAX(invoice_amt) FILTER (WHERE month_key=140401) AS invoice_m1,
+        MAX(invoice_amt) FILTER (WHERE month_key=140402) AS invoice_m2,
+        MAX(invoice_amt) FILTER (WHERE month_key=140403) AS invoice_m3,
+        MAX(invoice_amt) FILTER (WHERE month_key=140404) AS invoice_m4,
+        MAX(invoice_amt) FILTER (WHERE month_key=140405) AS invoice_m5,
+        MAX(invoice_amt) FILTER (WHERE month_key=140406) AS invoice_m6,
+        MAX(pmnt_amt) FILTER (WHERE month_key=140401) AS pmnt_m1,
+        MAX(pmnt_amt) FILTER (WHERE month_key=140402) AS pmnt_m2,
+        MAX(pmnt_amt) FILTER (WHERE month_key=140403) AS pmnt_m3,
+        MAX(pmnt_amt) FILTER (WHERE month_key=140404) AS pmnt_m4,
+        MAX(pmnt_amt) FILTER (WHERE month_key=140405) AS pmnt_m5,
+        MAX(pmnt_amt) FILTER (WHERE month_key=140406) AS pmnt_m6,
+        MAX(tot_rev) FILTER (WHERE month_key=140401) AS totrev_m1,
+        MAX(tot_rev) FILTER (WHERE month_key=140402) AS totrev_m2,
+        MAX(tot_rev) FILTER (WHERE month_key=140403) AS totrev_m3,
+        MAX(tot_rev) FILTER (WHERE month_key=140404) AS totrev_m4,
+        MAX(tot_rev) FILTER (WHERE month_key=140405) AS totrev_m5,
+        MAX(tot_rev) FILTER (WHERE month_key=140406) AS totrev_m6,
+        SUM(data_gb)                                     AS data_gb_6m,
+        SUM(data_gb)   FILTER (WHERE month_key >= 140404) AS data_gb_3m,
+        SUM(voice_min)                                   AS voice_min_6m,
+        SUM(voice_min) FILTER (WHERE month_key >= 140404) AS voice_min_3m,
+        SUM(call_cnt)                                    AS call_cnt_6m,
+        SUM(intl_cl_cnt)                                 AS intl_cl_cnt_6m,
+        STDDEV_SAMP(tot_rev)                             AS totrev_std_6m,
+        STDDEV_SAMP(data_gb)                             AS data_gb_std_6m,
         COUNT(*)                                         AS n_months_seen
 FROM    mth
 GROUP BY sbrp_id
@@ -342,17 +376,17 @@ WITH pm AS (
     INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = p.sbrp_id
     WHERE   p.cust_pmnt_typ_id IN (4, 6)
       AND   p.bllg_pmnt_stat_id = 2
-      AND   p.day_key BETWEEN 14030801 AND 14040431
+      AND   p.day_key BETWEEN 14040101 AND 14040631
     GROUP BY p.sbrp_id, p.day_key / 100
 )
 SELECT  sbrp_id,
-        SUM(paid_total)                                   AS paid_total_9m,
-        SUM(paid_midcycle)                                AS paid_midcycle_9m,
+        SUM(paid_total)                                   AS paid_total_6m,
+        SUM(paid_midcycle)                                AS paid_midcycle_6m,
         SUM(paid_midcycle) / NULLIF(SUM(paid_total), 0)   AS midcycle_share,
-        SUM(n_midcycle_payments)                          AS n_midcycle_payments_9m,
-        SUM(n_payments)                                   AS n_payments_9m,
+        SUM(n_midcycle_payments)                          AS n_midcycle_payments_6m,
+        SUM(n_payments)                                   AS n_payments_6m,
         AVG(first_pay_day)                                AS avg_first_pay_day,
-        STDDEV_SAMP(paid_total)                           AS paid_std_9m,
+        STDDEV_SAMP(paid_total)                           AS paid_std_6m,
         MAX(paid_total)                                   AS proven_capacity,
         APPROX_PERCENTILE(paid_total, 0.5)                AS median_monthly_paid,
         MAX(paid_total) / NULLIF(APPROX_PERCENTILE(paid_total, 0.5), 0)
@@ -393,7 +427,7 @@ SELECT  c.sbrp_id,
         COALESCE(c.suspend_scr, 0)                               AS suspend_scr
 FROM        dwbi_fact_db.v_fact_sbrp_mthly_cip c
 INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
-WHERE   c.month_key = 140404
+WHERE   c.month_key = 140406
   AND   c.sbrp_typ_id = 1
 ;
 
@@ -415,7 +449,7 @@ DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_label;
 CREATE TABLE dwbi_temp40_db.dcb3_label WITH (format='PARQUET') AS
 WITH out AS (
     SELECT * FROM dwbi_temp40_db.dcb3_daily_rollup
-    WHERE  month_key BETWEEN 140405 AND 140411
+    WHERE  month_key BETWEEN 140407 AND 140501
 ),
 runs AS (
     SELECT  sbrp_id, month_idx, debt_days, open_at_month_end,
@@ -433,7 +467,7 @@ churned AS (
     -- churn only. stat 9 is a two-way bar and belongs in the label.
     SELECT DISTINCT sbrp_id
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14040501 AND 14041130
+    WHERE  day_key BETWEEN 14040701 AND 14050131
       AND  sbrp_typ_id = 1
       AND  sbrp_stat_id IN (4, 8)
 ),
@@ -485,7 +519,7 @@ WHERE   churned_flag  = 0       -- censored outcome
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_dataset_c1;
 CREATE TABLE dwbi_temp40_db.dcb3_dataset_c1 WITH (format='PARQUET') AS
-SELECT  '140405' AS obs_cohort, b.sbrp_id, b.med_invoice,
+SELECT  '140407' AS obs_cohort, b.sbrp_id, b.med_invoice,
         dpd.*, bar.*, pan.*, pay.*, pit.*,
         lab.y_twoway_2m, lab.y_severe, lab.y_strict, lab.y_v1, lab.y_v2,
         lab.y_loose, lab.indeterminate,
