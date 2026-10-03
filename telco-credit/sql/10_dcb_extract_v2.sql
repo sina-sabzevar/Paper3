@@ -58,12 +58,24 @@ WHERE   c.month_key   = 140404          -- the month immediately before T0
   AND   c.sbrp_stat_id = 2              -- active
   AND   c.sbrp_typ_id  = 1              -- permanent / postpaid
   AND   c.age_on_net_months >= 12       -- gate: at least a year on net
-  -- churn / removal check is relative to T0, NOT to today
+  --
+  -- CHURN / TERMINATION ONLY.  stat 9 is a TWO-WAY BAR, not churn: it belongs
+  -- in the label, not in this filter. The original temp_hazve lumped 4, 8 and 9
+  -- together, which quietly deleted the worst payers from the sample.
   AND   c.sbrp_id NOT IN (
             SELECT DISTINCT sbrp_id
             FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-            WHERE  sbrp_stat_id IN (4, 8, 9)
+            WHERE  sbrp_stat_id IN (4, 8)
               AND  day_key BETWEEN 14030801 AND 14040431 )
+  --
+  -- GATE: not barred at or shortly before T0 (stat 3 = one-way, 9 = two-way).
+  -- Coded here rather than applied by hand afterwards, so the identical rule
+  -- runs at scoring time. A manual filter drifts between training and production.
+  AND   c.sbrp_id NOT IN (
+            SELECT DISTINCT sbrp_id
+            FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
+            WHERE  sbrp_stat_id IN (3, 9)
+              AND  day_key BETWEEN 14040301 AND 14040431 )   -- last ~60 days
 ;
 
 -- ----------------------------------------------------------------------------
@@ -194,67 +206,77 @@ GROUP BY sbrp_id
 ;
 
 -- ----------------------------------------------------------------------------
--- STEP 4  BARRING EVENTS - the three types kept APART
+-- STEP 4+5  BAR EVENTS, READ FROM DAILY STATUS
 --
---  tot_mdtrm_two_way_cl_barr_curr_mth fires when usage reaches the number's
---  credit ceiling. That is consumption, not delinquency. Folding it in with the
---  other two - as the current khosh-hesabi score does - penalises the heaviest
---  and most valuable subscribers for being heavy.
+--   sbrp_stat_id : 2 = active, 3 = one-way bar, 9 = two-way bar
+--
+--   Reading bars from the daily status rather than the monthly barring columns
+--   gives exact dates, spell lengths and escalation timing, and removes the
+--   dependence on which monthly column means what.
+--
+--   A one-way bar has two causes and only one is a credit event: non-payment,
+--   and usage reaching the number's credit ceiling. They are separated by the
+--   debt state in the month the bar starts - past-due debt from an earlier
+--   cycle means non-payment, no past-due debt means the ceiling.
 -- ----------------------------------------------------------------------------
-DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_barr;
-CREATE TABLE dwbi_temp40_db.dcb_c1_barr WITH (format='PARQUET') AS
-SELECT  sbrp_id,
-        -- counts
-        COUNT(*) FILTER (WHERE tot_one_way_cl_barr_curr_mth          > 0) AS n_oneway_9m,
-        COUNT(*) FILTER (WHERE tot_mdtrm_two_way_cl_barr_curr_mth    > 0) AS n_midcycle_9m,
-        COUNT(*) FILTER (WHERE tot_two_way_cl_barr_curr_mth          > 0) AS n_twoway_9m,
-        -- recency: months between the last event of each type and T0
-        MIN(CASE WHEN tot_two_way_cl_barr_curr_mth > 0
-                 THEN DATE_DIFF('month',
-                        DATE(FORMAT('%d-%02d-01', month_key/100, month_key%100)),
-                        DATE('1404-05-01')) END)                      AS months_since_twoway,
-        MIN(CASE WHEN tot_one_way_cl_barr_curr_mth > 0
-                 THEN DATE_DIFF('month',
-                        DATE(FORMAT('%d-%02d-01', month_key/100, month_key%100)),
-                        DATE('1404-05-01')) END)                      AS months_since_oneway,
-        -- the operator's own score components, kept separate from the score
-        SUM(COALESCE(debt_scr, 0))                                    AS debt_scr_sum,
-        SUM(COALESCE(suspend_scr, 0))                                 AS suspend_scr_sum
-FROM    dwbi_fact_db.v_fact_sbrp_mthly m
-WHERE   m.month_key IN (140308,140309,140310,140311,140312,
-                        140401,140402,140403,140404)
-  AND   m.sbrp_typ_id = 1
-  AND   m.cust_typ_id = 1
-  AND   m.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
-GROUP BY sbrp_id
-;
---  NOTE: months_since_* uses DATE_DIFF on a Gregorian-shaped literal only to get
---  a month count; the keys are Jalali. If your Trino lacks the udf, replace with
---  a plain arithmetic month index:  (month_key/100)*12 + (month_key%100).
-
--- ----------------------------------------------------------------------------
--- STEP 5  MID-CYCLE CUT: how fast did they pay to get reconnected?
---         The cut itself is not a credit signal. The time to clear it is -
---         it measures how quickly the subscriber can reach cash.
---         sbrp_stat_id = 3 is the barred state in the daily fact.
--- ----------------------------------------------------------------------------
-DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_restore;
-CREATE TABLE dwbi_temp40_db.dcb_c1_restore WITH (format='PARQUET') AS
-WITH runs AS (
+DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_bars;
+CREATE TABLE dwbi_temp40_db.dcb_c1_bars WITH (format='PARQUET') AS
+WITH daily AS (
     SELECT  sbrp_id, day_key, sbrp_stat_id,
-            LAG(sbrp_stat_id) OVER (PARTITION BY sbrp_id ORDER BY day_key) AS prev_stat
+            day_key / 100                                                   AS month_key,
+            LAG(sbrp_stat_id) OVER (PARTITION BY sbrp_id ORDER BY day_key)  AS prev_stat
     FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
     WHERE   day_key BETWEEN 14030801 AND 14040431
       AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+),
+-- past-due debt per month: an EARLIER billing cycle still unpaid
+overdue AS (
+    SELECT  d.sbrp_id, d.day_key / 100 AS month_key, MAX(d.debit_amt) AS overdue_amt
+    FROM    dwbi_fact_db.v_fact_cust_bil_daily d
+    WHERE   d.day_key BETWEEN 14030801 AND 14040431
+      AND   d.bilcycl < d.day_key / 100
+      AND   d.debit_amt > 200000
+      AND   d.cust_bil_typ_id = '983116577831777608312765670515538102764700000000'
+      AND   d.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    GROUP BY d.sbrp_id, d.day_key / 100
 )
+SELECT  dl.sbrp_id,
+        -- ---- spell counts: a "start" is the day the state changes into a bar
+        COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3)   AS n_oneway_starts_9m,
+        COUNT(*) FILTER (WHERE dl.prev_stat <> 9 AND dl.sbrp_stat_id = 9)   AS n_twoway_starts_9m,
+        -- the credit-relevant subset: a bar that began in a month carrying past-due debt
+        COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
+                           AND ov.overdue_amt IS NOT NULL)                  AS n_nonpay_bar_starts_9m,
+        -- the ceiling subset: a bar with no past-due debt behind it. FEATURE ONLY.
+        COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
+                           AND ov.overdue_amt IS NULL)                      AS n_ceiling_bar_starts_9m,
+        -- ---- time spent barred
+        COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 3)                         AS oneway_days_9m,
+        COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 9)                         AS twoway_days_9m,
+        -- ---- how fast they paid to get reconnected: speed of access to cash
+        CAST(COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 3) AS DOUBLE)
+          / NULLIF(COUNT(*) FILTER (WHERE dl.prev_stat <> 3
+                                      AND dl.sbrp_stat_id = 3), 0)          AS avg_days_to_restore,
+        -- ---- recency: days between the last barred day and T0
+        14040431 - MAX(CASE WHEN dl.sbrp_stat_id IN (3, 9)
+                            THEN dl.day_key END)                            AS days_since_last_bar,
+        MAX(dl.month_key) FILTER (WHERE dl.sbrp_stat_id = 9)                AS last_twoway_month
+FROM        daily dl
+LEFT JOIN   overdue ov ON ov.sbrp_id = dl.sbrp_id AND ov.month_key = dl.month_key
+GROUP BY dl.sbrp_id
+;
+
+-- the operator's own score components, kept apart from the score itself so the
+-- model can find its own weights instead of inheriting the guessed 5-and-5
+DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_scr;
+CREATE TABLE dwbi_temp40_db.dcb_c1_scr WITH (format='PARQUET') AS
 SELECT  sbrp_id,
-        COUNT(*) FILTER (WHERE sbrp_stat_id = 3)                 AS barred_days_9m,
-        COUNT(*) FILTER (WHERE prev_stat = 2 AND sbrp_stat_id = 3) AS n_bar_starts_9m,
-        -- average length of a barred spell = barred days / number of spells
-        CAST(COUNT(*) FILTER (WHERE sbrp_stat_id = 3) AS DOUBLE)
-          / NULLIF(COUNT(*) FILTER (WHERE prev_stat = 2 AND sbrp_stat_id = 3), 0)
-                                                                 AS avg_days_to_restore
-FROM    runs
+        SUM(COALESCE(debt_scr, 0))    AS debt_scr_sum,
+        SUM(COALESCE(suspend_scr, 0)) AS suspend_scr_sum
+FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
+WHERE   month_key IN (140308,140309,140310,140311,140312,
+                      140401,140402,140403,140404)
+  AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
 GROUP BY sbrp_id
 ;
 
@@ -413,39 +435,34 @@ overdue_by_month AS (
       AND   d.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
     GROUP BY d.sbrp_id, m.month_key
 ),
+-- bars in the outcome window, read from daily status (3 = one-way, 9 = two-way)
 outcome_bar AS (
-    SELECT  b.sbrp_id,
-            -- ONE-WAY BAR WITH PAST-DUE DEBT = the credit event
-            MAX(CASE WHEN b.tot_one_way_cl_barr_curr_mth > 0
-                      AND o.overdue_amt IS NOT NULL
-                     THEN 1 ELSE 0 END)                               AS had_nonpay_oneway,
-            COUNT(*) FILTER (WHERE b.tot_one_way_cl_barr_curr_mth > 0
-                               AND o.overdue_amt IS NOT NULL)         AS n_nonpay_oneway_months,
-            -- one-way bar with no past-due debt = hit the ceiling, NOT a credit event
-            MAX(CASE WHEN b.tot_one_way_cl_barr_curr_mth > 0
-                      AND o.overdue_amt IS NULL
-                     THEN 1 ELSE 0 END)                               AS had_ceiling_oneway,
+    SELECT  dl.sbrp_id,
+            -- ONE-WAY BAR WITH PAST-DUE DEBT = the credit event, and the trigger
+            MAX(CASE WHEN dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
+                      AND ov.overdue_amt IS NOT NULL THEN 1 ELSE 0 END) AS had_nonpay_oneway,
+            COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
+                               AND ov.overdue_amt IS NOT NULL)          AS n_nonpay_bar_starts,
+            -- a bar with no past-due debt behind it = the ceiling. FEATURE ONLY.
+            MAX(CASE WHEN dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
+                      AND ov.overdue_amt IS NULL THEN 1 ELSE 0 END)     AS had_ceiling_oneway,
             -- escalation: severity, not the trigger
-            MAX(CASE WHEN b.tot_two_way_cl_barr_curr_mth > 0
-                     THEN 1 ELSE 0 END)                               AS escalated_twoway,
-            MAX(CASE WHEN b.tot_mdtrm_two_way_cl_barr_curr_mth > 0
-                     THEN 1 ELSE 0 END)                               AS had_midcycle
-    FROM        dwbi_fact_db.v_fact_sbrp_mthly b
-    LEFT JOIN   overdue_by_month o ON o.sbrp_id = b.sbrp_id
-                                  AND o.month_key = b.month_key
-    WHERE   b.month_key BETWEEN 140405 AND 140411
-      AND   b.sbrp_typ_id = 1 AND b.cust_typ_id = 1
-      AND   b.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
-    GROUP BY b.sbrp_id
-),
--- how long the subscriber stayed barred: the severity ladder
-barred_span AS (
-    SELECT  sbrp_id,
-            COUNT(*) FILTER (WHERE sbrp_stat_id = 3) AS barred_days_out
-    FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE   day_key BETWEEN 14040501 AND 14041130
-      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
-    GROUP BY sbrp_id
+            MAX(CASE WHEN dl.sbrp_stat_id = 9 THEN 1 ELSE 0 END)        AS escalated_twoway,
+            COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 3)                 AS oneway_days_out,
+            COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 9)                 AS twoway_days_out,
+            -- distinct calendar months spent two-way barred -> the "2 months running" rule
+            COUNT(DISTINCT CASE WHEN dl.sbrp_stat_id = 9
+                                THEN dl.day_key / 100 END)              AS twoway_months_out
+    FROM (
+        SELECT  sbrp_id, day_key, sbrp_stat_id, day_key / 100 AS month_key,
+                LAG(sbrp_stat_id) OVER (PARTITION BY sbrp_id ORDER BY day_key) AS prev_stat
+        FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
+        WHERE   day_key BETWEEN 14040501 AND 14041130
+          AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    ) dl
+    LEFT JOIN overdue_by_month ov ON ov.sbrp_id = dl.sbrp_id
+                                 AND ov.month_key = dl.month_key
+    GROUP BY dl.sbrp_id
 ),
 outcome_pay AS (
     SELECT  sbrp_id,
@@ -457,10 +474,12 @@ outcome_pay AS (
     GROUP BY sbrp_id
 ),
 -- rows to drop entirely: the outcome is unobservable, not good and not bad
+-- CHURN ONLY. stat 9 is a two-way bar: excluding it here would delete the
+-- severest bads from the outcome window and collapse the bad rate.
 churned AS (
     SELECT DISTINCT sbrp_id
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  sbrp_stat_id IN (4, 8, 9)
+    WHERE  sbrp_stat_id IN (4, 8)
       AND  day_key BETWEEN 14040501 AND 14041130
 ),
 agg AS (
@@ -469,32 +488,39 @@ agg AS (
             COALESCE(MAX(o.dpd_days), 0)                      AS max_dpd_out,
             COUNT(o.bilcycl) FILTER (WHERE o.dpd_days > 15)   AS n_late_out,
             COALESCE(MAX(ob.had_nonpay_oneway), 0)            AS had_nonpay_oneway,
-            COALESCE(MAX(ob.n_nonpay_oneway_months), 0)       AS n_nonpay_oneway_months,
+            COALESCE(MAX(ob.n_nonpay_bar_starts), 0)          AS n_nonpay_bar_starts,
             COALESCE(MAX(ob.had_ceiling_oneway), 0)           AS had_ceiling_oneway,
             COALESCE(MAX(ob.escalated_twoway), 0)             AS escalated_twoway,
-            COALESCE(MAX(ob.had_midcycle), 0)                 AS had_midcycle,
-            COALESCE(MAX(bs.barred_days_out), 0)              AS barred_days_out,
+            COALESCE(MAX(ob.twoway_months_out), 0)            AS twoway_months_out,
+            COALESCE(MAX(ob.oneway_days_out), 0)              AS oneway_days_out,
+            COALESCE(MAX(ob.twoway_days_out), 0)              AS twoway_days_out,
             MAX(op.paid_out) / NULLIF(MAX(op.invoice_out), 0) AS pay_ratio_out,
             MAX(CASE WHEN ch.sbrp_id IS NOT NULL THEN 1 ELSE 0 END) AS churned_flag
     FROM        dwbi_temp40_db.dcb_c1_base b
     LEFT JOIN   outcome_dpd  o  ON o.sbrp_id  = b.sbrp_id
     LEFT JOIN   outcome_bar  ob ON ob.sbrp_id = b.sbrp_id
-    LEFT JOIN   barred_span  bs ON bs.sbrp_id = b.sbrp_id
     LEFT JOIN   outcome_pay  op ON op.sbrp_id = b.sbrp_id
     LEFT JOIN   churned      ch ON ch.sbrp_id = b.sbrp_id
     GROUP BY b.sbrp_id
 )
 SELECT  sbrp_id,
-        n_bills_seen, max_dpd_out, n_late_out, pay_ratio_out, barred_days_out,
-        had_nonpay_oneway, n_nonpay_oneway_months, escalated_twoway,
-        had_ceiling_oneway, had_midcycle,          -- ceiling events: features, never label
+        n_bills_seen, max_dpd_out, n_late_out, pay_ratio_out,
+        oneway_days_out, twoway_days_out, twoway_months_out,
+        had_nonpay_oneway, n_nonpay_bar_starts, escalated_twoway,
+        had_ceiling_oneway,                        -- ceiling events: feature, never label
         -- rule components, stored so the variant can be re-chosen without re-querying
         CASE WHEN max_dpd_out >= 60 THEN 1 ELSE 0 END AS rule1_dpd60,
         CASE WHEN n_late_out  >= 2  THEN 1 ELSE 0 END AS rule2_late,
         had_nonpay_oneway                             AS rule3_nonpay_bar,
         escalated_twoway                              AS rule4_escalated,
         -- ---- the candidates, from most to least conservative ----
-        -- severe: the escalation completed
+        -- two-way bar sustained across 2 calendar months. Unambiguous, but at a
+        -- 6-month watch it can only fire for bars that started in the first two
+        -- months (one-way -> +3 to escalate -> +1 more to persist), so roughly a
+        -- third of the window is observable and failures later in it are scored
+        -- "good". Expect ~1-2%: a loss-severity label, not a decision label.
+        CASE WHEN twoway_months_out >= 2 THEN 1 ELSE 0 END        AS y_twoway_2m,
+        -- severe: the escalation completed at all
         CASE WHEN escalated_twoway = 1 THEN 1 ELSE 0 END          AS y_severe,
         -- strict: deep delinquency or a non-payment bar
         CASE WHEN max_dpd_out >= 60 OR had_nonpay_oneway = 1
@@ -530,17 +556,19 @@ SELECT  '140405'                   AS obs_cohort,
         r.*,
         pit.*,
         a.*,
-        l.y_severe, l.y_strict, l.y_v1, l.y_v2, l.y_loose, l.indeterminate,
-        l.max_dpd_out, l.n_late_out, l.pay_ratio_out, l.barred_days_out,
-        l.had_nonpay_oneway, l.n_nonpay_oneway_months, l.escalated_twoway,
-        l.had_ceiling_oneway, l.had_midcycle,
+        l.y_twoway_2m, l.y_severe, l.y_strict, l.y_v1, l.y_v2, l.y_loose,
+        l.indeterminate,
+        l.max_dpd_out, l.n_late_out, l.pay_ratio_out,
+        l.oneway_days_out, l.twoway_days_out, l.twoway_months_out,
+        l.had_nonpay_oneway, l.n_nonpay_bar_starts, l.escalated_twoway,
+        l.had_ceiling_oneway,
         l.rule1_dpd60, l.rule2_late, l.rule3_nonpay_bar, l.rule4_escalated
 FROM        dwbi_temp40_db.dcb_c1_base     b
 INNER JOIN  dwbi_temp40_db.dcb_c1_label    l   ON l.sbrp_id   = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb_c1_panel    p   ON p.sbrp_id   = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb_c1_dpd      d   ON d.sbrp_id   = b.sbrp_id
-LEFT  JOIN  dwbi_temp40_db.dcb_c1_barr     br  ON br.sbrp_id  = b.sbrp_id
-LEFT  JOIN  dwbi_temp40_db.dcb_c1_restore  r   ON r.sbrp_id   = b.sbrp_id
+LEFT  JOIN  dwbi_temp40_db.dcb_c1_bars     br  ON br.sbrp_id  = b.sbrp_id
+LEFT  JOIN  dwbi_temp40_db.dcb_c1_scr      r   ON r.sbrp_id   = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb_c1_pit      pit ON pit.sbrp_id = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb_c1_active   a   ON a.sbrp_id   = b.sbrp_id
 ;
@@ -553,7 +581,8 @@ LEFT  JOIN  dwbi_temp40_db.dcb_c1_active   a   ON a.sbrp_id   = b.sbrp_id
 SELECT COUNT(*) AS n_rows, COUNT(DISTINCT sbrp_id) AS n_subs
 FROM   dwbi_temp40_db.dcb_dataset_c1;
 
-SELECT AVG(y_severe) AS bad_severe, AVG(y_strict) AS bad_strict,
+SELECT AVG(y_twoway_2m) AS bad_twoway_2m, AVG(y_severe) AS bad_severe,
+       AVG(y_strict) AS bad_strict,
        AVG(y_v1)     AS bad_v1,     AVG(y_v2)     AS bad_v2,
        AVG(y_loose)  AS bad_loose,  AVG(indeterminate) AS indet
 FROM   dwbi_temp40_db.dcb_dataset_c1;      -- target band: 5% - 15%
