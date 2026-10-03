@@ -10,6 +10,9 @@
 --    3. a real monthly panel instead of 3-month averages
 --    4. DPD, pay_ratio and proven_capacity added - the missing credit signal
 --    5. label rebuilt around repayment, not revenue continuity
+--    7. the label fires on the NON-PAYMENT one-way bar, not on the two-way bar:
+--       one-way escalates to two-way only after 3 months, so a two-way-only rule
+--       is both three months late and right-censored at the end of the window
 --    6. one GROUP BY per source table instead of 38 LEFT JOINs
 --
 --  AMOUNTS ARE IN RIAL.  400,000 Toman = 4,000,000 Rial.
@@ -354,16 +357,30 @@ ORDER BY month_key
 -- ============================================================================
 --  STEP 9   THE LABEL
 --
---  4 bills (140405..140408), watched through 140411 so the last one has time
---  to reach the bad threshold. A 4-month watch never sees it and understates
---  the bad rate.
+--  4 bills (140405..140408), watched through 140411.
 --
---  y = 1 if   max DPD >= 60
---        or   2 or more of the 4 bills past 15 days
---        or   a TWO-WAY non-payment bar (NOT the mid-cycle one)
+--  WHY THE ONE-WAY BAR AND NOT THE TWO-WAY BAR
+--  A one-way bar escalates to two-way only after 3 unresolved months, so the
+--  two-way event is a lagging indicator:
+--    - it fires three months after the trouble starts, long after a 4-instalment
+--      loan has already gone wrong;
+--    - and it is right-censored - a one-way bar in the last outcome month cannot
+--      become two-way before the watch window closes, so late failures are
+--      systematically invisible and the bad rate comes out too low.
+--  The one-way bar is the timely, observable event. Escalation is kept as a
+--  separate severity flag rather than as the trigger.
 --
---  Four variants are computed side by side; the choice is made from the actual
---  bad rates, aiming for 5-15%.
+--  SEPARATING THE TWO KINDS OF ONE-WAY BAR
+--  A one-way bar has two causes: non-payment, and usage reaching the number's
+--  credit ceiling. Only the first is a credit event. With no reason code, they
+--  are told apart by the debt state in that month:
+--      one-way bar + past-due debt from an EARLIER cycle -> non-payment  (bad)
+--      one-way bar + no past-due debt                    -> ceiling       (not bad)
+--
+--  >>> CONFIRM THE COLUMN MAPPING BEFORE RUNNING <<<
+--  This assumes tot_one_way_cl_barr_curr_mth is the dunning bar and
+--  tot_mdtrm_two_way_cl_barr_curr_mth is the mid-cycle ceiling bar. If the
+--  mapping is the other way round, swap them here and in STEP 4.
 -- ============================================================================
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_label;
 CREATE TABLE dwbi_temp40_db.dcb_c1_label WITH (format='PARQUET') AS
@@ -375,18 +392,58 @@ WITH outcome_dpd AS (
             MAX(debit_amt)                             AS max_debt
     FROM    dwbi_fact_db.v_fact_cust_bil_daily
     WHERE   bilcycl IN (140405, 140406, 140407, 140408)
-      AND   day_key <= 14041131                  -- watch closes at 1404-11
+      AND   day_key <= 14041130                  -- watch closes at 1404-11
       AND   cust_bil_typ_id = '983116577831777608312765670515538102764700000000'
       AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
     GROUP BY sbrp_id, bilcycl
 ),
-outcome_bar AS (
+-- past-due debt carried INTO each month of the watch window: the test that
+-- separates a non-payment bar from a credit-ceiling bar
+overdue_by_month AS (
     SELECT  sbrp_id,
-            MAX(CASE WHEN tot_two_way_cl_barr_curr_mth > 0 THEN 1 ELSE 0 END) AS had_twoway,
-            MAX(CASE WHEN tot_mdtrm_two_way_cl_barr_curr_mth > 0 THEN 1 ELSE 0 END) AS had_midcycle
-    FROM    dwbi_fact_db.v_fact_sbrp_mthly
-    WHERE   month_key BETWEEN 140405 AND 140411
-      AND   sbrp_typ_id = 1 AND cust_typ_id = 1
+            m.month_key,
+            MAX(d.debit_amt) AS overdue_amt
+    FROM    dwbi_fact_db.v_fact_cust_bil_daily d
+    CROSS JOIN (SELECT * FROM UNNEST(ARRAY[140405,140406,140407,140408,
+                                           140409,140410,140411]) AS t(month_key)) m
+    WHERE   d.bilcycl < m.month_key              -- an EARLIER cycle, i.e. past due
+      AND   d.day_key BETWEEN m.month_key * 100 + 1 AND m.month_key * 100 + 31
+      AND   d.debit_amt > 200000
+      AND   d.cust_bil_typ_id = '983116577831777608312765670515538102764700000000'
+      AND   d.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    GROUP BY d.sbrp_id, m.month_key
+),
+outcome_bar AS (
+    SELECT  b.sbrp_id,
+            -- ONE-WAY BAR WITH PAST-DUE DEBT = the credit event
+            MAX(CASE WHEN b.tot_one_way_cl_barr_curr_mth > 0
+                      AND o.overdue_amt IS NOT NULL
+                     THEN 1 ELSE 0 END)                               AS had_nonpay_oneway,
+            COUNT(*) FILTER (WHERE b.tot_one_way_cl_barr_curr_mth > 0
+                               AND o.overdue_amt IS NOT NULL)         AS n_nonpay_oneway_months,
+            -- one-way bar with no past-due debt = hit the ceiling, NOT a credit event
+            MAX(CASE WHEN b.tot_one_way_cl_barr_curr_mth > 0
+                      AND o.overdue_amt IS NULL
+                     THEN 1 ELSE 0 END)                               AS had_ceiling_oneway,
+            -- escalation: severity, not the trigger
+            MAX(CASE WHEN b.tot_two_way_cl_barr_curr_mth > 0
+                     THEN 1 ELSE 0 END)                               AS escalated_twoway,
+            MAX(CASE WHEN b.tot_mdtrm_two_way_cl_barr_curr_mth > 0
+                     THEN 1 ELSE 0 END)                               AS had_midcycle
+    FROM        dwbi_fact_db.v_fact_sbrp_mthly b
+    LEFT JOIN   overdue_by_month o ON o.sbrp_id = b.sbrp_id
+                                  AND o.month_key = b.month_key
+    WHERE   b.month_key BETWEEN 140405 AND 140411
+      AND   b.sbrp_typ_id = 1 AND b.cust_typ_id = 1
+      AND   b.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    GROUP BY b.sbrp_id
+),
+-- how long the subscriber stayed barred: the severity ladder
+barred_span AS (
+    SELECT  sbrp_id,
+            COUNT(*) FILTER (WHERE sbrp_stat_id = 3) AS barred_days_out
+    FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
+    WHERE   day_key BETWEEN 14040501 AND 14041130
       AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
     GROUP BY sbrp_id
 ),
@@ -404,42 +461,57 @@ churned AS (
     SELECT DISTINCT sbrp_id
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
     WHERE  sbrp_stat_id IN (4, 8, 9)
-      AND  day_key BETWEEN 14040501 AND 14041131
+      AND  day_key BETWEEN 14040501 AND 14041130
 ),
 agg AS (
     SELECT  b.sbrp_id,
-            COUNT(o.bilcycl)                            AS n_bills_seen,
-            COALESCE(MAX(o.dpd_days), 0)                AS max_dpd_out,
-            COUNT(*) FILTER (WHERE o.dpd_days > 15)     AS n_late_out,
-            COALESCE(MAX(ob.had_twoway), 0)             AS had_twoway,
-            COALESCE(MAX(ob.had_midcycle), 0)           AS had_midcycle,
+            COUNT(o.bilcycl)                                  AS n_bills_seen,
+            COALESCE(MAX(o.dpd_days), 0)                      AS max_dpd_out,
+            COUNT(o.bilcycl) FILTER (WHERE o.dpd_days > 15)   AS n_late_out,
+            COALESCE(MAX(ob.had_nonpay_oneway), 0)            AS had_nonpay_oneway,
+            COALESCE(MAX(ob.n_nonpay_oneway_months), 0)       AS n_nonpay_oneway_months,
+            COALESCE(MAX(ob.had_ceiling_oneway), 0)           AS had_ceiling_oneway,
+            COALESCE(MAX(ob.escalated_twoway), 0)             AS escalated_twoway,
+            COALESCE(MAX(ob.had_midcycle), 0)                 AS had_midcycle,
+            COALESCE(MAX(bs.barred_days_out), 0)              AS barred_days_out,
             MAX(op.paid_out) / NULLIF(MAX(op.invoice_out), 0) AS pay_ratio_out,
             MAX(CASE WHEN ch.sbrp_id IS NOT NULL THEN 1 ELSE 0 END) AS churned_flag
     FROM        dwbi_temp40_db.dcb_c1_base b
-    LEFT JOIN   outcome_dpd o  ON o.sbrp_id  = b.sbrp_id
-    LEFT JOIN   outcome_bar ob ON ob.sbrp_id = b.sbrp_id
-    LEFT JOIN   outcome_pay op ON op.sbrp_id = b.sbrp_id
-    LEFT JOIN   churned     ch ON ch.sbrp_id = b.sbrp_id
+    LEFT JOIN   outcome_dpd  o  ON o.sbrp_id  = b.sbrp_id
+    LEFT JOIN   outcome_bar  ob ON ob.sbrp_id = b.sbrp_id
+    LEFT JOIN   barred_span  bs ON bs.sbrp_id = b.sbrp_id
+    LEFT JOIN   outcome_pay  op ON op.sbrp_id = b.sbrp_id
+    LEFT JOIN   churned      ch ON ch.sbrp_id = b.sbrp_id
     GROUP BY b.sbrp_id
 )
 SELECT  sbrp_id,
-        n_bills_seen, max_dpd_out, n_late_out, had_twoway, had_midcycle,
-        pay_ratio_out, churned_flag,
-        -- rule components, kept so the variant can be re-chosen without re-querying
+        n_bills_seen, max_dpd_out, n_late_out, pay_ratio_out, barred_days_out,
+        had_nonpay_oneway, n_nonpay_oneway_months, escalated_twoway,
+        had_ceiling_oneway, had_midcycle,          -- ceiling events: features, never label
+        -- rule components, stored so the variant can be re-chosen without re-querying
         CASE WHEN max_dpd_out >= 60 THEN 1 ELSE 0 END AS rule1_dpd60,
         CASE WHEN n_late_out  >= 2  THEN 1 ELSE 0 END AS rule2_late,
-        had_twoway                                    AS rule3_twoway,
-        -- the four candidates
-        CASE WHEN max_dpd_out >= 60 OR had_twoway = 1
-             THEN 1 ELSE 0 END                        AS y_strict,
-        CASE WHEN max_dpd_out >= 60 OR n_late_out >= 2 OR had_twoway = 1
-             THEN 1 ELSE 0 END                        AS y_v1,
-        CASE WHEN max_dpd_out >= 60 OR n_late_out >= 3 OR had_twoway = 1
-             THEN 1 ELSE 0 END                        AS y_v2,
-        CASE WHEN n_late_out >= 2 THEN 1 ELSE 0 END   AS y_loose,
-        -- one mild slip: neither good nor bad
-        CASE WHEN max_dpd_out < 60 AND had_twoway = 0 AND n_late_out = 1
-             THEN 1 ELSE 0 END                        AS indeterminate
+        had_nonpay_oneway                             AS rule3_nonpay_bar,
+        escalated_twoway                              AS rule4_escalated,
+        -- ---- the candidates, from most to least conservative ----
+        -- severe: the escalation completed
+        CASE WHEN escalated_twoway = 1 THEN 1 ELSE 0 END          AS y_severe,
+        -- strict: deep delinquency or a non-payment bar
+        CASE WHEN max_dpd_out >= 60 OR had_nonpay_oneway = 1
+             THEN 1 ELSE 0 END                                    AS y_strict,
+        -- v1 (recommended starting point): + repeated lateness
+        CASE WHEN max_dpd_out >= 60 OR n_late_out >= 2
+                  OR had_nonpay_oneway = 1
+             THEN 1 ELSE 0 END                                    AS y_v1,
+        -- v2: same, but lateness must be chronic
+        CASE WHEN max_dpd_out >= 60 OR n_late_out >= 3
+                  OR had_nonpay_oneway = 1
+             THEN 1 ELSE 0 END                                    AS y_v2,
+        -- loose: lateness alone
+        CASE WHEN n_late_out >= 2 THEN 1 ELSE 0 END               AS y_loose,
+        -- one mild slip and no bar: neither good nor bad
+        CASE WHEN max_dpd_out < 60 AND had_nonpay_oneway = 0
+                  AND n_late_out = 1 THEN 1 ELSE 0 END            AS indeterminate
 FROM    agg
 WHERE   churned_flag = 0          -- censored outcome
   AND   n_bills_seen = 4          -- incomplete outcome window
@@ -458,9 +530,11 @@ SELECT  '140405'                   AS obs_cohort,
         r.*,
         pit.*,
         a.*,
-        l.y_strict, l.y_v1, l.y_v2, l.y_loose, l.indeterminate,
-        l.max_dpd_out, l.n_late_out, l.had_twoway, l.pay_ratio_out,
-        l.rule1_dpd60, l.rule2_late, l.rule3_twoway
+        l.y_severe, l.y_strict, l.y_v1, l.y_v2, l.y_loose, l.indeterminate,
+        l.max_dpd_out, l.n_late_out, l.pay_ratio_out, l.barred_days_out,
+        l.had_nonpay_oneway, l.n_nonpay_oneway_months, l.escalated_twoway,
+        l.had_ceiling_oneway, l.had_midcycle,
+        l.rule1_dpd60, l.rule2_late, l.rule3_nonpay_bar, l.rule4_escalated
 FROM        dwbi_temp40_db.dcb_c1_base     b
 INNER JOIN  dwbi_temp40_db.dcb_c1_label    l   ON l.sbrp_id   = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb_c1_panel    p   ON p.sbrp_id   = b.sbrp_id
@@ -479,14 +553,33 @@ LEFT  JOIN  dwbi_temp40_db.dcb_c1_active   a   ON a.sbrp_id   = b.sbrp_id
 SELECT COUNT(*) AS n_rows, COUNT(DISTINCT sbrp_id) AS n_subs
 FROM   dwbi_temp40_db.dcb_dataset_c1;
 
-SELECT AVG(y_strict) AS bad_strict, AVG(y_v1) AS bad_v1,
-       AVG(y_v2)     AS bad_v2,     AVG(y_loose) AS bad_loose,
-       AVG(indeterminate) AS indet
+SELECT AVG(y_severe) AS bad_severe, AVG(y_strict) AS bad_strict,
+       AVG(y_v1)     AS bad_v1,     AVG(y_v2)     AS bad_v2,
+       AVG(y_loose)  AS bad_loose,  AVG(indeterminate) AS indet
 FROM   dwbi_temp40_db.dcb_dataset_c1;      -- target band: 5% - 15%
 
-SELECT rule1_dpd60, rule2_late, rule3_twoway, COUNT(*) AS n
+SELECT rule1_dpd60, rule2_late, rule3_nonpay_bar, rule4_escalated, COUNT(*) AS n
 FROM   dwbi_temp40_db.dcb_dataset_c1
-GROUP BY 1,2,3 ORDER BY n DESC;            -- if rule2 dominates, 15 days is too loose
+GROUP BY 1,2,3,4 ORDER BY n DESC;          -- if rule2 dominates, 15 days is too loose
+
+-- Does the one-way / two-way split behave as expected? Of the subscribers who
+-- took a non-payment one-way bar, what share escalated inside the window?
+-- Anything near 100% means the two columns are the same event recorded twice;
+-- a share around a third to a half is the normal dunning funnel.
+SELECT had_nonpay_oneway,
+       COUNT(*)              AS n,
+       AVG(escalated_twoway) AS escalation_rate,
+       AVG(barred_days_out)  AS avg_barred_days
+FROM   dwbi_temp40_db.dcb_dataset_c1
+GROUP BY 1;
+
+-- Sanity on the separation itself: ceiling bars should sit with LOW debt,
+-- non-payment bars with HIGH debt. If both groups look alike, the debt test is
+-- not separating them and the mapping needs checking.
+SELECT had_nonpay_oneway, had_ceiling_oneway,
+       COUNT(*) AS n, AVG(max_dpd_out) AS avg_dpd, AVG(y_v1) AS bad_rate
+FROM   dwbi_temp40_db.dcb_dataset_c1
+GROUP BY 1,2 ORDER BY n DESC;
 
 SELECT * FROM dwbi_temp40_db.dcb_network_index ORDER BY month_key;
 --  the shock should be visible at 140412, 140501, 140502
