@@ -196,9 +196,12 @@ CREATE TABLE dwbi_temp40_db.dcb_c1_dpd WITH (format='PARQUET') AS
 -- difficulty at all. An ABSOLUTE floor does not fix it - a 2M remainder is
 -- noise on a 10M bill and two months of debt on a 1M one - so the floor is a
 -- share of the subscriber's own median invoice.
---   25% chosen from tracing: 20-50% labels the mid-cycle payer correctly while
---   still catching someone who misses two whole months. At 100% the genuine
---   bad payer slips through.
+--   >>> SET THIS FROM DIAGNOSTIC D1 in 04_balance_semantics_check.sql <<<
+--   If the balance turns out to be whole unpaid bills only - which is what we
+--   now expect, since ANY payment zeroes it, mid-cycle included - then small
+--   remainders never appear and the floor should be near zero (0.05). A 25%
+--   floor would then be discarding real debt. Keep 0.25 only if D1 shows a
+--   visible mass below a quarter of a bill. Both literals below must match.
 WITH med AS (
     SELECT  sbrp_id, APPROX_PERCENTILE(invoice_amt, 0.5) AS med_invoice
     FROM (  SELECT sbrp_id, month_key, MAX(COALESCE(invoice_amt,0)) AS invoice_amt
