@@ -69,3 +69,5 @@ stated as if it described the data, and then built on.
 | Shock in features over-lends | It under-lends. The shock was a revenue drop. |
 | Median bill 47k Toman means the 400k ticket fits <10 pct | That was a residual bill, not capacity. 3.99M fit at a 40 pct stance. |
 | Mid-cycle is ~25 pct of outlay | An inference from `bill_to_paid`, never established. |
+| A 5-15 pct bad rate is the target | **My own convention**, borrowed from consumer-credit scorecards. Not a requirement. The real bad rate here is 1-2 pct and the label must not be loosened to meet a borrowed number. `rule3_nonpay_bar` was exactly that mistake: it counted ceiling breaches as delinquency and inflated the rate artificially. |
+| 36 pct of the base is bad | No. That is `n_late_out >= 2` - paid after the 15th in two of six months, which is ordinary telco behaviour. Real delinquency is 2.22 pct (two-way bar), 1.22 pct (DPD>=60), 1.16 pct (two-way in two consecutive months). |
