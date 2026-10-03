@@ -229,15 +229,26 @@ spell_agg AS (
     FROM    spells
     GROUP BY sbrp_id
 ),
--- per-month debt days, so the panel keeps the monthly shape
+-- per-month debt days, plus the month-end flag. "Late month" must mean the
+-- SAME thing here as it does in the label, or the model learns one definition
+-- and is scored against another: the bill was still open on the last day of
+-- the month.
+month_last AS (
+    SELECT sbrp_id, month_key, MAX(day_key) AS last_day
+    FROM   d GROUP BY sbrp_id, month_key
+),
 monthly AS (
-    SELECT  sbrp_id, month_key,
-            COUNT(*) FILTER (WHERE in_debt = 1)        AS debt_days,
-            MAX(bill_out)                              AS bill_out_max,
-            MAX(unbill_out)                            AS unbill_out_max,
-            AVG(unbill_out)                            AS unbill_out_avg
-    FROM    d
-    GROUP BY sbrp_id, month_key
+    SELECT  d.sbrp_id, d.month_key,
+            COUNT(*) FILTER (WHERE d.in_debt = 1)      AS debt_days,
+            MAX(d.bill_out)                            AS bill_out_max,
+            MAX(d.unbill_out)                          AS unbill_out_max,
+            AVG(d.unbill_out)                          AS unbill_out_avg,
+            MAX(CASE WHEN d.day_key = ml.last_day AND d.in_debt = 1
+                     THEN 1 ELSE 0 END)                AS open_at_month_end
+    FROM        d
+    INNER JOIN  month_last ml ON ml.sbrp_id = d.sbrp_id
+                             AND ml.month_key = d.month_key
+    GROUP BY d.sbrp_id, d.month_key
 )
 SELECT  COALESCE(sa.sbrp_id, m.sbrp_id)                AS sbrp_id,
         sa.max_dpd_9m, sa.max_debt_run_days, sa.n_debt_spells_9m,
@@ -253,9 +264,13 @@ SELECT  COALESCE(sa.sbrp_id, m.sbrp_id)                AS sbrp_id,
         MAX(CASE WHEN m.month_key=140402 THEN m.debt_days END) AS debtdays_m7,
         MAX(CASE WHEN m.month_key=140403 THEN m.debt_days END) AS debtdays_m8,
         MAX(CASE WHEN m.month_key=140404 THEN m.debt_days END) AS debtdays_m9,
-        -- months settled inside the grace window, and months that ran past it
+        -- LATE MONTH: open at month end. Same definition as the label.
+        COUNT(*) FILTER (WHERE m.open_at_month_end = 1)        AS n_late_months_9m,
+        -- settled inside the month but after the 15th: chronic mild lateness.
+        -- Not "bad", but a strong predictor - keep it as its own feature.
+        COUNT(*) FILTER (WHERE m.open_at_month_end = 0
+                           AND m.debt_days > 15)               AS n_mild_late_months_9m,
         COUNT(*) FILTER (WHERE m.debt_days BETWEEN 1 AND 15)   AS n_months_within_grace,
-        COUNT(*) FILTER (WHERE m.debt_days > 15)               AS n_late_months_9m,
         COUNT(*) FILTER (WHERE m.debt_days = 0)                AS n_ontime_months_9m,
         -- CEILING PRESSURE: the quantity that fires the mid-cycle bar
         MAX(m.unbill_out_max)                                  AS unbill_peak_9m,
@@ -376,19 +391,38 @@ WITH daily AS (
     WHERE   day_key BETWEEN 14030801 AND 14040431
       AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
 ),
--- PAST-DUE on a given day: the bill is still outstanding AND the 15-day grace
--- has already passed. This is the exact test that separates the two kinds of
--- bar - a non-payment bar can only happen while an overdue bill is open, while
--- a ceiling bar fires on live usage with no overdue bill behind it.
+-- WHAT KIND OF BAR?  Two independent tests, OR-ed, because either one alone is
+-- fragile at the boundary:
+--   (a) past_due  - the bill is still open and the 15th has passed
+--   (b) carried   - the balance exceeds one month's invoice, so an EARLIER bill
+--                   is stacked underneath (bill_outstanding_amt accumulates)
+-- A ceiling bar fires on live usage with the previous bill settled, so neither
+-- test holds. Evaluated over the 3 days up to the bar as well as on the day
+-- itself: a bar landing exactly on the 15th would otherwise be misread.
+typical_bill AS (
+    SELECT  sbrp_id, APPROX_PERCENTILE(invoice_amt, 0.5) AS med_invoice
+    FROM (  SELECT sbrp_id, month_key, MAX(COALESCE(invoice_amt,0)) AS invoice_amt
+            FROM   dwbi_fact_db.v_fact_sbrp_mthly_cip
+            WHERE  month_key IN (140308,140309,140310,140311,140312,140401,140402,140403,140404)
+              AND  sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+            GROUP BY sbrp_id, month_key ) t
+    GROUP BY sbrp_id
+),
 overdue AS (
-    SELECT  sbrp_id,
-            day_key,
-            CASE WHEN COALESCE(bill_outstanding_amt,0) > 0
-                  AND day_key % 100 > 15
-                 THEN 1 ELSE 0 END AS past_due
-    FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE   day_key BETWEEN 14030801 AND 14040431
-      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    SELECT  dd.sbrp_id,
+            dd.day_key,
+            MAX(CASE WHEN COALESCE(dd.bill_outstanding_amt,0) > 0
+                      AND dd.day_key % 100 > 15 THEN 1 ELSE 0 END)
+                OVER (PARTITION BY dd.sbrp_id ORDER BY dd.day_key
+                      ROWS BETWEEN 3 PRECEDING AND CURRENT ROW)   AS past_due,
+            MAX(CASE WHEN COALESCE(dd.bill_outstanding_amt,0)
+                          > 1.5 * COALESCE(tb.med_invoice, 0) THEN 1 ELSE 0 END)
+                OVER (PARTITION BY dd.sbrp_id ORDER BY dd.day_key
+                      ROWS BETWEEN 3 PRECEDING AND CURRENT ROW)   AS carried
+    FROM        dwbi_fact_db.v_fact_sbrp_daily_cip dd
+    LEFT JOIN   typical_bill tb ON tb.sbrp_id = dd.sbrp_id
+    WHERE   dd.day_key BETWEEN 14030801 AND 14040431
+      AND   dd.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
 )
 SELECT  dl.sbrp_id,
         -- ---- spell counts: a "start" is the day the state changes into a bar
@@ -396,10 +430,11 @@ SELECT  dl.sbrp_id,
         COUNT(*) FILTER (WHERE dl.prev_stat <> 9 AND dl.sbrp_stat_id = 9)   AS n_twoway_starts_9m,
         -- the credit-relevant subset: a bar that began in a month carrying past-due debt
         COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                           AND ov.past_due = 1)                             AS n_nonpay_bar_starts_9m,
+                           AND (ov.past_due = 1 OR ov.carried = 1))        AS n_nonpay_bar_starts_9m,
         -- the ceiling subset: barred with no overdue bill behind it. FEATURE ONLY.
         COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                           AND COALESCE(ov.past_due,0) = 0)                 AS n_ceiling_bar_starts_9m,
+                           AND COALESCE(ov.past_due,0) = 0
+                           AND COALESCE(ov.carried,0) = 0)                  AS n_ceiling_bar_starts_9m,
         -- ---- time spent barred
         COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 3)                         AS oneway_days_9m,
         COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 9)                         AS twoway_days_9m,
@@ -590,32 +625,69 @@ od_spells AS (
 outcome_dpd AS (
     SELECT  sbrp_id,
             GREATEST(MAX(run_days) - 15, 0) AS max_dpd_out,
-            COUNT(*) FILTER (WHERE run_days > 30) AS n_late_out,
-            COUNT(*)                              AS n_debt_spells_out,
-            SUM(run_days)                         AS total_debt_days_out
+            COUNT(*)                        AS n_debt_spells_out,
+            SUM(run_days)                   AS total_debt_days_out
     FROM    od_spells
     GROUP BY sbrp_id
+),
+-- LATE MONTHS: the bill was still open on the LAST DAY of the month.
+-- Counting spells would undercount badly - because bill_outstanding_amt
+-- accumulates, consecutive missed months merge into one long spell, so a
+-- subscriber who misses three months in a row registers as a single event.
+month_end AS (
+    SELECT sbrp_id, month_key, MAX(day_key) AS last_day
+    FROM   od GROUP BY sbrp_id, month_key
+),
+late_months AS (
+    SELECT  o.sbrp_id, COUNT(*) AS n_late_out
+    FROM        od o
+    INNER JOIN  month_end me ON me.sbrp_id = o.sbrp_id AND me.last_day = o.day_key
+    WHERE   o.in_debt = 1
+    GROUP BY o.sbrp_id
 ),
 -- months observed, so an incomplete watch window can be dropped
 outcome_cover AS (
     SELECT sbrp_id, COUNT(DISTINCT month_key) AS n_months_seen
     FROM   od GROUP BY sbrp_id
 ),
--- past-due state per day, for separating the two kinds of bar
+-- the same two-test bar classification as the feature window
+out_typical AS (
+    SELECT  sbrp_id, APPROX_PERCENTILE(invoice_amt, 0.5) AS med_invoice
+    FROM (  SELECT sbrp_id, month_key, MAX(COALESCE(invoice_amt,0)) AS invoice_amt
+            FROM   dwbi_fact_db.v_fact_sbrp_mthly_cip
+            WHERE  month_key IN (140308,140309,140310,140311,140312,140401,140402,140403,140404)
+              AND  sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+            GROUP BY sbrp_id, month_key ) t
+    GROUP BY sbrp_id
+),
 overdue_by_month AS (
-    SELECT sbrp_id, day_key, past_due FROM od
+    SELECT  dd.sbrp_id, dd.day_key,
+            MAX(CASE WHEN COALESCE(dd.bill_outstanding_amt,0) > 0
+                      AND dd.day_key % 100 > 15 THEN 1 ELSE 0 END)
+                OVER (PARTITION BY dd.sbrp_id ORDER BY dd.day_key
+                      ROWS BETWEEN 3 PRECEDING AND CURRENT ROW)  AS past_due,
+            MAX(CASE WHEN COALESCE(dd.bill_outstanding_amt,0)
+                          > 1.5 * COALESCE(ot.med_invoice,0) THEN 1 ELSE 0 END)
+                OVER (PARTITION BY dd.sbrp_id ORDER BY dd.day_key
+                      ROWS BETWEEN 3 PRECEDING AND CURRENT ROW)  AS carried
+    FROM        dwbi_fact_db.v_fact_sbrp_daily_cip dd
+    LEFT JOIN   out_typical ot ON ot.sbrp_id = dd.sbrp_id
+    WHERE   dd.day_key BETWEEN 14040501 AND 14041130
+      AND   dd.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
 ),
 -- bars in the outcome window, read from daily status (3 = one-way, 9 = two-way)
 outcome_bar AS (
     SELECT  dl.sbrp_id,
             -- ONE-WAY BAR WITH PAST-DUE DEBT = the credit event, and the trigger
             MAX(CASE WHEN dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                      AND ov.past_due = 1 THEN 1 ELSE 0 END)            AS had_nonpay_oneway,
+                      AND (ov.past_due = 1 OR ov.carried = 1)
+                     THEN 1 ELSE 0 END)                                 AS had_nonpay_oneway,
             COUNT(*) FILTER (WHERE dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                               AND ov.past_due = 1)                     AS n_nonpay_bar_starts,
+                               AND (ov.past_due = 1 OR ov.carried = 1))  AS n_nonpay_bar_starts,
             -- a bar with no overdue bill behind it = the ceiling. FEATURE ONLY.
             MAX(CASE WHEN dl.prev_stat <> 3 AND dl.sbrp_stat_id = 3
-                      AND COALESCE(ov.past_due,0) = 0 THEN 1 ELSE 0 END) AS had_ceiling_oneway,
+                      AND COALESCE(ov.past_due,0) = 0
+                      AND COALESCE(ov.carried,0) = 0 THEN 1 ELSE 0 END)  AS had_ceiling_oneway,
             -- escalation: severity, not the trigger
             MAX(CASE WHEN dl.sbrp_stat_id = 9 THEN 1 ELSE 0 END)        AS escalated_twoway,
             COUNT(*) FILTER (WHERE dl.sbrp_stat_id = 3)                 AS oneway_days_out,
@@ -656,7 +728,7 @@ agg AS (
     SELECT  b.sbrp_id,
             COALESCE(MAX(oc.n_months_seen), 0)                AS n_months_seen,
             COALESCE(MAX(o.max_dpd_out), 0)                   AS max_dpd_out,
-            COALESCE(MAX(o.n_late_out), 0)                    AS n_late_out,
+            COALESCE(MAX(lm.n_late_out), 0)                   AS n_late_out,
             COALESCE(MAX(o.total_debt_days_out), 0)           AS total_debt_days_out,
             COALESCE(MAX(ob.had_nonpay_oneway), 0)            AS had_nonpay_oneway,
             COALESCE(MAX(ob.n_nonpay_bar_starts), 0)          AS n_nonpay_bar_starts,
@@ -670,6 +742,7 @@ agg AS (
     FROM        dwbi_temp40_db.dcb_c1_base b
     LEFT JOIN   outcome_dpd   o  ON o.sbrp_id  = b.sbrp_id
     LEFT JOIN   outcome_cover oc ON oc.sbrp_id = b.sbrp_id
+    LEFT JOIN   late_months   lm ON lm.sbrp_id = b.sbrp_id
     LEFT JOIN   outcome_bar   ob ON ob.sbrp_id = b.sbrp_id
     LEFT JOIN   outcome_pay  op ON op.sbrp_id = b.sbrp_id
     LEFT JOIN   churned      ch ON ch.sbrp_id = b.sbrp_id
