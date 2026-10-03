@@ -104,32 +104,50 @@
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
---  COHORT CALENDAR   <<< the only block to edit between runs
+--  COHORT CALENDAR     <<< do NOT hand-edit. use tools/recalendar.py
 --
---  Data starts at 1404-01; 1403 is gone. Now is 1405-07, so the last closed
---  month is 140506 and a watch window that must close by then puts the latest
---  usable T0 at 140412. The revenue shock sits at 140412, 140501 and 140502 -
---  squarely on top of every recent watch window.
+--  Both facts run 140301..140506 complete; 140507 ends at 14050709, so 140506
+--  is the last closed month. Thirty complete months are available.
 --
---  NO cohort is free of it. With a 12-month feature window there is no valid T0
---  at all, and with 9 months the earliest is 140410, whose BILLS fall in the
---  shock. A 6-month window is the trade that keeps the bills clean.
+--  WHAT THE OUTCOME WINDOW MUST BE. A 4-instalment loan needs the four bill
+--  months T0..T0+3, and the last instalment is due the 15th of T0+4 with
+--  lateness probed near day 25. So five outcome months see it at all and SIX
+--  see a 60-day DPD on the final instalment. Six is the floor, not a choice.
 --
---  C1  T0 140407   features 140401..140406   bills 140407..140410   watch 140501
---      features clean, bills clean, only the observation period touches the shock
---  C2  T0 140410   features 140404..140409   bills 140410..140501   watch 140504
---      the stress cohort - hold it out and use it to measure degradation
+--  THIS RUN = T0 140501
+--      feature months  140407 140408 140409 140410 140411 140412
+--      T0              140501
+--      bill months     140501 140502 140503 140504
+--      watch through   140506
+--      daily window    14040701 .. 14050631
 --
---  Shock in the WATCH window inflates the bad rate, which makes the model
---  conservative. Shock in the FEATURE window would distort the limit engine and
---  over-lend. Only the first is acceptable, and only the first happens here.
+--  WHY THIS AND NOT AN EARLIER, SHOCK-FREE COHORT. 140501 is the LATEST T0 that
+--  still observes a 4-instalment loan in full, and the model will be scoring
+--  subscribers in 1405 - at scoring time the features come from 140501..140506,
+--  one month after this outcome window closes. An earlier cohort trains on a
+--  population that no longer exists and the shock sits between the training
+--  features and the scoring features, which is the worst place for it.
 --
---  THIS RUN = C1
---    feature months  140401 140402 140403 140404 140405 140406
---    T0              140407
---    label bills     140407 140408 140409 140410
---    watch through   140501
---    daily window    14040101 .. 14050131
+--  THE REVENUE SHOCK is at 140412, 140501 and 140502. Here it lands on the last
+--  feature month and the first two bill months.
+--
+--  CORRECTING WHAT THIS COMMENT USED TO SAY. It claimed shock in the FEATURE
+--  window "would distort the limit engine and over-lend". That is BACKWARDS.
+--  The shock was a revenue DROP, so feature months inside it show LOWER
+--  payments and capacity, which makes limits SMALLER - conservative, not
+--  dangerous. An earlier cohort was chosen on that reversed reasoning.
+--  Both exposures here push the same safe way:
+--    - shock in the features    -> capacity understated -> limits too small
+--    - shock in the bill months -> bad rate inflated    -> model too cautious
+--  Neither over-lends. The cost is a bad rate that reads high and a limit
+--  engine that under-shoots, and both are measurable against C2 below.
+--
+--  C2, THE CONTROL COHORT: T0 140412, features 140406..140411 (entirely clear
+--  of the shock), outcome 140412..140506. Build it with
+--      python3 tools/recalendar.py --t0 1404 12 --out 7
+--  and compare. The gap between the two bad rates IS the shock's contribution,
+--  which is the only way to say how much of this label is the economy rather
+--  than the subscriber.
 -- ---------------------------------------------------------------------------
 
 
@@ -148,7 +166,7 @@ FROM (
     -- months early, left over from an older calendar. That made the active
     -- and permanent tests fire at the wrong point in time and shipped a
     -- stale age_on_net_months into the dataset.
-    WHERE   month_key    = 140404      -- the month immediately before T0
+    WHERE   month_key    = 140412      -- the month immediately before T0
       AND   sbrp_stat_id = 2           -- GATE: active at T0 (point in time only)
       AND   sbrp_typ_id  = 1           -- permanent
       -- The tenure test USED to sit here as age_on_net_months >= 12. That
@@ -176,7 +194,7 @@ INNER JOIN (
             MAX_BY(age_on_net_months, month_key)
               + (6 - MOD(MAX(month_key), 100))            AS tenure_at_t0
     FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
-    WHERE   month_key BETWEEN 140311 AND 140404
+    WHERE   month_key BETWEEN 140407 AND 140412
       AND   sbrp_typ_id = 1
       AND   age_on_net_months IS NOT NULL
     GROUP BY sbrp_id
@@ -198,7 +216,7 @@ INNER JOIN (
                         - COALESCE(post_intl_roam_data_rev,0)
                         - COALESCE(pre_intl_roam_data_rev,0))  AS rev_3m
             FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
-            WHERE   month_key BETWEEN 140402 AND 140404
+            WHERE   month_key BETWEEN 140410 AND 140412
               AND   sbrp_typ_id = 1
             GROUP BY sbrp_id ) r
     WHERE   r.rev_3m / 3 > 1000000
@@ -223,7 +241,7 @@ INNER JOIN (
 LEFT JOIN (
     SELECT DISTINCT sbrp_id
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14031101 AND 14041131
+    WHERE  day_key BETWEEN 14040701 AND 14050631
       AND  sbrp_typ_id = 1
       AND  sbrp_stat_id IN (8, 9)
 ) reclaim ON reclaim.sbrp_id = s.sbrp_id
@@ -241,7 +259,7 @@ LEFT JOIN (
 LEFT JOIN (
     SELECT DISTINCT sbrp_id
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14040425 AND 14040431
+    WHERE  day_key BETWEEN 14041225 AND 14041231
       AND  sbrp_typ_id = 1
       AND  sbrp_stat_id IN (3, 4)      -- one-way or two-way bar. NOT 9.
 ) barred ON barred.sbrp_id = s.sbrp_id
@@ -310,7 +328,7 @@ FROM (
                 FILTER (WHERE c.cust_bil_typ_id = 3)              AS mc_amt
     FROM        dwbi_fact_db.v_fact_cust_bil_daily c
     INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
-    WHERE   c.day_key BETWEEN 14031101 AND 14040431   -- FEATURE window only
+    WHERE   c.day_key BETWEEN 14040701 AND 14041231   -- FEATURE window only
       AND   c.cust_bil_typ_id IN (2, 3)
       -- NO day-of-month guard. An earlier version had MOD(day_key,100) >= 28 as
       -- a cost guard, valid while only the end-of-cycle bill was read. Type 3
@@ -387,7 +405,7 @@ SELECT  d.sbrp_id,
         AVG(d.unbill_outstanding_amt)                                 AS unbill_avg
 FROM        dwbi_fact_db.v_fact_sbrp_daily_cip d
 INNER JOIN  dwbi_temp40_db.dcb3_billref r ON r.sbrp_id = d.sbrp_id
-WHERE   d.day_key BETWEEN 14031101 AND 14041131    -- features AND watch window
+WHERE   d.day_key BETWEEN 14040701 AND 14050631    -- features AND watch window
   AND   d.sbrp_typ_id = 1
 GROUP BY d.sbrp_id, d.day_key / 100,
          (d.day_key / 10000) * 12 + MOD(d.day_key / 100, 100)
@@ -407,7 +425,7 @@ SELECT  e.sbrp_id,
 FROM (
     SELECT sbrp_id, day_key / 100 AS month_key, MAX(day_key) AS last_day
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE  day_key BETWEEN 14031101 AND 14041131
+    WHERE  day_key BETWEEN 14040701 AND 14050631
       AND  sbrp_typ_id = 1
       AND  sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb3_base)
     GROUP BY sbrp_id, day_key / 100
@@ -433,7 +451,7 @@ DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_dpd;
 CREATE TABLE dwbi_temp40_db.dcb3_dpd WITH (format='PARQUET') AS
 WITH feat AS (
     SELECT * FROM dwbi_temp40_db.dcb3_daily_rollup
-    WHERE  month_key BETWEEN 140311 AND 140404        -- feature window only
+    WHERE  month_key BETWEEN 140407 AND 140412        -- feature window only
 ),
 runs AS (
     SELECT  sbrp_id, month_idx, debt_days, open_at_month_end,
@@ -467,12 +485,12 @@ SELECT  f.sbrp_id,
         MAX(f.unbill_max)                                     AS unbill_peak_6m,
         AVG(f.unbill_avg)                                     AS unbill_avg_6m,
         -- monthly debt-day panel
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140311) AS debtdays_m1,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140312) AS debtdays_m2,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140401) AS debtdays_m3,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140402) AS debtdays_m4,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140403) AS debtdays_m5,
-        MAX(f.debt_days) FILTER (WHERE f.month_key = 140404) AS debtdays_m6
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140407) AS debtdays_m1,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140408) AS debtdays_m2,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140409) AS debtdays_m3,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140410) AS debtdays_m4,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140411) AS debtdays_m5,
+        MAX(f.debt_days) FILTER (WHERE f.month_key = 140412) AS debtdays_m6
 FROM        feat f
 LEFT JOIN   run_len r ON r.sbrp_id = f.sbrp_id
 GROUP BY f.sbrp_id
@@ -499,7 +517,7 @@ SELECT  sbrp_id,
         CAST(SUM(oneway_days) AS DOUBLE)
           / NULLIF(COUNT(*) FILTER (WHERE oneway_days > 0), 0) AS avg_barred_days_per_spell
 FROM    dwbi_temp40_db.dcb3_daily_rollup
-WHERE   month_key BETWEEN 140311 AND 140404
+WHERE   month_key BETWEEN 140407 AND 140412
 GROUP BY sbrp_id
 ;
 
@@ -524,7 +542,7 @@ WITH mth AS (
             SUM(COALESCE(c.intl_cl_cnt,0))                           AS intl_cl_cnt
     FROM        dwbi_fact_db.v_fact_sbrp_mthly_cip c
     INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
-    WHERE   c.month_key BETWEEN 140311 AND 140404
+    WHERE   c.month_key BETWEEN 140407 AND 140412
       AND   c.sbrp_typ_id = 1
     GROUP BY c.sbrp_id, c.month_key
 ),
@@ -542,7 +560,7 @@ bil AS (
                 FILTER (WHERE c.cust_bil_typ_id = 3) AS mc_billed_amt
     FROM        dwbi_fact_db.v_fact_cust_bil_daily c
     INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
-    WHERE   c.day_key BETWEEN 14031101 AND 14040431
+    WHERE   c.day_key BETWEEN 14040701 AND 14041231
       AND   c.cust_bil_typ_id IN (2, 3)
     GROUP BY c.sbrp_id, c.day_key / 100
 )
@@ -554,26 +572,26 @@ SELECT  sbrp_id,
         -- one month out of step with everything beside it, and it also read a
         -- column that is empty across 140312..140409.
         -- So these three series may now be compared within a row.
-        MAX(billed_amt) FILTER (WHERE month_key=140311) AS billed_m1,
-        MAX(billed_amt) FILTER (WHERE month_key=140312) AS billed_m2,
-        MAX(billed_amt) FILTER (WHERE month_key=140401) AS billed_m3,
-        MAX(billed_amt) FILTER (WHERE month_key=140402) AS billed_m4,
-        MAX(billed_amt) FILTER (WHERE month_key=140403) AS billed_m5,
-        MAX(billed_amt) FILTER (WHERE month_key=140404) AS billed_m6,
+        MAX(billed_amt) FILTER (WHERE month_key=140407) AS billed_m1,
+        MAX(billed_amt) FILTER (WHERE month_key=140408) AS billed_m2,
+        MAX(billed_amt) FILTER (WHERE month_key=140409) AS billed_m3,
+        MAX(billed_amt) FILTER (WHERE month_key=140410) AS billed_m4,
+        MAX(billed_amt) FILTER (WHERE month_key=140411) AS billed_m5,
+        MAX(billed_amt) FILTER (WHERE month_key=140412) AS billed_m6,
         -- pmnt_m1..m6 REMOVED. pmnt_amt on the monthly fact is empty in 140402
         -- and 140403, and it is redundant anyway: v_fact_pmnt_adjmt in STEP 6
         -- is the authoritative payment source, is not holed, and separates the
         -- payment types. Every payment feature comes from there.
-        MAX(tot_rev) FILTER (WHERE month_key=140311) AS totrev_m1,
-        MAX(tot_rev) FILTER (WHERE month_key=140312) AS totrev_m2,
-        MAX(tot_rev) FILTER (WHERE month_key=140401) AS totrev_m3,
-        MAX(tot_rev) FILTER (WHERE month_key=140402) AS totrev_m4,
-        MAX(tot_rev) FILTER (WHERE month_key=140403) AS totrev_m5,
-        MAX(tot_rev) FILTER (WHERE month_key=140404) AS totrev_m6,
+        MAX(tot_rev) FILTER (WHERE month_key=140407) AS totrev_m1,
+        MAX(tot_rev) FILTER (WHERE month_key=140408) AS totrev_m2,
+        MAX(tot_rev) FILTER (WHERE month_key=140409) AS totrev_m3,
+        MAX(tot_rev) FILTER (WHERE month_key=140410) AS totrev_m4,
+        MAX(tot_rev) FILTER (WHERE month_key=140411) AS totrev_m5,
+        MAX(tot_rev) FILTER (WHERE month_key=140412) AS totrev_m6,
         SUM(data_gb)                                     AS data_gb_6m,
-        SUM(data_gb)   FILTER (WHERE month_key >= 140402) AS data_gb_3m,
+        SUM(data_gb)   FILTER (WHERE month_key >= 140410) AS data_gb_3m,
         SUM(voice_min)                                   AS voice_min_6m,
-        SUM(voice_min) FILTER (WHERE month_key >= 140402) AS voice_min_3m,
+        SUM(voice_min) FILTER (WHERE month_key >= 140410) AS voice_min_3m,
         SUM(call_cnt)                                    AS call_cnt_6m,
         SUM(intl_cl_cnt)                                 AS intl_cl_cnt_6m,
         STDDEV_SAMP(tot_rev)                             AS totrev_std_6m,
@@ -645,7 +663,7 @@ WITH pm AS (
     -- for "successful" is ALSO unverified and carried over from the original
     -- pipeline; P1 reports the status codes so it can be confirmed or dropped.
     WHERE   p.bllg_pmnt_stat_id = 2
-      AND   p.day_key BETWEEN 14031101 AND 14040431
+      AND   p.day_key BETWEEN 14040701 AND 14041231
     GROUP BY p.sbrp_id, p.day_key / 100
 )
 SELECT  sbrp_id,
@@ -703,7 +721,7 @@ SELECT  c.sbrp_id,
         COALESCE(c.suspend_scr, 0)                               AS suspend_scr
 FROM        dwbi_fact_db.v_fact_sbrp_mthly_cip c
 INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
-WHERE   c.month_key = 140404
+WHERE   c.month_key = 140412
   AND   c.sbrp_typ_id = 1
 ;
 
@@ -725,7 +743,7 @@ DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_label;
 CREATE TABLE dwbi_temp40_db.dcb3_label WITH (format='PARQUET') AS
 WITH out AS (
     SELECT * FROM dwbi_temp40_db.dcb3_daily_rollup
-    WHERE  month_key BETWEEN 140405 AND 140411
+    WHERE  month_key BETWEEN 140501 AND 140506
 ),
 runs AS (
     SELECT  sbrp_id, month_idx, debt_days, open_at_month_end,
@@ -826,7 +844,7 @@ WHERE   hit_queue   = 0
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_dataset_c1;
 CREATE TABLE dwbi_temp40_db.dcb3_dataset_c1 WITH (format='PARQUET') AS
-SELECT  '140405' AS obs_cohort, b.sbrp_id, r.med_bill,
+SELECT  '140501' AS obs_cohort, b.sbrp_id, r.med_bill,
         -- CAPACITY BASIS = paid_total_6m, as decided. But part of the excess of
         -- payments over billing is ARREARS CLEARED FROM BEFORE THE WINDOW, not
         -- ongoing capacity, so the window overstates capacity for anyone who
@@ -897,7 +915,7 @@ SELECT  COUNT(DISTINCT sbrp_id)                                     AS base_subs
                                            OR reclaim_days > 0)
                                           AND twoway_days > 0)      AS excl_also_twoway
 FROM    dwbi_temp40_db.dcb3_daily_rollup
-WHERE   month_key BETWEEN 140405 AND 140411;
+WHERE   month_key BETWEEN 140501 AND 140506;
 
 -- G4  completeness of the outcome window. 7 is the full window. If the 6-month
 -- group is large, the tolerance in STEP 8 is carrying real censoring and should
