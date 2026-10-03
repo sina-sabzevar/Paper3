@@ -44,32 +44,34 @@
 --    earlier. G5 in STEP 9 counts them so this stays verified rather than
 --    assumed.
 --
---  CONFIRMED BILLING SEMANTICS - the whole file rests on these four
---    a. bill_outstanding_amt  = the issued bill, due the 15th of the NEXT month.
---       Goes to 0 the moment it is paid, INCLUDING by a mid-cycle payment.
---       It is a month-end snapshot in the monthly table and a running daily
---       balance in the daily table.
---    b. unbill_outstanding_amt = that bill PLUS the current month's day-by-day
---       usage, so it is the live exposure, not an arrear.
---    c. invoice_amt stamped month M is the bill for the USAGE OF MONTH M-1.
---    d. tot_rev stamped month M is the usage OF MONTH M.
+--  CONFIRMED BILLING SEMANTICS - the whole file rests on these
+--    a. bill_outstanding_amt (DAILY fact) = the issued bill, due the 15th of
+--       the next month. Goes to 0 the moment it is paid, INCLUDING by a
+--       mid-cycle payment. Populated in ALL 30 months.
+--    b. unbill_outstanding_amt = that bill PLUS the current month's running
+--       usage, so it is live exposure, not an arrear.
+--    c. payment_due_amt (v_fact_cust_bil_daily, cust_bil_typ_id = 2) = the
+--       END-OF-CYCLE bill. Carries a value only on the LAST DAY of the month,
+--       and is keyed by sbrp_id. Stamped at the end of month M it is the usage
+--       OF MONTH M, due the 15th of M+1. THIS IS NOW THE BILL SOURCE.
+--    d. tot_rev stamped month M (MONTHLY fact) = the usage OF MONTH M.
+--    e. payable_amt and invoice_amt on the MONTHLY fact are NOT USED. They are
+--       loaded in only 14 of 30 months and empty across 140312..140409, with an
+--       identical gap in both - zero months disagree - so it is a loading gap
+--       in that table, not a column-naming mistake. Anchoring anything there
+--       made the calendar hostage to the gap and collapsed the base to 1371
+--       rows. Do not reintroduce either column.
 --
---  WHAT (c) AND (d) TOGETHER MEAN - checked line by line, nothing below breaks
---    - invoice_amt(M) is due on the 15th of M, and a payment recorded in M is
---      paying exactly that bill. So payment-to-bill ratios inside one panel row
---      are correctly aligned. No shift needed.
---    - bill_outstanding_amt and invoice_amt carry the SAME alignment, so the
---      0.40 x med_invoice materiality floor is compared against a balance that
---      measures the same thing. This is the one place a mismatch would have
---      been silent and it is clean.
---    - med_invoice is a median across months, so the one-month window shift
---      does not move it. Invoices 140401..140406 are usage 140312..140405,
---      still entirely clear of the 140412 shock.
---    - THE ONE RULE FOR PYTHON: invoice_mN and totrev_mN in the same row are
---      DIFFERENT USAGE MONTHS. Never ratio, difference or correlate them
---      against each other, and never build a "billed vs used" feature from the
---      pair. To compare them, line invoice_m(N+1) up with totrev_mN.
+--  WHAT (c) AND (d) TOGETHER MEAN
+--    - payment_due_amt(M) is the very bill that sits in the daily
+--      bill_outstanding_amt through month M+1, so the materiality threshold
+--      and the balance it is tested against are the SAME quantity.
+--    - billed_mN, pmnt_mN and totrev_mN in the panel are all stamped on month
+--      N and all describe the usage OF MONTH N. They are mutually comparable
+--      inside a row. This was NOT true of the old payable_mN, which was the
+--      usage of month N-1 and one month out of step with its neighbours.
 --
+
 --  NO percent character anywhere (Python drivers read it as a format spec).
 --  NO CASE expressions - IF and FILTER are used instead.
 --  AMOUNTS ARE IN RIAL.
@@ -225,47 +227,53 @@ WHERE   reclaim.sbrp_id IS NULL
 -- ---------------------------------------------------------------------------
 -- STEP 1B  THE MATERIALITY YARDSTICK - med_bill
 --
---  WHY THIS IS NOT BUILT FROM THE MONTHLY TABLE ANY MORE.
---  It used to be APPROX_PERCENTILE(invoice_amt) from v_fact_sbrp_mthly_cip.
---  The month inventory showed that the monthly billing columns are LOADED IN
---  ONLY 14 OF 30 MONTHS - 140301..140304, 140306, 140311 and 140410..140505 -
---  and are exactly zero across 140312..140409. payable_amt, which is the
---  correct column of the two, has the IDENTICAL gap: zero months disagree. So
---  this is a loading gap in the monthly fact, not a column-naming mistake, and
---  no choice of monthly column escapes it.
---  Anchoring the threshold there made the whole calendar hostage to that gap,
---  and when the feature window fell inside it the base collapsed to 1371 rows.
+--  SOURCE: v_fact_cust_bil_daily.payment_due_amt with cust_bil_typ_id = 2,
+--  which is the END-OF-CYCLE bill and carries a value only on the LAST DAY of
+--  each month. Confirmed to be keyed by sbrp_id, so it joins directly - no
+--  customer-to-SIM bridge is needed.
 --
---  The daily balance is loaded in EVERY month (600M+ positive rows per month,
---  all 30 months), so the yardstick is taken from there instead.
+--  WHY NOT THE MONTHLY FACT. invoice_amt and payable_amt there are loaded in
+--  only 14 of 30 months and are empty across 140312..140409, with an IDENTICAL
+--  gap - zero months disagree - so it is a loading gap in that table and no
+--  choice of column escapes it. Anchoring the threshold there made the whole
+--  calendar hostage to the gap and collapsed the base to 1371 rows.
 --
---  WHY A MONTH-MAXIMUM IS THE RIGHT PROXY. The bill for month M-1 is issued at
---  the end of M-1, so on day 1 of M the balance IS that bill, and it drops to
---  zero on payment. The maximum daily balance within a month is therefore the
---  bill itself - exactly the quantity invoice_amt was standing in for.
---  A month where an earlier bill is still unpaid shows two bills stacked and a
---  high maximum, so the MEDIAN across the subscriber's own months is used, not
---  the mean or the max: one carry-over month cannot move it.
+--  ALIGNMENT, AND IT IS NOT THE SAME AS payable_amt. Confirmed:
+--      payment_due_amt stamped at the END of month M = the usage OF MONTH M,
+--      due the 15th of M+1.
+--      payable_amt stamped month M = the usage of month M-1.
+--  So payment_due_amt(M) is the very bill that sits in the daily
+--  bill_outstanding_amt through month M+1. That makes the threshold and the
+--  balance it is compared against the SAME quantity, which is better aligned
+--  than the daily-maximum proxy this step used before.
+--
+--  The MEDIAN across the subscriber's own months is used, not the mean or the
+--  max, so one unusually large bill cannot move the yardstick.
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_billref;
 CREATE TABLE dwbi_temp40_db.dcb3_billref WITH (format='PARQUET') AS
-SELECT  sbrp_id,
-        APPROX_PERCENTILE(bill_max, 0.5) FILTER (WHERE bill_max > 0) AS med_bill,
-        COUNT(*) FILTER (WHERE bill_max > 0)                         AS n_billed_months
-FROM (
-    SELECT  d.sbrp_id,
-            d.day_key / 100                         AS month_key,
-            MAX(COALESCE(d.bill_outstanding_amt,0)) AS bill_max
-    FROM        dwbi_fact_db.v_fact_sbrp_daily_cip d
-    INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = d.sbrp_id
-    WHERE   d.day_key BETWEEN 14040101 AND 14040631   -- FEATURE window only
-      AND   d.sbrp_typ_id = 1
-    GROUP BY d.sbrp_id, d.day_key / 100
-) t
-GROUP BY sbrp_id
--- a subscriber with no positive balance in any feature month has no bill to
--- measure against, so there is nothing to call material. Dropped explicitly.
-HAVING  COUNT(*) FILTER (WHERE bill_max > 0) > 0
+SELECT  c.sbrp_id,
+        APPROX_PERCENTILE(c.payment_due_amt, 0.5)
+            FILTER (WHERE c.payment_due_amt > 0)        AS med_bill,
+        COUNT(*) FILTER (WHERE c.payment_due_amt > 0)   AS n_billed_months,
+        MAX(c.payment_due_amt)                          AS max_bill,
+        STDDEV_SAMP(c.payment_due_amt)
+            FILTER (WHERE c.payment_due_amt > 0)        AS bill_std
+FROM        dwbi_fact_db.v_fact_cust_bil_daily c
+INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
+WHERE   c.day_key BETWEEN 14040101 AND 14040631       -- FEATURE window only
+  AND   c.cust_bil_typ_id = 2
+  -- COST GUARD, and the one thing here to verify. The bill lands on the last
+  -- day of the month, which is day 31 in months 1-6, day 30 in 7-11 and day 29
+  -- in month 12, so days 28 and up catch every month end while reading about a
+  -- tenth of the table. B2 in 14_cust_bil_probe.sql prints n_days, first_day
+  -- and last_day per month: if any month shows a bill on an earlier day, or
+  -- n_days above 1, DELETE this line and take the cost.
+  AND   MOD(c.day_key, 100) >= 28
+GROUP BY c.sbrp_id
+-- a subscriber with no issued bill in any feature month has no bill to measure
+-- against, so there is nothing to call material. Dropped explicitly.
+HAVING  COUNT(*) FILTER (WHERE c.payment_due_amt > 0) > 0
 ;
 
 -- ---------------------------------------------------------------------------
@@ -464,7 +472,6 @@ DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_panel;
 CREATE TABLE dwbi_temp40_db.dcb3_panel WITH (format='PARQUET') AS
 WITH mth AS (
     SELECT  c.sbrp_id, c.month_key,
-            MAX(COALESCE(c.payable_amt,0)) AS payable_amt,
             MAX(COALESCE(c.pmnt_amt,0))    AS pmnt_amt,
             SUM(COALESCE(c.voi_pkg_rev,0) + COALESCE(c.voi_payg_rev,0)
                 - COALESCE(c.intl_roam_voi_rev,0)) / 1.1
@@ -482,17 +489,35 @@ WITH mth AS (
     WHERE   c.month_key BETWEEN 140401 AND 140406
       AND   c.sbrp_typ_id = 1
     GROUP BY c.sbrp_id, c.month_key
+),
+-- The billed amount per month comes from the END-OF-CYCLE bill, NOT from
+-- payable_amt on the monthly fact, which is empty across 140312..140409 and
+-- would have produced six columns of zeros.
+bil AS (
+    SELECT  c.sbrp_id,
+            c.day_key / 100                        AS month_key,
+            MAX(COALESCE(c.payment_due_amt,0))     AS billed_amt
+    FROM        dwbi_fact_db.v_fact_cust_bil_daily c
+    INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
+    WHERE   c.day_key BETWEEN 14040101 AND 14040631
+      AND   c.cust_bil_typ_id = 2
+      AND   MOD(c.day_key, 100) >= 28
+    GROUP BY c.sbrp_id, c.day_key / 100
 )
 SELECT  sbrp_id,
-        -- invoice_mN is the bill for the USAGE OF MONTH N-1 (confirmed).
-        -- totrev_mN below is the usage OF MONTH N. The two series are one month
-        -- apart: do not combine them inside a row. See the header.
-        MAX(payable_amt) FILTER (WHERE month_key=140401) AS payable_m1,
-        MAX(payable_amt) FILTER (WHERE month_key=140402) AS payable_m2,
-        MAX(payable_amt) FILTER (WHERE month_key=140403) AS payable_m3,
-        MAX(payable_amt) FILTER (WHERE month_key=140404) AS payable_m4,
-        MAX(payable_amt) FILTER (WHERE month_key=140405) AS payable_m5,
-        MAX(payable_amt) FILTER (WHERE month_key=140406) AS payable_m6,
+        -- ALIGNMENT, and it is now CONSISTENT across the whole row, which it
+        -- was not before. billed_mN is the end-of-cycle bill stamped at the end
+        -- of month N, which is the usage OF MONTH N - the same month as
+        -- totrev_mN and pmnt_mN. The old payable_mN was the usage of month N-1,
+        -- one month out of step with everything beside it, and it also read a
+        -- column that is empty across 140312..140409.
+        -- So these three series may now be compared within a row.
+        MAX(billed_amt) FILTER (WHERE month_key=140401) AS billed_m1,
+        MAX(billed_amt) FILTER (WHERE month_key=140402) AS billed_m2,
+        MAX(billed_amt) FILTER (WHERE month_key=140403) AS billed_m3,
+        MAX(billed_amt) FILTER (WHERE month_key=140404) AS billed_m4,
+        MAX(billed_amt) FILTER (WHERE month_key=140405) AS billed_m5,
+        MAX(billed_amt) FILTER (WHERE month_key=140406) AS billed_m6,
         MAX(pmnt_amt) FILTER (WHERE month_key=140401) AS pmnt_m1,
         MAX(pmnt_amt) FILTER (WHERE month_key=140402) AS pmnt_m2,
         MAX(pmnt_amt) FILTER (WHERE month_key=140403) AS pmnt_m3,
@@ -514,7 +539,19 @@ SELECT  sbrp_id,
         STDDEV_SAMP(tot_rev)                             AS totrev_std_6m,
         STDDEV_SAMP(data_gb)                             AS data_gb_std_6m,
         COUNT(*)                                         AS n_months_seen
-FROM    mth
+-- FULL OUTER on the month key so a subscriber-month present in one source but
+-- not the other is still kept. An INNER JOIN here would silently drop months,
+-- which is the failure mode this whole file has been chasing.
+FROM (
+    SELECT  COALESCE(m.sbrp_id, l.sbrp_id)     AS sbrp_id,
+            COALESCE(m.month_key, l.month_key) AS month_key,
+            m.pmnt_amt, m.tot_rev, m.data_gb, m.voice_min,
+            m.call_cnt, m.intl_cl_cnt,
+            l.billed_amt
+    FROM            mth m
+    FULL OUTER JOIN bil l
+                 ON l.sbrp_id = m.sbrp_id AND l.month_key = m.month_key
+) j
 GROUP BY sbrp_id
 ;
 
