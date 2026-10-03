@@ -206,6 +206,87 @@ GROUP BY sbrp_id
 ;
 
 -- ----------------------------------------------------------------------------
+-- STEP 3b  FALLBACK DPD, from payment dates instead of daily debt
+--
+--  Run this INSTEAD of STEP 3 if v_fact_cust_bil_daily turns out to have no
+--  day_key. v_fact_pmnt_adjmt does carry one, so the settlement date can be
+--  recovered from the payments themselves.
+--
+--  Method: for billing cycle M, walk the payments forward from the start of M
+--  and take the first day on which the running total covers that cycle's
+--  invoice. That day is the settlement date.
+--
+--  Approximation: payments are not linked to individual bills, so this assumes
+--  FIFO - money settles the oldest open bill first, which is how the dunning
+--  process behaves anyway. A subscriber carrying debt from before the window
+--  will look slightly later than they were; the gates already exclude the ones
+--  where that matters.
+--
+--  The query returns the settlement DAY KEY, not a day count. Jalali date
+--  arithmetic is awkward in SQL and trivial in Python, so
+--      DPD = settle_day_key - due_day_key
+--  is computed in the notebook once the due-date rule is confirmed.
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_dpd_fallback;
+CREATE TABLE dwbi_temp40_db.dcb_c1_dpd_fallback WITH (format='PARQUET') AS
+WITH inv AS (
+    SELECT  sbrp_id,
+            month_key                        AS bilcycl,
+            MAX(COALESCE(invoice_amt, 0))    AS invoice_amt
+    FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
+    WHERE   month_key IN (140308,140309,140310,140311,140312,
+                          140401,140402,140403,140404)
+      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    GROUP BY sbrp_id, month_key
+),
+pay AS (
+    SELECT  sbrp_id, day_key, SUM(COALESCE(pmnt_amt, 0)) AS paid_day
+    FROM    dwbi_fact_db.v_fact_pmnt_adjmt
+    WHERE   cust_pmnt_typ_id IN (4, 6)       -- 4 = end of cycle, 6 = mid cycle
+      AND   bllg_pmnt_stat_id = 2            -- successful only
+      AND   day_key BETWEEN 14030801 AND 14041130
+      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    GROUP BY sbrp_id, day_key
+),
+-- every payment day paired with every cycle it could settle, with the running
+-- total of what has been paid since that cycle opened
+cum AS (
+    SELECT  i.sbrp_id,
+            i.bilcycl,
+            i.invoice_amt,
+            p.day_key,
+            SUM(p.paid_day) OVER (PARTITION BY i.sbrp_id, i.bilcycl
+                                  ORDER BY p.day_key
+                                  ROWS BETWEEN UNBOUNDED PRECEDING
+                                           AND CURRENT ROW) AS cum_paid
+    FROM        inv i
+    INNER JOIN  pay p ON p.sbrp_id = i.sbrp_id
+                     AND p.day_key >= i.bilcycl * 100 + 1    -- from the cycle's first day
+)
+SELECT  sbrp_id,
+        MAX(CASE WHEN bilcycl=140308 THEN settle_day_key END) AS settle_m1,
+        MAX(CASE WHEN bilcycl=140309 THEN settle_day_key END) AS settle_m2,
+        MAX(CASE WHEN bilcycl=140310 THEN settle_day_key END) AS settle_m3,
+        MAX(CASE WHEN bilcycl=140311 THEN settle_day_key END) AS settle_m4,
+        MAX(CASE WHEN bilcycl=140312 THEN settle_day_key END) AS settle_m5,
+        MAX(CASE WHEN bilcycl=140401 THEN settle_day_key END) AS settle_m6,
+        MAX(CASE WHEN bilcycl=140402 THEN settle_day_key END) AS settle_m7,
+        MAX(CASE WHEN bilcycl=140403 THEN settle_day_key END) AS settle_m8,
+        MAX(CASE WHEN bilcycl=140404 THEN settle_day_key END) AS settle_m9,
+        COUNT(*) FILTER (WHERE settle_day_key IS NULL)        AS n_unsettled_9m
+FROM (
+    SELECT  sbrp_id, bilcycl, invoice_amt,
+            MIN(CASE WHEN cum_paid >= 0.98 * invoice_amt THEN day_key END) AS settle_day_key
+    FROM    cum
+    GROUP BY sbrp_id, bilcycl, invoice_amt
+) t
+GROUP BY sbrp_id
+;
+--  A NULL settle_m* means the cycle was never covered inside the window. That is
+--  the worst case, not a missing value: treat it as maximum DPD in Python, never
+--  as a gap to impute.
+
+-- ----------------------------------------------------------------------------
 -- STEP 4+5  BAR EVENTS, READ FROM DAILY STATUS
 --
 --   sbrp_stat_id : 2 = active, 3 = one-way bar, 9 = two-way bar
@@ -541,6 +622,53 @@ SELECT  sbrp_id,
 FROM    agg
 WHERE   churned_flag = 0          -- censored outcome
   AND   n_bills_seen = 4          -- incomplete outcome window
+;
+
+-- ----------------------------------------------------------------------------
+-- STEP 9b  FALLBACK outcome settlement dates - the label's delay rules, built
+--          from payment dates. Run alongside STEP 9 if STEP 3b was needed.
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_label_dpd_fallback;
+CREATE TABLE dwbi_temp40_db.dcb_c1_label_dpd_fallback WITH (format='PARQUET') AS
+WITH inv AS (
+    SELECT  sbrp_id, month_key AS bilcycl, MAX(COALESCE(invoice_amt,0)) AS invoice_amt
+    FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
+    WHERE   month_key IN (140405, 140406, 140407, 140408)
+      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    GROUP BY sbrp_id, month_key
+),
+pay AS (
+    SELECT  sbrp_id, day_key, SUM(COALESCE(pmnt_amt,0)) AS paid_day
+    FROM    dwbi_fact_db.v_fact_pmnt_adjmt
+    WHERE   cust_pmnt_typ_id IN (4, 6)
+      AND   bllg_pmnt_stat_id = 2
+      AND   day_key BETWEEN 14040501 AND 14041130    -- the watch window
+      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    GROUP BY sbrp_id, day_key
+),
+cum AS (
+    SELECT  i.sbrp_id, i.bilcycl, i.invoice_amt, p.day_key,
+            SUM(p.paid_day) OVER (PARTITION BY i.sbrp_id, i.bilcycl
+                                  ORDER BY p.day_key
+                                  ROWS BETWEEN UNBOUNDED PRECEDING
+                                           AND CURRENT ROW) AS cum_paid
+    FROM        inv i
+    INNER JOIN  pay p ON p.sbrp_id = i.sbrp_id
+                     AND p.day_key >= i.bilcycl * 100 + 1
+)
+SELECT  sbrp_id,
+        MAX(CASE WHEN bilcycl=140405 THEN settle_day_key END) AS settle_o1,
+        MAX(CASE WHEN bilcycl=140406 THEN settle_day_key END) AS settle_o2,
+        MAX(CASE WHEN bilcycl=140407 THEN settle_day_key END) AS settle_o3,
+        MAX(CASE WHEN bilcycl=140408 THEN settle_day_key END) AS settle_o4,
+        COUNT(*) FILTER (WHERE settle_day_key IS NULL)        AS n_unsettled_out
+FROM (
+    SELECT  sbrp_id, bilcycl, invoice_amt,
+            MIN(CASE WHEN cum_paid >= 0.98 * invoice_amt THEN day_key END) AS settle_day_key
+    FROM    cum
+    GROUP BY sbrp_id, bilcycl, invoice_amt
+) t
+GROUP BY sbrp_id
 ;
 
 -- ============================================================================
