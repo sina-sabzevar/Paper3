@@ -165,50 +165,50 @@ fact, and their per-month coverage has never been measured. `S1` in
 `15_sizing_and_coverage.sql` settles it. If they are healthy in 140311..140404,
 the shock-free C1 (T0 = 140405) is available.
 
-# The number that matters more than the calendar
+# RETRACTED: my sizing of the minimum ticket
 
-The end-of-cycle bill distribution, month 140506:
+I sized the 400,000 Toman ticket against the end-of-cycle bill and concluded it
+only fits subscribers above the 90th percentile. **That conclusion is withdrawn.**
 
-| | Toman |
-|---|---|
-| median monthly bill | **47,410** |
-| p90 monthly bill | **178,900** |
-| network ARPU as quoted | 130,000 |
+`payment_due_amt` is the end-of-cycle bill **only**: cash payments and mid-cycle
+payments do not appear in it. It is the *residual* after the subscriber has
+already paid part of the month, not their monthly spend — and mid-cycle payment
+is common in this base, which is the very behaviour flagged earlier as large and
+sensitive. A subscriber who spends 300,000 Toman and settles 270,000 mid-cycle
+shows an end-of-cycle bill of 30,000. Sizing a loan against that number
+understates their capacity by an order of magnitude.
 
-ARPU sitting 2.7x above the median is consistent — telco spend is heavily
-right-skewed, and the maximum bill here is around 12 billion Toman, clearly
-corporate. But it means **ARPU is the wrong number to plan the product
-against**. Half of the postpaid base bills under 48,000 Toman a month.
+So the median figure of 47,410 Toman is the **median residual bill**, and says
+little about what anyone can afford. The affordability table built on it was
+wrong and should be ignored.
 
-Against that, the stated minimum ticket of 400,000 Toman over four instalments
-is **100,000 Toman a month**:
+What makes this worse rather than better is that the extract already had this
+right. STEP 6 reads `v_fact_pmnt_adjmt` with `cust_pmnt_typ_id IN (4, 6)` —
+end-of-cycle *and* mid-cycle — and its own comment states the principle:
+*proven capacity comes from TOTAL payments, not the invoice, because a
+subscriber who settles most of a bill mid-cycle met the full obligation even
+though the invoice only ever shows the remainder.* The pipeline was consistent;
+the sizing analysis drifted away from it.
 
-* for the **median** subscriber that is **2.11x their entire monthly bill**;
-* for the **p90** subscriber it is **0.56x** their monthly bill.
+`S2` in `15_sizing_and_coverage.sql` is rebuilt on total payments, which is
+proven capacity: money actually handed over. `n_inst_40pct` is the headline —
+the prudent book size at a 400,000 Toman ticket, to be read against the
+3,000,000 loan target.
 
-The bill a subscriber needs for the instalment to stay within a given share of
-it:
+## What does NOT change: the materiality threshold
 
-| instalment as share of bill | required monthly bill | where that sits |
-|---|---|---|
-| 30 pct | 333,000 Toman | above p90 |
-| 40 pct | 250,000 Toman | above p90 |
-| 50 pct | 200,000 Toman | above p90 |
-| 70 pct | 143,000 Toman | below p90 |
-| 100 pct — the bill doubles | 100,000 Toman | below p90 |
+`0.40 * med_bill` in the label stays as it is. It compares the daily
+`bill_outstanding_amt` against the subscriber's own typical **end-of-cycle**
+bill, and both sides live in the same issued-bill world — `bill_outstanding_amt`
+is also zeroed by a mid-cycle payment, as confirmed earlier. A heavy mid-cycle
+payer whose typical residual is 30,000 and who leaves 20,000 unpaid past the due
+date has failed on two thirds of what was actually due, and the threshold should
+fire. Scaling each subscriber to their own issued bill is self-normalising, and
+it is correct for exactly the population that pays mid-cycle.
 
-So on any prudent affordability stance the 400,000 Toman ticket only fits
-subscribers **above the 90th percentile**, which is under 2.8M of the 27.4M
-billed base before any risk screening at all. Reaching **3 million loans at a
-400,000 Toman minimum** therefore requires an affordability stance near
-**70 pct of the monthly bill** — a payment shock that will show up as real
-defaults, and exactly the regime the `shock_uplift_k` term in the notebook's
-limit engine was written to penalise.
+## A feature that falls out of this
 
-At a prudent 40 pct stance, the ticket that fits the population is closer to
-**200,000 Toman**, needing a bill of 125,000 Toman, which sits below p90.
-
-`S2` gives the full distribution and the counts at each stance, so this is sized
-on the real book rather than on two percentiles. This is a business decision, not
-a modelling one: **budget, loan count and minimum ticket are over-constrained**,
-and something has to give — the ticket, the count, or the risk appetite.
+Now that `billed_mN` and `totrev_mN` are both stamped on month N, the pair is
+comparable within a row for the first time, and `1 - billed/totrev` is the
+**mid-cycle payment intensity** — the sensitive signal called out early on.
+`S3` measures how large it is across the base.
