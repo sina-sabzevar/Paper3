@@ -467,11 +467,24 @@ run_len AS (
     FROM    runs
     WHERE   debt_days > 0
     GROUP BY sbrp_id, run_id
+),
+run_agg AS (
+    -- ONE ROW PER SUBSCRIBER. run_len is grouped by (sbrp_id, run_id), so it
+    -- holds one row per DEBT RUN. Joining it straight to a per-month relation
+    -- fans every month row out once per run, and then every SUM and COUNT over
+    -- those months is multiplied by the run count. That is what put values up
+    -- to 36 in a 6-month lateness counter and 927 days of debt in a 180-day
+    -- window. MAX survives duplication, which is why max_dpd was never wrong.
+    SELECT   sbrp_id,
+             MAX(run_days) AS max_run_days,
+             COUNT(*)      AS n_spells
+    FROM     run_len
+    GROUP BY sbrp_id
 )
 SELECT  f.sbrp_id,
-        GREATEST(COALESCE(MAX(r.run_days), 0) - 15, 0)        AS max_dpd_6m,
-        COALESCE(MAX(r.run_days), 0)                          AS max_debt_run_days,
-        COUNT(r.run_id)                                       AS n_debt_spells_6m,
+        GREATEST(COALESCE(MAX(ra.max_run_days), 0) - 15, 0)   AS max_dpd_6m,
+        COALESCE(MAX(ra.max_run_days), 0)                     AS max_debt_run_days,
+        COALESCE(MAX(ra.n_spells), 0)                         AS n_debt_spells_6m,
         SUM(f.debt_days)                                      AS total_debt_days_6m,
         -- LATE MONTH: still open ten days past the due date. Same definition
         -- the label uses.
@@ -492,7 +505,7 @@ SELECT  f.sbrp_id,
         MAX(f.debt_days) FILTER (WHERE f.month_key = 140411) AS debtdays_m5,
         MAX(f.debt_days) FILTER (WHERE f.month_key = 140412) AS debtdays_m6
 FROM        feat f
-LEFT JOIN   run_len r ON r.sbrp_id = f.sbrp_id
+LEFT JOIN   run_agg ra ON ra.sbrp_id = f.sbrp_id
 GROUP BY f.sbrp_id
 ;
 
@@ -760,6 +773,20 @@ run_len AS (
     FROM   runs WHERE debt_days > 0
     GROUP BY sbrp_id, run_id
 ),
+run_agg AS (
+    -- ONE ROW PER SUBSCRIBER. run_len is grouped by (sbrp_id, run_id), so it
+    -- holds one row per DEBT RUN. Joining it straight to a per-month relation
+    -- fans every month row out once per run, and then every SUM and COUNT over
+    -- those months is multiplied by the run count. That is what put values up
+    -- to 36 in a 6-month lateness counter and 927 days of debt in a 180-day
+    -- window. MAX survives duplication, which is why max_dpd was never wrong.
+    SELECT   sbrp_id,
+             MAX(run_days) AS max_run_days,
+             COUNT(*)      AS n_spells
+    FROM     run_len
+    GROUP BY sbrp_id
+),
+
 twoway_consec AS (
     -- "two-way barred two months RUNNING" as specified. Two separated months
     -- are NOT this. month_idx = prev_idx + 1 is required so a month missing
@@ -793,7 +820,7 @@ reclaimed AS (
 agg AS (
     SELECT  o.sbrp_id,
             COUNT(*)                                        AS n_months_seen,
-            GREATEST(COALESCE(MAX(r.run_days), 0) - 15, 0)  AS max_dpd_out,
+            GREATEST(COALESCE(MAX(ra.max_run_days), 0) - 15, 0) AS max_dpd_out,
             SUM(o.open_after_grace)                         AS n_late_out,
             SUM(o.debt_days)                                AS total_debt_days_out,
             MAX(IF(o.twoway_days > 0, 1, 0))                AS escalated_twoway,
@@ -804,7 +831,7 @@ agg AS (
             MAX(COALESCE(x.hit_reclaim, 0))                 AS hit_reclaim,
             MAX(COALESCE(t.twoway_2consec, 0))              AS twoway_2consec
     FROM        out o
-    LEFT JOIN   run_len r       ON r.sbrp_id = o.sbrp_id
+    LEFT JOIN   run_agg ra      ON ra.sbrp_id = o.sbrp_id
     LEFT JOIN   reclaimed x     ON x.sbrp_id = o.sbrp_id
     LEFT JOIN   twoway_consec t ON t.sbrp_id = o.sbrp_id
     GROUP BY o.sbrp_id
@@ -1021,6 +1048,21 @@ SELECT  n_ceiling_months_6m,
         AVG(avg_barred_days_per_spell)      AS avg_days_barred
 FROM    dwbi_temp40_db.dcb3_dataset_c1
 GROUP BY 1 ORDER BY 1;
+
+-- G6  BOUNDS. Every per-month counter has an arithmetic ceiling, and a
+-- fan-out join silently breaks it. n_late_out counts months in a 6-month
+-- window, so it CANNOT exceed 6; total_debt_days_out cannot exceed the days in
+-- the window. This check existed nowhere, which is why a run_len join that
+-- multiplied every SUM by the debt-run count produced lateness counts of 36
+-- and 927 days of debt in a 180-day window, and why a 36 pct bad rate looked
+-- like a finding instead of a bug. ALL FOUR COUNTS BELOW MUST BE ZERO.
+SELECT  COUNT(*) FILTER (WHERE n_late_out > 6)                AS impossible_late,
+        COUNT(*) FILTER (WHERE total_debt_days_out > 190)     AS impossible_debtdays,
+        COUNT(*) FILTER (WHERE twoway_months_out > 6)         AS impossible_twoway_months,
+        COUNT(*) FILTER (WHERE n_months_out > 6)              AS impossible_months_seen,
+        MAX(n_late_out)                                       AS max_late,
+        MAX(total_debt_days_out)                              AS max_debtdays
+FROM    dwbi_temp40_db.dcb3_label;
 
 -- G5  WHAT THE 8/9 EXCLUSION COSTS. These subscribers are dropped from the
 -- label by rule. The point of this check is that they should be FEW, and
