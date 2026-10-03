@@ -188,17 +188,40 @@ GROUP BY sbrp_id
 -- ----------------------------------------------------------------------------
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_dpd;
 CREATE TABLE dwbi_temp40_db.dcb_c1_dpd WITH (format='PARQUET') AS
-WITH d AS (
-    SELECT  sbrp_id,
-            day_key,
-            day_key / 100                                   AS month_key,
-            COALESCE(bill_outstanding_amt, 0)               AS bill_out,
-            COALESCE(unbill_outstanding_amt, 0)             AS unbill_out,
-            CASE WHEN COALESCE(bill_outstanding_amt,0) > 0 THEN 1 ELSE 0 END AS in_debt,
-            ROW_NUMBER() OVER (PARTITION BY sbrp_id ORDER BY day_key)        AS rn
-    FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE   day_key BETWEEN 14030801 AND 14040431
-      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+-- MATERIALITY. A balance only counts as debt once it is large relative to the
+-- subscriber's OWN monthly bill. This matters because of the mid-cycle payer:
+-- hitting the ceiling near the issue date, paying most of it mid-cycle, then
+-- leaving a small remainder to ride along with the next payment. That remainder
+-- keeps bill_outstanding_amt above zero for weeks while the subscriber is in no
+-- difficulty at all. An ABSOLUTE floor does not fix it - a 2M remainder is
+-- noise on a 10M bill and two months of debt on a 1M one - so the floor is a
+-- share of the subscriber's own median invoice.
+--   25% chosen from tracing: 20-50% labels the mid-cycle payer correctly while
+--   still catching someone who misses two whole months. At 100% the genuine
+--   bad payer slips through.
+WITH med AS (
+    SELECT  sbrp_id, APPROX_PERCENTILE(invoice_amt, 0.5) AS med_invoice
+    FROM (  SELECT sbrp_id, month_key, MAX(COALESCE(invoice_amt,0)) AS invoice_amt
+            FROM   dwbi_fact_db.v_fact_sbrp_mthly_cip
+            WHERE  month_key IN (140308,140309,140310,140311,140312,140401,140402,140403,140404)
+              AND  sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+            GROUP BY sbrp_id, month_key ) t
+    GROUP BY sbrp_id
+),
+d AS (
+    SELECT  dd.sbrp_id,
+            dd.day_key,
+            dd.day_key / 100                                AS month_key,
+            COALESCE(dd.bill_outstanding_amt, 0)            AS bill_out,
+            COALESCE(dd.unbill_outstanding_amt, 0)          AS unbill_out,
+            CASE WHEN COALESCE(dd.bill_outstanding_amt,0)
+                      > 0.25 * COALESCE(md.med_invoice, 0)
+                 THEN 1 ELSE 0 END                          AS in_debt,
+            ROW_NUMBER() OVER (PARTITION BY dd.sbrp_id ORDER BY dd.day_key) AS rn
+    FROM        dwbi_fact_db.v_fact_sbrp_daily_cip dd
+    LEFT JOIN   med md ON md.sbrp_id = dd.sbrp_id
+    WHERE   dd.day_key BETWEEN 14030801 AND 14040431
+      AND   dd.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
 ),
 -- gaps and islands: consecutive in-debt days share a group key
 grp AS (
@@ -466,6 +489,62 @@ GROUP BY sbrp_id
 ;
 
 -- ----------------------------------------------------------------------------
+-- STEP 5b  PAYMENT BEHAVIOUR, INCLUDING MID-CYCLE
+--
+--   cust_pmnt_typ_id : 4 = end of cycle, 6 = mid cycle
+--
+--   The mid-cycle bar is an ambiguous signal on its own - it confounds a heavy
+--   user on a conservative ceiling with a subscriber in real difficulty. What
+--   disambiguates it is what they do NEXT:
+--     pays mid-cycle, quickly   -> can reach cash on demand, runs near a tight
+--                                  ceiling. Not a credit problem.
+--     waits for the next bill   -> the ceiling is binding because money is.
+--
+--   PROVEN CAPACITY is built from TOTAL payments, not from invoice_amt. A
+--   subscriber who settles 8M mid-cycle and 2M later met a 10M obligation, but
+--   the invoice may only ever show the 2M remainder. Sizing limits off the
+--   invoice would systematically under-lend to exactly the heavy users this
+--   product is for.
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_pay;
+CREATE TABLE dwbi_temp40_db.dcb_c1_pay WITH (format='PARQUET') AS
+WITH pm AS (
+    SELECT  sbrp_id,
+            day_key / 100                                                AS month_key,
+            SUM(COALESCE(pmnt_amt,0))                                    AS paid_total,
+            SUM(CASE WHEN cust_pmnt_typ_id = 6 THEN COALESCE(pmnt_amt,0) ELSE 0 END)
+                                                                         AS paid_midcycle,
+            SUM(CASE WHEN cust_pmnt_typ_id = 4 THEN COALESCE(pmnt_amt,0) ELSE 0 END)
+                                                                         AS paid_endcycle,
+            COUNT(*)                                                     AS n_payments,
+            COUNT(*) FILTER (WHERE cust_pmnt_typ_id = 6)                 AS n_midcycle_payments,
+            MIN(day_key % 100)                                           AS first_pay_day
+    FROM    dwbi_fact_db.v_fact_pmnt_adjmt
+    WHERE   cust_pmnt_typ_id IN (4, 6)
+      AND   bllg_pmnt_stat_id = 2
+      AND   day_key BETWEEN 14030801 AND 14040431
+      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+    GROUP BY sbrp_id, day_key / 100
+)
+SELECT  sbrp_id,
+        SUM(paid_total)                                      AS paid_total_9m,
+        SUM(paid_midcycle)                                   AS paid_midcycle_9m,
+        SUM(paid_midcycle) / NULLIF(SUM(paid_total), 0)      AS midcycle_share,
+        SUM(n_midcycle_payments)                             AS n_midcycle_payments_9m,
+        SUM(n_payments)                                      AS n_payments_9m,
+        AVG(first_pay_day)                                   AS avg_first_pay_day,
+        STDDEV_SAMP(paid_total)                              AS paid_std_9m,
+        -- PROVEN CAPACITY: the largest monthly total the subscriber has actually
+        -- settled. Drives the credit limit; see the notebook's limit engine.
+        MAX(paid_total)                                      AS proven_capacity,
+        APPROX_PERCENTILE(paid_total, 0.5)                   AS median_monthly_paid,
+        MAX(paid_total) / NULLIF(APPROX_PERCENTILE(paid_total, 0.5), 0)
+                                                             AS capacity_headroom
+FROM    pm
+GROUP BY sbrp_id
+;
+
+-- ----------------------------------------------------------------------------
 -- STEP 6  POINT-IN-TIME STATE AT T0
 --         Credit-ceiling components kept separate. The existing available_credit
 --         formula nets off bill_outstanding_amt, which mixes the ceiling (a risk
@@ -600,16 +679,29 @@ ORDER BY month_key
 -- ============================================================================
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb_c1_label;
 CREATE TABLE dwbi_temp40_db.dcb_c1_label WITH (format='PARQUET') AS
-WITH od AS (
-    SELECT  sbrp_id, day_key, day_key / 100 AS month_key,
-            CASE WHEN COALESCE(bill_outstanding_amt,0) > 0 THEN 1 ELSE 0 END AS in_debt,
+WITH omed AS (
+    SELECT  sbrp_id, APPROX_PERCENTILE(invoice_amt, 0.5) AS med_invoice
+    FROM (  SELECT sbrp_id, month_key, MAX(COALESCE(invoice_amt,0)) AS invoice_amt
+            FROM   dwbi_fact_db.v_fact_sbrp_mthly_cip
+            WHERE  month_key IN (140308,140309,140310,140311,140312,140401,140402,140403,140404)
+              AND  sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+            GROUP BY sbrp_id, month_key ) t
+    GROUP BY sbrp_id
+),
+od AS (
+    SELECT  dd.sbrp_id, dd.day_key, dd.day_key / 100 AS month_key,
+            -- the same 25%-of-own-bill materiality floor as the feature window
+            CASE WHEN COALESCE(dd.bill_outstanding_amt,0)
+                      > 0.25 * COALESCE(om.med_invoice,0)
+                 THEN 1 ELSE 0 END AS in_debt,
             -- past due = still outstanding after the 15th of the billing month
-            CASE WHEN COALESCE(bill_outstanding_amt,0) > 0 AND day_key % 100 > 15
-                 THEN 1 ELSE 0 END                                           AS past_due,
-            ROW_NUMBER() OVER (PARTITION BY sbrp_id ORDER BY day_key)        AS rn
-    FROM    dwbi_fact_db.v_fact_sbrp_daily_cip
-    WHERE   day_key BETWEEN 14040501 AND 14041130        -- the watch window
-      AND   sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
+            CASE WHEN COALESCE(dd.bill_outstanding_amt,0) > 0
+                  AND dd.day_key % 100 > 15 THEN 1 ELSE 0 END                AS past_due,
+            ROW_NUMBER() OVER (PARTITION BY dd.sbrp_id ORDER BY dd.day_key)  AS rn
+    FROM        dwbi_fact_db.v_fact_sbrp_daily_cip dd
+    LEFT JOIN   omed om ON om.sbrp_id = dd.sbrp_id
+    WHERE   dd.day_key BETWEEN 14040501 AND 14041130     -- the watch window
+      AND   dd.sbrp_id IN (SELECT sbrp_id FROM dwbi_temp40_db.dcb_c1_base)
 ),
 od_grp AS (
     SELECT  od.*,
@@ -847,6 +939,7 @@ SELECT  '140405'                   AS obs_cohort,
         br.*,
         r.*,
         pit.*,
+        pay.*,
         a.*,
         l.y_twoway_2m, l.y_severe, l.y_strict, l.y_v1, l.y_v2, l.y_loose,
         l.indeterminate,
@@ -862,6 +955,7 @@ LEFT  JOIN  dwbi_temp40_db.dcb_c1_dpd      d   ON d.sbrp_id   = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb_c1_bars     br  ON br.sbrp_id  = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb_c1_scr      r   ON r.sbrp_id   = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb_c1_pit      pit ON pit.sbrp_id = b.sbrp_id
+LEFT  JOIN  dwbi_temp40_db.dcb_c1_pay      pay ON pay.sbrp_id = b.sbrp_id
 LEFT  JOIN  dwbi_temp40_db.dcb_c1_active   a   ON a.sbrp_id   = b.sbrp_id
 ;
 --  Drop the duplicate sbrp_id columns the p.* / d.* style joins create before
