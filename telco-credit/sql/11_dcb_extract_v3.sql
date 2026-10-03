@@ -556,15 +556,21 @@ GROUP BY sbrp_id
 -- ---------------------------------------------------------------------------
 -- STEP 6  PAYMENT BEHAVIOUR, INCLUDING MID-CYCLE
 --
---  cust_pmnt_typ_id: ASSUMED 4 = end of cycle, 6 = mid cycle. S3 in
---  15_sizing_and_coverage.sql CONTRADICTS that: type 6 is 99.99 pct of all
---  payments for the median subscriber, while the end-of-cycle bill is 75 pct
---  of what was paid. Both cannot hold - if nearly everything were genuinely
---  mid-cycle the end-of-cycle bill would be near zero. So type 6 is not
---  "mid-cycle", and paid_midcycle / midcycle_share / n_midcycle_payments below
---  are NOT TRUSTWORTHY until the code meanings are confirmed.
---  The honest mid-cycle measure in the meantime is 1 - billed/tot_rev from the
---  panel, which the data supports at about 25 pct of outlay.
+--  cust_pmnt_typ_id AND bllg_pmnt_stat_id ARE NOT INTERPRETED HERE.
+--  An earlier version of this file filtered cust_pmnt_typ_id IN (4, 6) and
+--  split out "mid-cycle" as type 6. That mapping was MY OWN INVENTION - it was
+--  never given, it entered through a review note of mine and propagated from
+--  there - and the data contradicts it: type 6 is 99.99 pct of payments for the
+--  median subscriber, which cannot coexist with an end-of-cycle bill worth 75
+--  pct of what was paid. The filter is therefore GONE, because a filter built
+--  on a guess silently deletes payment types.
+--
+--  MID-CYCLE IS NOT DERIVABLE FROM THIS TABLE. It comes from cust_bil_typ_id on
+--  v_fact_cust_bil_daily, where 2 is the end-of-cycle bill; and without the
+--  cash and non-cash purchase split it cannot be computed from payments at all.
+--  P1 in 16_payment_types.sql establishes the codes before anything reads them.
+--
+
 --  PROVEN CAPACITY comes from TOTAL payments, not invoice_amt: a subscriber who
 --  settles most of a bill mid-cycle met the full obligation even though the
 --  invoice may only ever show the remainder.
@@ -575,23 +581,19 @@ WITH pm AS (
     SELECT  p.sbrp_id,
             p.day_key / 100                                     AS month_key,
             SUM(COALESCE(p.pmnt_amt,0))                         AS paid_total,
-            SUM(COALESCE(p.pmnt_amt,0)) FILTER (WHERE p.cust_pmnt_typ_id = 6)
-                                                                AS paid_midcycle,
             COUNT(*)                                            AS n_payments,
-            COUNT(*) FILTER (WHERE p.cust_pmnt_typ_id = 6)      AS n_midcycle_payments,
             MIN(MOD(p.day_key, 100))                            AS first_pay_day
     FROM        dwbi_fact_db.v_fact_pmnt_adjmt p
     INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = p.sbrp_id
-    WHERE   p.cust_pmnt_typ_id IN (4, 6)
-      AND   p.bllg_pmnt_stat_id = 2
+    -- NO cust_pmnt_typ_id filter. See the note above. bllg_pmnt_stat_id = 2
+    -- for "successful" is ALSO unverified and carried over from the original
+    -- pipeline; P1 reports the status codes so it can be confirmed or dropped.
+    WHERE   p.bllg_pmnt_stat_id = 2
       AND   p.day_key BETWEEN 14031101 AND 14040431
     GROUP BY p.sbrp_id, p.day_key / 100
 )
 SELECT  sbrp_id,
         SUM(paid_total)                                   AS paid_total_6m,
-        SUM(paid_midcycle)                                AS paid_midcycle_6m,
-        SUM(paid_midcycle) / NULLIF(SUM(paid_total), 0)   AS midcycle_share,
-        SUM(n_midcycle_payments)                          AS n_midcycle_payments_6m,
         SUM(n_payments)                                   AS n_payments_6m,
         AVG(first_pay_day)                                AS avg_first_pay_day,
         STDDEV_SAMP(paid_total)                           AS paid_std_6m,

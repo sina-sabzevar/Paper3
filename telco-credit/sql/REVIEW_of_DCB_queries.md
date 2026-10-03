@@ -8,7 +8,7 @@
 | **اجزای امتیاز خوش‌حسابی، جدا** | `v_fact_sbrp_mthly_cip`: `debt_scr` و `suspend_scr` |
 | **مانده بدهی روزانه** | `v_fact_cust_bil_daily.debit_amt` — با این می‌شود DPD واقعی ساخت |
 | **صورتحساب و پرداخت ماهانه** | `invoice_amt` و `pmnt_amt` در `v_fact_sbrp_mthly_cip` |
-| **پرداخت‌های روزانه با نوع** | `v_fact_pmnt_adjmt`: `day_key`, `pmnt_amt`, `cust_pmnt_typ_id` (۴ پایان دوره، ۶ میان‌دوره) |
+| **پرداخت‌های روزانه با نوع** | `v_fact_pmnt_adjmt`: `day_key`, `pmnt_amt`, `cust_pmnt_typ_id` (**معنای کدها تأیید نشده — «۴ پایان دوره، ۶ میان‌دوره» ساختهٔ من بود و دیتا نقضش کرد. میان‌دوره از `cust_bil_typ_id` می‌آید، نه از این ستون.**) |
 | **سقف اعتبار، با اجزا** | `initial_cred_lim_amt`, `temporary_cred_lim_amt`, `rfndable_dpos_amt`, `non_rfndable_dpos_amt`, `advance_pmnt_amt` |
 
 این یعنی **همهٔ لایهٔ ۰ قابل ساخت است**. هیچ دادهٔ جدیدی لازم نداری.
