@@ -155,15 +155,23 @@ SELECT  d.sbrp_id,
         COUNT(*)                                                      AS days_seen,
         MAX(d.day_key)                                                AS last_day,
         -- ---- debt, against the subscriber's own bill
-        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 0.25 * b.med_invoice)
+        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 0.40 * b.med_invoice)
                                                                       AS debt_days,
-        -- the in-debt flag ON THE LAST DAY of the month. MAX_BY avoids nesting
-        -- a window function inside an aggregate, which Trino rejects.
-        MAX_BY(IF(d.bill_outstanding_amt > 0.25 * b.med_invoice, 1, 0), d.day_key)
+        -- IN DEBT ON THE LAST DAY of the month. Used ONLY to decide whether a
+        -- debt run continues into the next month. It is NOT a lateness flag:
+        -- the bill for month M is issued at the end of M, so this is true for
+        -- almost everyone and reads as a 100 pct bad rate if misused.
+        MAX_BY(IF(d.bill_outstanding_amt > 0.40 * b.med_invoice, 1, 0), d.day_key)
                                                                       AS open_at_month_end,
+        -- LATE: still open around day 25, which is ten days past the due date
+        -- of the 15th. This is the lateness flag the label counts. Probed over
+        -- days 24-26 so a missing day does not lose the month.
+        MAX(IF(MOD(d.day_key, 100) BETWEEN 24 AND 26
+               AND d.bill_outstanding_amt > 0.40 * b.med_invoice, 1, 0))
+                                                                      AS open_after_grace,
         MAX(d.bill_outstanding_amt)                                   AS bill_out_max,
         -- past due = still open after the 15th
-        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 0.25 * b.med_invoice
+        COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 0.40 * b.med_invoice
                            AND MOD(d.day_key, 100) > 15)              AS past_due_days,
         -- carried = more than one bill stacked, which only happens on a miss
         COUNT(*) FILTER (WHERE d.bill_outstanding_amt > 1.5 * b.med_invoice)
@@ -174,10 +182,10 @@ SELECT  d.sbrp_id,
         -- a bar that began in a month carrying an overdue bill is non-payment;
         -- one with no overdue bill behind it is the credit ceiling
         MAX(IF(d.sbrp_stat_id = 3
-               AND d.bill_outstanding_amt > 0.25 * b.med_invoice
+               AND d.bill_outstanding_amt > 0.40 * b.med_invoice
                AND MOD(d.day_key, 100) > 15, 1, 0))                   AS nonpay_bar_day,
         MAX(IF(d.sbrp_stat_id = 3
-               AND d.bill_outstanding_amt <= 0.25 * b.med_invoice, 1, 0))
+               AND d.bill_outstanding_amt <= 0.40 * b.med_invoice, 1, 0))
                                                                       AS ceiling_bar_day,
         -- ---- ceiling pressure
         MAX(d.unbill_outstanding_amt)                                 AS unbill_max,
@@ -199,7 +207,7 @@ DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_month_end;
 CREATE TABLE dwbi_temp40_db.dcb3_month_end WITH (format='PARQUET') AS
 SELECT  e.sbrp_id,
         e.month_key,
-        MAX(IF(d.bill_outstanding_amt > 0.25 * b.med_invoice, 1, 0)) AS open_at_month_end
+        MAX(IF(d.bill_outstanding_amt > 0.40 * b.med_invoice, 1, 0)) AS open_at_month_end
 FROM (
     SELECT sbrp_id, day_key / 100 AS month_key, MAX(day_key) AS last_day
     FROM   dwbi_fact_db.v_fact_sbrp_daily_cip
@@ -251,11 +259,12 @@ SELECT  f.sbrp_id,
         COALESCE(MAX(r.run_days), 0)                          AS max_debt_run_days,
         COUNT(r.run_id)                                       AS n_debt_spells_6m,
         SUM(f.debt_days)                                      AS total_debt_days_6m,
-        -- LATE MONTH: open at month end. Same definition the label uses.
-        SUM(f.open_at_month_end)                              AS n_late_months_6m,
-        -- settled inside the month but after the 15th: chronic mild lateness.
+        -- LATE MONTH: still open ten days past the due date. Same definition
+        -- the label uses.
+        SUM(f.open_after_grace)                               AS n_late_months_6m,
+        -- past the 15th but settled before day 25: chronic mild lateness.
         -- A strong predictor, but not default behaviour - its own feature.
-        COUNT(*) FILTER (WHERE f.open_at_month_end = 0 AND f.past_due_days > 0)
+        COUNT(*) FILTER (WHERE f.open_after_grace = 0 AND f.past_due_days > 0)
                                                               AS n_mild_late_months_6m,
         COUNT(*) FILTER (WHERE f.debt_days = 0)               AS n_ontime_months_6m,
         MAX(f.bill_out_max)                                   AS max_debt_amt_6m,
@@ -480,7 +489,7 @@ agg AS (
     SELECT  o.sbrp_id,
             COUNT(*)                                        AS n_months_seen,
             GREATEST(COALESCE(MAX(r.run_days), 0) - 15, 0)  AS max_dpd_out,
-            SUM(o.open_at_month_end)                        AS n_late_out,
+            SUM(o.open_after_grace)                         AS n_late_out,
             SUM(o.debt_days)                                AS total_debt_days_out,
             MAX(o.nonpay_bar_day)                           AS had_nonpay_oneway,
             SUM(o.nonpay_bar_day)                           AS n_nonpay_bar_months,
