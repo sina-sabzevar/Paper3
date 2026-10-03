@@ -21,11 +21,19 @@
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
--- P1  cust_bil_typ_id - THE BILL TYPES. We know 2 is the end-of-cycle bill.
---     This says what else exists and which value is the mid-cycle bill.
---     The day-of-month profile is the tell: an end-of-cycle bill sits on the
---     LAST day of the month, so pay_day_p50 near 30; a mid-cycle bill is
---     spread through the month, so a much lower and wider spread.
+-- P1  cust_bil_typ_id - THE BILL TYPES. CONFIRMED: 2 = end-of-cycle,
+--     3 = MID-CYCLE. The extract is already rebuilt on that. P1 is now a
+--     VERIFICATION rather than a discovery, and it checks three things:
+--       a. type 3 is spread across the month (day_p50 well below 30), which is
+--          what makes it mid-cycle. If it also sat on the month end, the split
+--          would mean something else.
+--       b. how much billing type 3 carries, which sizes the mid-cycle effect.
+--       c. whether any OTHER type exists that carries real value, in which case
+--          obligation_6m is still incomplete.
+--     Note what this already fixed: a cost guard of MOD(day_key,100) >= 28 was
+--     in the extract while only type 2 was read. It was valid then and FATAL
+--     once type 3 matters, because a mid-cycle bill does not land on the month
+--     end. It has been removed.
 -- ---------------------------------------------------------------------------
 SELECT  cust_bil_typ_id,
         COUNT(*)                                        AS n_rows,

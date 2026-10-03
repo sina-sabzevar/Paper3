@@ -252,28 +252,49 @@ WHERE   reclaim.sbrp_id IS NULL
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_billref;
 CREATE TABLE dwbi_temp40_db.dcb3_billref WITH (format='PARQUET') AS
-SELECT  c.sbrp_id,
-        APPROX_PERCENTILE(c.payment_due_amt, 0.5)
-            FILTER (WHERE c.payment_due_amt > 0)        AS med_bill,
-        COUNT(*) FILTER (WHERE c.payment_due_amt > 0)   AS n_billed_months,
-        MAX(c.payment_due_amt)                          AS max_bill,
-        STDDEV_SAMP(c.payment_due_amt)
-            FILTER (WHERE c.payment_due_amt > 0)        AS bill_std
-FROM        dwbi_fact_db.v_fact_cust_bil_daily c
-INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
-WHERE   c.day_key BETWEEN 14031101 AND 14040431       -- FEATURE window only
-  AND   c.cust_bil_typ_id = 2
-  -- COST GUARD, and the one thing here to verify. The bill lands on the last
-  -- day of the month, which is day 31 in months 1-6, day 30 in 7-11 and day 29
-  -- in month 12, so days 28 and up catch every month end while reading about a
-  -- tenth of the table. B2 in 14_cust_bil_probe.sql prints n_days, first_day
-  -- and last_day per month: if any month shows a bill on an earlier day, or
-  -- n_days above 1, DELETE this line and take the cost.
-  AND   MOD(c.day_key, 100) >= 28
-GROUP BY c.sbrp_id
--- a subscriber with no issued bill in any feature month has no bill to measure
--- against, so there is nothing to call material. Dropped explicitly.
-HAVING  COUNT(*) FILTER (WHERE c.payment_due_amt > 0) > 0
+SELECT  sbrp_id,
+        -- THE MATERIALITY YARDSTICK stays on the END-OF-CYCLE bill (type 2)
+        -- alone, deliberately. It is compared against the daily
+        -- bill_outstanding_amt, which is the end-of-cycle bill balance, so both
+        -- sides of that test must be the same quantity. Adding the mid-cycle
+        -- bill here would inflate the threshold above the balance it screens.
+        APPROX_PERCENTILE(ec_amt, 0.5) FILTER (WHERE ec_amt > 0)  AS med_bill,
+        COUNT(*) FILTER (WHERE ec_amt > 0)                        AS n_billed_months,
+        -- TRUE TELCO OBLIGATION = end-of-cycle PLUS mid-cycle billing. This is
+        -- what the subscriber was actually asked to pay across the window, and
+        -- it is the denominator that exposes arrears paydown: paid_total above
+        -- obligation means old debt was being cleared inside the window, so the
+        -- window overstates ongoing monthly capacity.
+        SUM(ec_amt)                                               AS ec_billed_6m,
+        SUM(mc_amt)                                               AS mc_billed_6m,
+        SUM(ec_amt + mc_amt)                                      AS obligation_6m,
+        -- the REAL mid-cycle intensity, from the bill types rather than from an
+        -- invented payment-code mapping.
+        SUM(mc_amt) / NULLIF(SUM(ec_amt + mc_amt), 0)             AS midcycle_billed_share,
+        APPROX_PERCENTILE(ec_amt + mc_amt, 0.5)
+            FILTER (WHERE ec_amt + mc_amt > 0)                    AS med_obligation,
+        MAX(ec_amt)                                               AS max_bill,
+        STDDEV_SAMP(ec_amt) FILTER (WHERE ec_amt > 0)             AS bill_std
+FROM (
+    SELECT  c.sbrp_id,
+            c.day_key / 100                                       AS month_key,
+            SUM(COALESCE(c.payment_due_amt,0))
+                FILTER (WHERE c.cust_bil_typ_id = 2)              AS ec_amt,
+            SUM(COALESCE(c.payment_due_amt,0))
+                FILTER (WHERE c.cust_bil_typ_id = 3)              AS mc_amt
+    FROM        dwbi_fact_db.v_fact_cust_bil_daily c
+    INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
+    WHERE   c.day_key BETWEEN 14031101 AND 14040431   -- FEATURE window only
+      AND   c.cust_bil_typ_id IN (2, 3)
+      -- NO day-of-month guard. An earlier version had MOD(day_key,100) >= 28 as
+      -- a cost guard, valid while only the end-of-cycle bill was read. Type 3
+      -- is the MID-CYCLE bill and does not land on the month end, so that guard
+      -- would have silently deleted every mid-cycle bill.
+    GROUP BY c.sbrp_id, c.day_key / 100
+) t
+GROUP BY sbrp_id
+-- no end-of-cycle bill in any feature month means no bill to measure against.
+HAVING  COUNT(*) FILTER (WHERE ec_amt > 0) > 0
 ;
 
 -- ---------------------------------------------------------------------------
@@ -495,12 +516,16 @@ WITH mth AS (
 bil AS (
     SELECT  c.sbrp_id,
             c.day_key / 100                        AS month_key,
-            MAX(COALESCE(c.payment_due_amt,0))     AS billed_amt
+            -- billed_amt is the TOTAL the subscriber was billed that month:
+            -- end-of-cycle (type 2) plus mid-cycle (type 3). Comparable within
+            -- a row against totrev_mN, which is the same month's usage.
+            SUM(COALESCE(c.payment_due_amt,0))     AS billed_amt,
+            SUM(COALESCE(c.payment_due_amt,0))
+                FILTER (WHERE c.cust_bil_typ_id = 3) AS mc_billed_amt
     FROM        dwbi_fact_db.v_fact_cust_bil_daily c
     INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
     WHERE   c.day_key BETWEEN 14031101 AND 14040431
-      AND   c.cust_bil_typ_id = 2
-      AND   MOD(c.day_key, 100) >= 28
+      AND   c.cust_bil_typ_id IN (2, 3)
     GROUP BY c.sbrp_id, c.day_key / 100
 )
 SELECT  sbrp_id,
@@ -535,6 +560,8 @@ SELECT  sbrp_id,
         SUM(intl_cl_cnt)                                 AS intl_cl_cnt_6m,
         STDDEV_SAMP(tot_rev)                             AS totrev_std_6m,
         STDDEV_SAMP(data_gb)                             AS data_gb_std_6m,
+        SUM(mc_billed_amt)                               AS mc_billed_6m,
+        SUM(mc_billed_amt) / NULLIF(SUM(billed_amt), 0)   AS midcycle_billed_share_6m,
         COUNT(*)                                         AS n_months_seen
 -- FULL OUTER on the month key so a subscriber-month present in one source but
 -- not the other is still kept. An INNER JOIN here would silently drop months,
@@ -544,7 +571,7 @@ FROM (
             COALESCE(m.month_key, l.month_key) AS month_key,
             m.tot_rev, m.data_gb, m.voice_min,
             m.call_cnt, m.intl_cl_cnt,
-            l.billed_amt
+            l.billed_amt, l.mc_billed_amt
     FROM            mth m
     FULL OUTER JOIN bil l
                  ON l.sbrp_id = m.sbrp_id AND l.month_key = m.month_key
@@ -766,6 +793,16 @@ WHERE   hit_queue   = 0
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb3_dataset_c1;
 CREATE TABLE dwbi_temp40_db.dcb3_dataset_c1 WITH (format='PARQUET') AS
 SELECT  '140405' AS obs_cohort, b.sbrp_id, r.med_bill,
+        -- CAPACITY BASIS = paid_total_6m, as decided. But part of the excess of
+        -- payments over billing is ARREARS CLEARED FROM BEFORE THE WINDOW, not
+        -- ongoing capacity, so the window overstates capacity for anyone who
+        -- was catching up. These two make that visible instead of hiding it:
+        --   paid_to_obligation  > 1  was paying down old debt in the window
+        --                       < 1  was accumulating new arrears
+        --   arrears_paydown_6m  the Rial amount of that excess
+        -- Discount proven_capacity by this in Python before setting a limit.
+        pay.paid_total_6m / NULLIF(r.obligation_6m, 0)     AS paid_to_obligation,
+        GREATEST(pay.paid_total_6m - r.obligation_6m, 0)   AS arrears_paydown_6m,
         dpd.*, bar.*, pan.*, pay.*, pit.*,
         lab.y_twoway_2m, lab.y_twoway_any2m, lab.y_severe, lab.y_strict,
         lab.y_v1, lab.y_v2, lab.y_loose, lab.indeterminate,
