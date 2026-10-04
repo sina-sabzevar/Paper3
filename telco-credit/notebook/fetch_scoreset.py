@@ -3,18 +3,24 @@
 
     python3 fetch_scoreset.py
 
-WHY PARITY AND NOT A WINDOW FUNCTION
+WHY A HASH AND NOT PARITY OF sbrp_id
 
-MOD(sbrp_id, 2) splits the table with a single scan and a filter. The halves
-are non-overlapping and exhaustive by construction - every id is even or odd,
-and no id is both - so nothing has to be verified about the boundary. An
-alternative using ROW_NUMBER() OVER (ORDER BY sbrp_id) would make the cluster
-sort all 11M rows to learn something parity already gives for free.
+An earlier version of this split on MOD(ABS(sbrp_id), 2). That was wrong, and
+the ten real sbrp_id values in the handover file show why: every one of them
+is odd. Under uniform parity that is a 1-in-1024 coincidence, so sbrp_id
+almost certainly carries a fixed low bit - a check digit, or an id derived as
+something doubled plus one. These ids are composed, not sequential: they share
+a five digit block after the two leading digits.
 
-ABS() is there because MOD in Trino keeps the sign of its argument: for a
-negative id MOD(-3, 2) is -1, which matches neither 0 nor 1, and those rows
-would be dropped from both halves without a trace. sbrp_id is very probably
-always positive; ABS costs nothing and removes the question.
+On a parity split, that means the even half gets ZERO rows and the odd half
+gets all 11.5M. The split silently does nothing, and it is only caught after
+paying for two full scans of an 11.5M row table.
+
+MOD on a hash has no such failure mode. MD5 and XXHASH64 are uniform over
+their output whatever structure the input has, so the halves come out even
+however the operator composes its ids. The halves are still non-overlapping
+and exhaustive by construction - a hash maps each id to exactly one bucket -
+so nothing has to be verified about a boundary.
 
 WHY THE HALVES ARE NEVER CONCATENATED
 
@@ -49,7 +55,10 @@ TABLE   = "dcbs_scoreset"
 OUTDIR  = "data"
 
 # sbrp_id, not sbrp - the column is sbrp_id everywhere in the pipeline.
-BASE = "SELECT * FROM {schema}.{table} WHERE MOD(ABS(sbrp_id), 2) = {half}"
+# The hash, not the id: see the note above on every observed id being odd.
+BASE = ("SELECT * FROM {schema}.{table} "
+        "WHERE MOD(ABS(FROM_BIG_ENDIAN_64(XXHASH64(TO_UTF8("
+        "CAST(sbrp_id AS VARCHAR))))), 2) = {half}")
 
 
 def query(half):

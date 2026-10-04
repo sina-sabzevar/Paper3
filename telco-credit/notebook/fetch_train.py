@@ -61,6 +61,23 @@ OUTDIR    = "data"
 LABEL     = "y_severe"
 GOOD_KEEP = 10            # keep this many goods out of every 100
 
+# A UNIFORM DRAW FROM sbrp_id, VIA A HASH - NOT MOD ON THE ID ITSELF.
+#
+# Every one of the ten real sbrp_id values in the handover file is odd, which
+# under uniform parity is a 1-in-1024 coincidence, so the id almost certainly
+# carries a fixed low bit. They are composed rather than sequential - they
+# share a five digit block after the two leading digits. MOD on such an id
+# does not sample, it selects a structured slice: one issuing batch, one
+# region, one SIM generation. And it does so silently, because the result
+# looks like a sample.
+#
+# A hash is uniform over its output whatever the input encodes, so MOD on the
+# hash is a real draw. It stays deterministic, which is what matters for a
+# training set: the same subscribers are chosen on every re-run, so the data
+# does not shift under the model between one fit and the next.
+DRAW = ("MOD(ABS(FROM_BIG_ENDIAN_64(XXHASH64(TO_UTF8("
+        "CAST(sbrp_id AS VARCHAR))))), {m})")
+
 
 def fetch(sql, label=""):
     """The only place IQ is called. If Get_DF takes a connection, a timeout or
@@ -82,32 +99,32 @@ def guards(q):
 # ---------------------------------------------------------------------------
 #  DOWN-SAMPLED - the default. Every bad, one good in ten.
 #
-#  MOD(ABS(sbrp_id), 100) < 10 picks the goods. It is deterministic, so the
-#  same subscribers are selected on every re-run and the training set does not
-#  quietly change under the model between one fit and the next.
+#  The goods are picked by a hashed draw - see the note on DRAW above for why
+#  MOD on the raw id would have taken a structured slice rather than a sample.
 # ---------------------------------------------------------------------------
 def sampled_query():
     return guards(
         "SELECT t.*, IF({label} = 1, 1.0, 100.0 / {keep}) AS sample_weight\n"
         "FROM   {schema}.{table} t\n"
         "WHERE  {label} = 1\n"
-        "  OR   MOD(ABS(sbrp_id), 100) < {keep}".format(
-            label=LABEL, keep=GOOD_KEEP, schema=SCHEMA, table=TABLE))
+        "  OR   {draw} < {keep}".format(
+            label=LABEL, keep=GOOD_KEEP, schema=SCHEMA, table=TABLE,
+            draw=DRAW.format(m=100)))
 
 
 # ---------------------------------------------------------------------------
-#  FULL - both halves by parity of sbrp_id.
+#  FULL - both halves by a hashed draw, not by parity of sbrp_id.
 #
-#  ABS() is not decoration: MOD in Trino keeps the sign of its argument, so for
-#  a negative id MOD(-3, 2) is -1, which matches neither 0 nor 1, and those rows
-#  would vanish from both halves without a trace.
+#  On parity, with every observed id odd, one half would get ZERO rows and the
+#  other all 9.2M - a split that silently does nothing, discovered only after
+#  two full scans. A hash splits evenly however the ids are composed.
 # ---------------------------------------------------------------------------
 def half_query(half):
     return guards(
         "SELECT t.*, 1.0 AS sample_weight\n"
         "FROM   {schema}.{table} t\n"
-        "WHERE  MOD(ABS(sbrp_id), 2) = {half}".format(
-            schema=SCHEMA, table=TABLE, half=half))
+        "WHERE  {draw} = {half}".format(
+            schema=SCHEMA, table=TABLE, half=half, draw=DRAW.format(m=2)))
 
 
 def report(df):
