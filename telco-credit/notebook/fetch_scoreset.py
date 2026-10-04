@@ -27,6 +27,10 @@ Scoring does not need the halves together. A PD is a function of one row, so
 each half is scored on its own and only the two small (sbrp_id, pd) frames are
 ever combined. That is 11M x 2, about 0.18 GB.
 
+Output is CSV. Each half lands near 3.3 GB, and read_csv returns float64
+regardless of what shrink() did before writing, so pass dtype= on the way back
+in if the halves are tight on memory.
+
 TWO DRIVER RULES, both learned the hard way on this project:
 
   1. NO PERCENT CHARACTER ANYWHERE IN A QUERY STRING. Python DB drivers default
@@ -64,7 +68,9 @@ def fetch(sql, label=""):
 
 
 def shrink(df):
-    """float64 -> float32 halves the file. It costs no precision that matters
+    """float64 -> float32 halves what is held in memory while the half is live.
+    CSV does not record it, so this buys headroom during the fetch, not a
+    smaller file. It costs no precision that matters
     for features whose own measurement error is larger. sbrp_id is left alone:
     it is an identity, and float32 cannot hold a 9-digit integer exactly."""
     before = df.memory_usage(deep=True).sum() / 1e9
@@ -81,28 +87,14 @@ def shrink(df):
     return df
 
 
-def _parquet():
-    for m in ("pyarrow", "fastparquet"):
-        try:
-            __import__(m)
-            return True
-        except ImportError:
-            pass
-    return False
-
-PARQUET = _parquet()
-
-
 def write(df, stem):
-    # Parquet is about a fifth the size of CSV and keeps the numeric types CSV
-    # throws away. If neither writer is installed this falls back to CSV rather
-    # than failing after an 11M row fetch has already been paid for.
+    # CSV, as asked. Two things it costs, both manageable:
+    #   - about 2.5x the size of parquet, so each half lands near 3.3 GB
+    #   - no dtypes, so read_csv gives float64 back whatever shrink() did here;
+    #     pass dtype= on the way in, or downcast again after reading
     df = shrink(df)
-    path = stem + (".parquet" if PARQUET else ".csv")
-    if PARQUET:
-        df.to_parquet(path, index=False, compression="snappy")
-    else:
-        df.to_csv(path, index=False)
+    path = stem + ".csv"
+    df.to_csv(path, index=False)
     print("    wrote {}  ({:.2f} GB on disk)".format(
         path, os.path.getsize(path) / 1e9))
     return path
@@ -142,16 +134,17 @@ def main():
     print("they must match exactly - a shortfall means rows matched neither")
     print("half, which is what ABS() in the query exists to prevent.")
 
-    print("\nSCORE EACH HALF SEPARATELY. Do not concatenate them:")
+    print("\nSCORE EACH HALF SEPARATELY. Do not concatenate the halves:")
     print("    out = []")
     print("    for p in {!r}:".format(paths))
-    print("        d = pd.read_parquet(p) if p.endswith('.parquet') else pd.read_csv(p)")
+    print("        d = pd.read_csv(p)")
     print("        out.append(pd.DataFrame({'sbrp_id': d.sbrp_id,")
     print("                                 'pd': model.predict_proba(d[FEATURES])[:, 1]}))")
     print("        del d; gc.collect()")
-    print("    pd.concat(out, ignore_index=True).to_parquet('data/scores.parquet')")
-    print("that concatenation is 11M x 2 columns, about 0.18 GB - safe.")
-    print("concatenating the full halves instead would peak near 14 GB.")
+    print("    pd.concat(out, ignore_index=True).to_csv('data/scores.csv', index=False)")
+    print("THAT concat is fine: 11M x 2 columns, about 0.18 GB. Concatenating")
+    print("the full halves instead would peak near 14 GB - worse than never")
+    print("having split. The model needs one row at a time to produce a PD.")
 
 
 if __name__ == "__main__":
