@@ -187,12 +187,59 @@ def synth(n, with_label=True, seed=42):
         df["y_strict"] = (df.y_severe & (r.random(n) < 0.55)).astype(int)
     return df
 
-if os.path.exists(CFG["train_csv"]):
-    train_raw = pd.read_csv(CFG["train_csv"]); SOURCE = "real"
+import glob
+
+def load_parts(stem):
+    # Reads one file or many parts. The export file splits the scoring set
+    # because 11M rows x 78 columns is about 12 GB as CSV. Parts are
+    # concatenated here, and parquet is preferred when present - the same data
+    # at roughly a fifth the size, with numeric types preserved.
+    base = stem.rsplit(".", 1)[0]
+    pats = [f"{base}.parquet", f"{base}_part*.parquet",
+            f"{stem}",         f"{base}_part*.csv"]
+    files = []
+    for pat in pats:
+        f = sorted(glob.glob(pat))
+        if f: files = f; break
+    if not files:
+        return None
+    rd = pd.read_parquet if files[0].endswith(".parquet") else pd.read_csv
+    frames = [rd(f) for f in files]
+    df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+    print(f"  {os.path.basename(base)}: {len(files)} file(s) -> {len(df):,} rows")
+    if len(frames) > 1:
+        # a split that lost or duplicated rows is invisible unless checked
+        tot = sum(len(f_) for f_ in frames)
+        assert tot == len(df), "concat lost rows"
+        if "sbrp_id" in df:
+            dup = len(df) - df.sbrp_id.nunique()
+            print(f"    duplicate sbrp_id across parts: {dup:,}"
+                  + ("   <-- PARTS OVERLAP, the split is wrong" if dup else "   OK"))
+    if "part_no" in df: df = df.drop(columns=["part_no"])
+    return df
+
+print("loading")
+train_raw = load_parts(CFG["train_csv"])
+SOURCE = "real" if train_raw is not None else "synthetic"
+if train_raw is None:
+    train_raw = synth(CFG["n_synth"], True, 42)
+score_raw = load_parts(CFG["score_csv"])
+if score_raw is None:
+    score_raw = synth(int(CFG["n_synth"]*1.15), False, 7)
+
+# E2 in the export file down-samples the GOODS and ships a sample_weight.
+# Ignoring it makes the model see a 17 pct event rate instead of 2.2 pct, and
+# every PD comes out about eight times too high - ranking survives, the level
+# does not, and the limit engine spends the level.
+if "sample_weight" in train_raw.columns:
+    SW = train_raw["sample_weight"].to_numpy(float)
+    print(f"\nsample_weight present - the training set is DOWN-SAMPLED on goods")
+    print(f"  raw event rate in the file {train_raw[CFG['LABEL']].mean():.2%}")
+    print(f"  weighted back to           "
+          f"{np.average(train_raw[CFG['LABEL']], weights=SW):.2%}")
 else:
-    train_raw = synth(CFG["n_synth"], True, 42);  SOURCE = "synthetic"
-score_raw = (pd.read_csv(CFG["score_csv"]) if os.path.exists(CFG["score_csv"])
-             else synth(int(CFG["n_synth"]*1.15), False, 7))
+    SW = np.ones(len(train_raw))
+    print("\nno sample_weight column - treating the training set as a full population")
 
 print(f"source: {SOURCE}")
 print(f"train {train_raw.shape}   score {score_raw.shape}")
@@ -283,7 +330,7 @@ from sklearn.impute import SimpleImputer
 champ = make_pipeline(
     SimpleImputer(strategy="median"), StandardScaler(),
     LogisticRegression(max_iter=2000, C=0.5, class_weight="balanced"))
-champ.fit(Wtr, ytr)
+champ.fit(Wtr, ytr, logisticregression__sample_weight=SW[~is_val])
 p_tr_c = champ.predict_proba(Wtr)[:, 1]
 p_va_c = champ.predict_proba(Wva)[:, 1]
 print(f"champion  train AUC {roc_auc_score(ytr, p_tr_c):.4f}   "
@@ -295,7 +342,7 @@ chal = HistGradientBoostingClassifier(
     min_samples_leaf=200, l2_regularization=1.0,
     early_stopping=True, validation_fraction=0.15, n_iter_no_change=30,
     class_weight="balanced", random_state=42)
-chal.fit(Xtr, ytr)
+chal.fit(Xtr, ytr, sample_weight=SW[~is_val])
 p_tr_g = chal.predict_proba(Xtr)[:, 1]
 p_va_g = chal.predict_proba(Xva)[:, 1]
 print(f"challenger train AUC {roc_auc_score(ytr, p_tr_g):.4f}   "
@@ -308,11 +355,15 @@ def ks_stat(y_true, p):
     return float(np.max(tpr - fpr))
 
 def report(name, ytr_, ptr_, yva_, pva_):
-    a_tr, a_va = roc_auc_score(ytr_, ptr_), roc_auc_score(yva_, pva_)
+    # weighted throughout: on a down-sampled training file the unweighted
+    # figures describe the sample, not the book
+    swt, swv = SW[~is_val], SW[is_val]
+    a_tr = roc_auc_score(ytr_, ptr_, sample_weight=swt)
+    a_va = roc_auc_score(yva_, pva_, sample_weight=swv)
     return dict(model=name,
                 auc_train=a_tr, auc_valid=a_va, gap=a_tr - a_va,
                 gini_valid=2*a_va - 1, ks_valid=ks_stat(yva_, pva_),
-                brier_valid=brier_score_loss(yva_, pva_))
+                brier_valid=brier_score_loss(yva_, pva_, sample_weight=swv))
 
 RES = pd.DataFrame([
     report("WOE logistic (champion)", ytr, p_tr_c, yva, p_va_c),
@@ -348,14 +399,24 @@ Xcal, Xtst = Xva[h2], Xva[~h2]
 ycal, ytst = yva[h2], yva[~h2]
 p_cal, p_tst = P_VA[h2], P_VA[~h2]
 
+SWva = SW[is_val]; sw_cal, sw_tst = SWva[h2], SWva[~h2]
 iso = IsotonicRegression(out_of_bounds="clip", y_min=1e-6, y_max=1-1e-6)
-iso.fit(p_cal, ycal)
-anchor = ycal.mean() / max(iso.predict(p_cal).mean(), 1e-9)
+iso.fit(p_cal, ycal, sample_weight=sw_cal)
+# the anchor must be the WEIGHTED event rate, or a down-sampled file pins the
+# portfolio PD to the sample's inflated rate instead of the population's
+anchor = (np.average(ycal, weights=sw_cal)
+          / max(np.average(iso.predict(p_cal), weights=sw_cal), 1e-9))
 pd_tst = np.clip(iso.predict(p_tst) * anchor, 1e-6, 0.999)
 print(f"calibration fitted on {len(ycal):,} rows, judged on {len(ytst):,} HELD-BACK rows")
-print(f"mean PD {pd_tst.mean():.4%}  vs observed {ytst.mean():.4%}  "
-      f"-> level error {abs(pd_tst.mean()-ytst.mean())/ytst.mean():.2%}")
-print(f"Brier {brier_score_loss(ytst, pd_tst):.6f}   AUC {roc_auc_score(ytst, pd_tst):.4f}")
+obs_w = np.average(ytst, weights=sw_tst)
+pdm_w = np.average(pd_tst, weights=sw_tst)
+print(f"mean PD {pdm_w:.4%}  vs observed {obs_w:.4%}  "
+      f"-> level error {abs(pdm_w-obs_w)/obs_w:.2%}   (both population-weighted)")
+# Brier and AUC must be WEIGHTED too. Unweighted on a down-sampled file they
+# describe the sample's inflated event rate, not the population's - Brier came
+# back at 0.29 on a 2 pct problem purely from that.
+print(f"Brier {brier_score_loss(ytst, pd_tst, sample_weight=sw_tst):.6f}   "
+      f"AUC {roc_auc_score(ytst, pd_tst, sample_weight=sw_tst):.4f}   (weighted)")
 
 dec = pd.qcut(pd_tst, 10, labels=False, duplicates="drop")
 cal = pd.DataFrame({"decile": dec, "pd": pd_tst, "y": ytst}).groupby("decile").agg(

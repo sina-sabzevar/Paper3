@@ -92,12 +92,59 @@ def synth(n, with_label=True, seed=42):
         df["y_strict"] = (df.y_severe & (r.random(n) < 0.55)).astype(int)
     return df
 
-if os.path.exists(CFG["train_csv"]):
-    train_raw = pd.read_csv(CFG["train_csv"]); SOURCE = "real"
+import glob
+
+def load_parts(stem):
+    # Reads one file or many parts. The export file splits the scoring set
+    # because 11M rows x 78 columns is about 12 GB as CSV. Parts are
+    # concatenated here, and parquet is preferred when present - the same data
+    # at roughly a fifth the size, with numeric types preserved.
+    base = stem.rsplit(".", 1)[0]
+    pats = [f"{base}.parquet", f"{base}_part*.parquet",
+            f"{stem}",         f"{base}_part*.csv"]
+    files = []
+    for pat in pats:
+        f = sorted(glob.glob(pat))
+        if f: files = f; break
+    if not files:
+        return None
+    rd = pd.read_parquet if files[0].endswith(".parquet") else pd.read_csv
+    frames = [rd(f) for f in files]
+    df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+    print(f"  {os.path.basename(base)}: {len(files)} file(s) -> {len(df):,} rows")
+    if len(frames) > 1:
+        # a split that lost or duplicated rows is invisible unless checked
+        tot = sum(len(f_) for f_ in frames)
+        assert tot == len(df), "concat lost rows"
+        if "sbrp_id" in df:
+            dup = len(df) - df.sbrp_id.nunique()
+            print(f"    duplicate sbrp_id across parts: {dup:,}"
+                  + ("   <-- PARTS OVERLAP, the split is wrong" if dup else "   OK"))
+    if "part_no" in df: df = df.drop(columns=["part_no"])
+    return df
+
+print("loading")
+train_raw = load_parts(CFG["train_csv"])
+SOURCE = "real" if train_raw is not None else "synthetic"
+if train_raw is None:
+    train_raw = synth(CFG["n_synth"], True, 42)
+score_raw = load_parts(CFG["score_csv"])
+if score_raw is None:
+    score_raw = synth(int(CFG["n_synth"]*1.15), False, 7)
+
+# E2 in the export file down-samples the GOODS and ships a sample_weight.
+# Ignoring it makes the model see a 17 pct event rate instead of 2.2 pct, and
+# every PD comes out about eight times too high - ranking survives, the level
+# does not, and the limit engine spends the level.
+if "sample_weight" in train_raw.columns:
+    SW = train_raw["sample_weight"].to_numpy(float)
+    print(f"\nsample_weight present - the training set is DOWN-SAMPLED on goods")
+    print(f"  raw event rate in the file {train_raw[CFG['LABEL']].mean():.2%}")
+    print(f"  weighted back to           "
+          f"{np.average(train_raw[CFG['LABEL']], weights=SW):.2%}")
 else:
-    train_raw = synth(CFG["n_synth"], True, 42);  SOURCE = "synthetic"
-score_raw = (pd.read_csv(CFG["score_csv"]) if os.path.exists(CFG["score_csv"])
-             else synth(int(CFG["n_synth"]*1.15), False, 7))
+    SW = np.ones(len(train_raw))
+    print("\nno sample_weight column - treating the training set as a full population")
 
 print(f"source: {SOURCE}")
 print(f"train {train_raw.shape}   score {score_raw.shape}")

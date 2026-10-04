@@ -26,6 +26,9 @@ telco_gross_margin = 0.55
 
 the 11 that a naive drop of the y_ columns would leave behind:
   n_months_out, max_dpd_out, n_late_out, total_debt_days_out, oneway_days_out, twoway_days_out, twoway_months_out, escalated_twoway, rule1_dpd60, rule2_late, rule4_escalated
+loading
+
+no sample_weight column - treating the training set as a full population
 source: synthetic
 train (120000, 82)   score (138000, 80)
 features missing from train: none
@@ -77,7 +80,7 @@ selected on VALID auc: HistGradientBoosting (challenger)
   WOE logistic (champion)            valid 0.8001   in the honest band for a behavioural telco scorecard
   HistGradientBoosting (challenger)  valid 0.8015   in the honest band for a behavioural telco scorecard
 calibration fitted on 18,222 rows, judged on 17,846 HELD-BACK rows
-mean PD 5.6595%  vs observed 5.7828%  -> level error 2.13%
+mean PD 5.6595%  vs observed 5.7828%  -> level error 2.13%   (both population-weighted)
 Brier 0.049497   AUC 0.7988
 
 calibration by decile on the held-back half (ratio near 1.0 is the goal)

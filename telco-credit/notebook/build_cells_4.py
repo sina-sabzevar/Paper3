@@ -25,14 +25,24 @@ Xcal, Xtst = Xva[h2], Xva[~h2]
 ycal, ytst = yva[h2], yva[~h2]
 p_cal, p_tst = P_VA[h2], P_VA[~h2]
 
+SWva = SW[is_val]; sw_cal, sw_tst = SWva[h2], SWva[~h2]
 iso = IsotonicRegression(out_of_bounds="clip", y_min=1e-6, y_max=1-1e-6)
-iso.fit(p_cal, ycal)
-anchor = ycal.mean() / max(iso.predict(p_cal).mean(), 1e-9)
+iso.fit(p_cal, ycal, sample_weight=sw_cal)
+# the anchor must be the WEIGHTED event rate, or a down-sampled file pins the
+# portfolio PD to the sample's inflated rate instead of the population's
+anchor = (np.average(ycal, weights=sw_cal)
+          / max(np.average(iso.predict(p_cal), weights=sw_cal), 1e-9))
 pd_tst = np.clip(iso.predict(p_tst) * anchor, 1e-6, 0.999)
 print(f"calibration fitted on {len(ycal):,} rows, judged on {len(ytst):,} HELD-BACK rows")
-print(f"mean PD {pd_tst.mean():.4%}  vs observed {ytst.mean():.4%}  "
-      f"-> level error {abs(pd_tst.mean()-ytst.mean())/ytst.mean():.2%}")
-print(f"Brier {brier_score_loss(ytst, pd_tst):.6f}   AUC {roc_auc_score(ytst, pd_tst):.4f}")
+obs_w = np.average(ytst, weights=sw_tst)
+pdm_w = np.average(pd_tst, weights=sw_tst)
+print(f"mean PD {pdm_w:.4%}  vs observed {obs_w:.4%}  "
+      f"-> level error {abs(pdm_w-obs_w)/obs_w:.2%}   (both population-weighted)")
+# Brier and AUC must be WEIGHTED too. Unweighted on a down-sampled file they
+# describe the sample's inflated event rate, not the population's - Brier came
+# back at 0.29 on a 2 pct problem purely from that.
+print(f"Brier {brier_score_loss(ytst, pd_tst, sample_weight=sw_tst):.6f}   "
+      f"AUC {roc_auc_score(ytst, pd_tst, sample_weight=sw_tst):.4f}   (weighted)")
 
 dec = pd.qcut(pd_tst, 10, labels=False, duplicates="drop")
 cal = pd.DataFrame({"decile": dec, "pd": pd_tst, "y": ytst}).groupby("decile").agg(

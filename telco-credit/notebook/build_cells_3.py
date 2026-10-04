@@ -82,7 +82,7 @@ from sklearn.impute import SimpleImputer
 champ = make_pipeline(
     SimpleImputer(strategy="median"), StandardScaler(),
     LogisticRegression(max_iter=2000, C=0.5, class_weight="balanced"))
-champ.fit(Wtr, ytr)
+champ.fit(Wtr, ytr, logisticregression__sample_weight=SW[~is_val])
 p_tr_c = champ.predict_proba(Wtr)[:, 1]
 p_va_c = champ.predict_proba(Wva)[:, 1]
 print(f"champion  train AUC {roc_auc_score(ytr, p_tr_c):.4f}   "
@@ -107,7 +107,7 @@ chal = HistGradientBoostingClassifier(
     min_samples_leaf=200, l2_regularization=1.0,
     early_stopping=True, validation_fraction=0.15, n_iter_no_change=30,
     class_weight="balanced", random_state=42)
-chal.fit(Xtr, ytr)
+chal.fit(Xtr, ytr, sample_weight=SW[~is_val])
 p_tr_g = chal.predict_proba(Xtr)[:, 1]
 p_va_g = chal.predict_proba(Xva)[:, 1]
 print(f"challenger train AUC {roc_auc_score(ytr, p_tr_g):.4f}   "
@@ -128,11 +128,15 @@ def ks_stat(y_true, p):
     return float(np.max(tpr - fpr))
 
 def report(name, ytr_, ptr_, yva_, pva_):
-    a_tr, a_va = roc_auc_score(ytr_, ptr_), roc_auc_score(yva_, pva_)
+    # weighted throughout: on a down-sampled training file the unweighted
+    # figures describe the sample, not the book
+    swt, swv = SW[~is_val], SW[is_val]
+    a_tr = roc_auc_score(ytr_, ptr_, sample_weight=swt)
+    a_va = roc_auc_score(yva_, pva_, sample_weight=swv)
     return dict(model=name,
                 auc_train=a_tr, auc_valid=a_va, gap=a_tr - a_va,
                 gini_valid=2*a_va - 1, ks_valid=ks_stat(yva_, pva_),
-                brier_valid=brier_score_loss(yva_, pva_))
+                brier_valid=brier_score_loss(yva_, pva_, sample_weight=swv))
 
 RES = pd.DataFrame([
     report("WOE logistic (champion)", ytr, p_tr_c, yva, p_va_c),
