@@ -309,23 +309,43 @@ SELECT  sbrp_id,
         -- it is the denominator that exposes arrears paydown: paid_total above
         -- obligation means old debt was being cleared inside the window, so the
         -- window overstates ongoing monthly capacity.
-        SUM(ec_amt)                                               AS ec_billed_6m,
-        SUM(mc_amt)                                               AS mc_billed_6m,
-        SUM(ec_amt + mc_amt)                                      AS obligation_6m,
+        COALESCE(SUM(ec_amt), 0)                                  AS ec_billed_6m,
+        COALESCE(SUM(mc_amt), 0)                                  AS mc_billed_6m,
+        COALESCE(SUM(ec_amt), 0) + COALESCE(SUM(mc_amt), 0)       AS obligation_6m,
+        -- 0 and "not measured" are different claims. If mid-cycle billing is
+        -- absent from the source then mc_billed_6m is 0 so the arithmetic
+        -- survives, and THIS flag says the zero is missing data rather than an
+        -- absence of mid-cycle activity. Do not use mc_billed_6m or
+        -- midcycle_billed_share as model features where this flag is 0.
+        IF(COALESCE(SUM(mc_rows), 0) > 0, 1, 0)                   AS has_midcycle_billing,
         -- the REAL mid-cycle intensity, from the bill types rather than from an
         -- invented payment-code mapping.
-        SUM(mc_amt) / NULLIF(SUM(ec_amt + mc_amt), 0)             AS midcycle_billed_share,
-        APPROX_PERCENTILE(ec_amt + mc_amt, 0.5)
-            FILTER (WHERE ec_amt + mc_amt > 0)                    AS med_obligation,
+        COALESCE(SUM(mc_amt), 0)
+          / NULLIF(COALESCE(SUM(ec_amt),0) + COALESCE(SUM(mc_amt),0), 0)
+                                                                  AS midcycle_billed_share,
+        -- falls back to the end-of-cycle bill alone when the combined figure has
+        -- no positive month, so a missing bill type cannot NULL this either
+        COALESCE(APPROX_PERCENTILE(ec_amt + mc_amt, 0.5)
+                 FILTER (WHERE ec_amt + mc_amt > 0),
+                 APPROX_PERCENTILE(ec_amt, 0.5)
+                 FILTER (WHERE ec_amt > 0))                       AS med_obligation,
         MAX(ec_amt)                                               AS max_bill,
         STDDEV_SAMP(ec_amt) FILTER (WHERE ec_amt > 0)             AS bill_std
 FROM (
     SELECT  c.sbrp_id,
             c.day_key / 100                                       AS month_key,
-            SUM(COALESCE(c.payment_due_amt,0))
-                FILTER (WHERE c.cust_bil_typ_id = 2)              AS ec_amt,
-            SUM(COALESCE(c.payment_due_amt,0))
-                FILTER (WHERE c.cust_bil_typ_id = 3)              AS mc_amt
+            -- COALESCE AROUND the aggregate, not just inside it. SUM(x) FILTER
+            -- (WHERE ...) returns NULL when NO row matches, and the inner
+            -- COALESCE never runs to help. mc_billed_6m came back entirely NULL
+            -- for exactly this reason - bill type 3 has no rows - and the NULL
+            -- then propagated into obligation_6m, med_obligation,
+            -- midcycle_billed_share, paid_to_obligation and arrears_paydown_6m.
+            -- Five columns killed by one absent bill type, silently.
+            COALESCE(SUM(COALESCE(c.payment_due_amt,0))
+                     FILTER (WHERE c.cust_bil_typ_id = 2), 0)     AS ec_amt,
+            COALESCE(SUM(COALESCE(c.payment_due_amt,0))
+                     FILTER (WHERE c.cust_bil_typ_id = 3), 0)     AS mc_amt,
+            COUNT(*) FILTER (WHERE c.cust_bil_typ_id = 3)         AS mc_rows
     FROM        dwbi_fact_db.v_fact_cust_bil_daily c
     INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
     WHERE   c.day_key BETWEEN 14040701 AND 14041231   -- FEATURE window only
@@ -569,8 +589,8 @@ bil AS (
             -- end-of-cycle (type 2) plus mid-cycle (type 3). Comparable within
             -- a row against totrev_mN, which is the same month's usage.
             SUM(COALESCE(c.payment_due_amt,0))     AS billed_amt,
-            SUM(COALESCE(c.payment_due_amt,0))
-                FILTER (WHERE c.cust_bil_typ_id = 3) AS mc_billed_amt
+            COALESCE(SUM(COALESCE(c.payment_due_amt,0))
+                FILTER (WHERE c.cust_bil_typ_id = 3), 0) AS mc_billed_amt
     FROM        dwbi_fact_db.v_fact_cust_bil_daily c
     INNER JOIN  dwbi_temp40_db.dcb3_base b ON b.sbrp_id = c.sbrp_id
     WHERE   c.day_key BETWEEN 14040701 AND 14041231
@@ -614,7 +634,8 @@ SELECT  sbrp_id,
         -- the same window from the same source, and two identical columns break
         -- CREATE TABLE AS.
         -- genuine mid-cycle intensity, from the BILL TYPES (3 vs 2)
-        SUM(mc_billed_amt) / NULLIF(SUM(billed_amt), 0)   AS midcycle_billed_share_6m,
+        COALESCE(SUM(mc_billed_amt), 0)
+          / NULLIF(SUM(billed_amt), 0)                   AS midcycle_billed_share_6m,
         -- NON-CASH SHARE OF USAGE. CONFIRMED: tot_rev is TOTAL usage, cash and
         -- non-cash both, while only NON-CASH usage reaches the bill. So this
         -- ratio is the non-cash share - the part of their spending that runs on

@@ -53,6 +53,7 @@ stated as if it described the data, and then built on.
 | B | Whether `bllg_pmnt_stat_id = 2` for "successful" is right. **Carried over unverified and still in the WHERE** | `paid_total` completeness | P2, P3 |
 | C | Is bill type 3 really spread across the month | `mc_billed_6m` | P1 |
 | D | Does any other `cust_bil_typ_id` carry value | `obligation_6m` completeness | P1 |
+| G | **Does `cust_bil_typ_id = 3` exist at all.** `mc_billed_6m` came back entirely NULL, so either the code is wrong or mid-cycle bills are not in this table. Until settled, every mid-cycle feature is unavailable rather than zero | `mc_billed_6m`, `midcycle_billed_share` | `27_bill_types.sql` |
 | E | Is `v_fact_pmnt_adjmt` whole over 140407..140412 | every payment feature | P4 |
 | F | How `available_credit` compares to my reconstruction | whether to drop the reconstruction | after extraction |
 

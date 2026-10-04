@@ -161,6 +161,14 @@ This is the cell that decides whether anything below is real.
 """)
 
     co(r"""
+# drop the mid-cycle columns when the flag says the source carries no bill
+# type 3 - zeros there are missing data, and a model cannot tell the difference
+if "has_midcycle_billing" in train_raw.columns and train_raw["has_midcycle_billing"].max() == 0:
+    drop = [c for c in MIDCYCLE_COLS if c in FEATURES]
+    FEATURES = [c for c in FEATURES if c not in drop]
+    print(f"\nhas_midcycle_billing is 0 for EVERY row - bill type 3 is absent from")
+    print(f"the source, so these are not measurements and are dropped: {drop}")
+
 leak = [c for c in FEATURES if c in OUTCOME]
 assert not leak, f"OUTCOME COLUMN IN X: {leak}"
 assert CFG["LABEL"] not in FEATURES

@@ -77,28 +77,40 @@ RIAL_PER_TOMAN = 10
 for k, v in CFG.items(): print(f"{k:>16} = {v}")
 
 # ---- CELL ----
-FEATURES = ['age_on_net_months','med_bill','n_billed_months','ec_billed_6m','mc_billed_6m',
- 'obligation_6m','midcycle_billed_share','med_obligation','max_bill','bill_std','max_dpd_6m',
- 'max_debt_run_days','n_debt_spells_6m','total_debt_days_6m','n_late_months_6m',
- 'n_mild_late_months_6m','n_ontime_months_6m','max_debt_amt_6m','unbill_peak_6m','unbill_avg_6m',
- 'debtdays_m1','debtdays_m2','debtdays_m3','debtdays_m4','debtdays_m5','debtdays_m6',
- 'oneway_days_6m','twoway_days_6m','n_ceiling_months_6m','n_barred_months_6m',
- 'last_bar_month_idx','last_twoway_month_idx','avg_barred_days_per_spell',
- 'billed_m1','billed_m2','billed_m3','billed_m4','billed_m5','billed_m6',
- 'totrev_m1','totrev_m2','totrev_m3','totrev_m4','totrev_m5','totrev_m6',
- 'data_gb_6m','data_gb_3m','voice_min_6m','voice_min_3m','call_cnt_6m','intl_cl_cnt_6m',
- 'totrev_std_6m','data_gb_std_6m','billed_6m','midcycle_billed_share_6m','noncash_share_6m',
- 'n_months_panel','paid_total_6m','n_payments_6m','avg_first_pay_day','paid_std_6m',
- 'proven_capacity','median_monthly_paid','capacity_headroom','network_id',
- 'initial_cred_lim_amt','temporary_cred_lim_amt','rfndable_dpos_amt','non_rfndable_dpos_amt',
- 'advance_pmnt_amt','bill_outstanding_amt','unbill_outstanding_amt','available_credit',
- 'ceiling_reconstructed','ceiling_utilisation','debt_scr','suspend_scr',
- 'paid_to_obligation','arrears_paydown_6m']
+FEATURES = ['age_on_net_months', 'med_bill', 'n_billed_months', 'ec_billed_6m',
+ 'mc_billed_6m', 'obligation_6m', 'has_midcycle_billing',
+ 'midcycle_billed_share', 'med_obligation', 'max_bill', 'bill_std',
+ 'max_dpd_6m', 'max_debt_run_days', 'n_debt_spells_6m', 'total_debt_days_6m',
+ 'n_late_months_6m', 'n_mild_late_months_6m', 'n_ontime_months_6m',
+ 'max_debt_amt_6m', 'unbill_peak_6m', 'unbill_avg_6m', 'debtdays_m1',
+ 'debtdays_m2', 'debtdays_m3', 'debtdays_m4', 'debtdays_m5', 'debtdays_m6',
+ 'oneway_days_6m', 'twoway_days_6m', 'n_ceiling_months_6m',
+ 'n_barred_months_6m', 'last_bar_month_idx', 'last_twoway_month_idx',
+ 'avg_barred_days_per_spell', 'billed_m1', 'billed_m2', 'billed_m3',
+ 'billed_m4', 'billed_m5', 'billed_m6', 'totrev_m1', 'totrev_m2',
+ 'totrev_m3', 'totrev_m4', 'totrev_m5', 'totrev_m6', 'data_gb_6m',
+ 'data_gb_3m', 'voice_min_6m', 'voice_min_3m', 'call_cnt_6m',
+ 'intl_cl_cnt_6m', 'totrev_std_6m', 'data_gb_std_6m', 'billed_6m',
+ 'midcycle_billed_share_6m', 'noncash_share_6m', 'n_months_panel',
+ 'paid_total_6m', 'n_payments_6m', 'avg_first_pay_day', 'paid_std_6m',
+ 'proven_capacity', 'median_monthly_paid', 'capacity_headroom', 'network_id',
+ 'initial_cred_lim_amt', 'temporary_cred_lim_amt', 'rfndable_dpos_amt',
+ 'non_rfndable_dpos_amt', 'advance_pmnt_amt', 'bill_outstanding_amt',
+ 'unbill_outstanding_amt', 'available_credit', 'ceiling_reconstructed',
+ 'ceiling_utilisation', 'debt_scr', 'suspend_scr', 'paid_to_obligation',
+ 'arrears_paydown_6m']
 
 OUTCOME = ['n_months_out','max_dpd_out','n_late_out','total_debt_days_out','oneway_days_out',
  'twoway_days_out','twoway_months_out','escalated_twoway','rule1_dpd60','rule2_late',
  'rule4_escalated','y_twoway_2m','y_twoway_any2m','y_severe','y_strict','y_v1','y_v2',
  'y_loose','indeterminate']
+
+# has_midcycle_billing is a DATA-AVAILABILITY flag, not a behaviour. Where it is
+# 0 the mid-cycle columns are zero because the source has no bill type 3, not
+# because the subscriber never paid mid-cycle - so those two must be dropped
+# from X rather than fed in as a measurement.
+MIDCYCLE_COLS = ["mc_billed_6m", "midcycle_billed_share",
+                 "mc_billed_panel_6m", "midcycle_billed_share_6m"]
 
 assert not (set(FEATURES) & set(OUTCOME)), "a column is in both lists"
 print(f"{len(FEATURES)} features, {len(OUTCOME)} outcome columns, no overlap")
@@ -249,6 +261,14 @@ FEATURES = [c for c in FEATURES if c in train_raw.columns and c in score_raw.col
 print(f"usable features: {len(FEATURES)}")
 
 # ---- CELL ----
+# drop the mid-cycle columns when the flag says the source carries no bill
+# type 3 - zeros there are missing data, and a model cannot tell the difference
+if "has_midcycle_billing" in train_raw.columns and train_raw["has_midcycle_billing"].max() == 0:
+    drop = [c for c in MIDCYCLE_COLS if c in FEATURES]
+    FEATURES = [c for c in FEATURES if c not in drop]
+    print(f"\nhas_midcycle_billing is 0 for EVERY row - bill type 3 is absent from")
+    print(f"the source, so these are not measurements and are dropped: {drop}")
+
 leak = [c for c in FEATURES if c in OUTCOME]
 assert not leak, f"OUTCOME COLUMN IN X: {leak}"
 assert CFG["LABEL"] not in FEATURES
