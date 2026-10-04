@@ -1,3 +1,4 @@
 data/
 outputs/run_log*.txt
 verify.py
+outputs/run_summary.txt
