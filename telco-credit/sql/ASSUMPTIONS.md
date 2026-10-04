@@ -54,6 +54,7 @@ stated as if it described the data, and then built on.
 | C | Is bill type 3 really spread across the month | `mc_billed_6m` | P1 |
 | D | Does any other `cust_bil_typ_id` carry value | `obligation_6m` completeness | P1 |
 | G | **Does `cust_bil_typ_id = 3` exist at all.** `mc_billed_6m` came back entirely NULL, so either the code is wrong or mid-cycle bills are not in this table. Until settled, every mid-cycle feature is unavailable rather than zero | `mc_billed_6m`, `midcycle_billed_share` | `27_bill_types.sql` |
+| H | Two values were offered as the real mid-cycle and end-of-cycle bill codes: `823067872317374799613180673527768019589` + 8 zeros (47 digits) and `9831165778317776083127656705155381027647` + 8 zeros (48 digits). **Not substituted.** BIGINT holds 19 digits and Trino's DECIMAL 38, so neither fits a numeric `cust_bil_typ_id`; 47 is prime so the shorter cannot split into equal-width ids while the longer can split four ways, so the two do not share a shape. `27_bill_types.sql` T0 reports the column's declared type and T1 prints every code present, cast to VARCHAR so nothing is lost to exponent form | every mid-cycle and end-of-cycle feature | `27_bill_types.sql` |
 | E | Is `v_fact_pmnt_adjmt` whole over 140407..140412 | every payment feature | P4 |
 | F | How `available_credit` compares to my reconstruction | whether to drop the reconstruction | after extraction |
 
