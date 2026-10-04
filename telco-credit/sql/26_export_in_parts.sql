@@ -26,6 +26,17 @@
 --  nothing in the output would show it.
 --
 --  NO percent character anywhere. NO CASE expressions.
+--  THE GOOD SAMPLE DRAWS ON A HASH OF sbrp_id, NOT ON THE ID.
+--  Every one of the ten real sbrp_id values seen so far is odd, and they
+--  share a five digit block after the two leading digits - they are
+--  composed, not sequential. MOD(id, 100) < 10 still selects the right COUNT
+--  on such ids - 10.00 pct measured, since among odd numbers the endings below
+--  10 are 5 of the 50 possible - but it only ever selects ids ending 01, 03,
+--  05, 07, 09, so it is representative only if those digits are arbitrary,
+--  which cannot be checked from outside. A hash is uniform over its output
+--  whatever the id encodes, and stays deterministic so the same goods are
+--  drawn on every re-run.
+--
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -67,7 +78,8 @@ SELECT  t.*,
         IF(y_severe = 1, 1.0, 1.0 / 0.10) AS sample_weight
 FROM    dwbi_temp40_db.dcb3_dataset_c1 t
 WHERE   y_severe = 1
-   OR   MOD(ABS(sbrp_id), 100) < 10;      -- 10 pct of goods, deterministic
+   OR   MOD(ABS(FROM_BIG_ENDIAN_64(XXHASH64(TO_UTF8(
+            CAST(sbrp_id AS VARCHAR))))), 100) < 10;      -- 10 pct of goods, deterministic
 
 
 -- ---------------------------------------------------------------------------
@@ -94,4 +106,6 @@ SELECT  (SELECT COUNT(*) FROM dwbi_temp40_db.dcbs_scoreset)      AS table_rows,
         (SELECT COUNT(*) FROM dwbi_temp40_db.dcb3_dataset_c1
           WHERE y_severe = 1)                                    AS train_bads,
         (SELECT COUNT(*) FROM dwbi_temp40_db.dcb3_dataset_c1
-          WHERE y_severe = 1 OR MOD(ABS(sbrp_id), 100) < 10)      AS e2_sample_rows;
+          WHERE y_severe = 1
+            OR MOD(ABS(FROM_BIG_ENDIAN_64(XXHASH64(TO_UTF8(
+               CAST(sbrp_id AS VARCHAR))))), 100) < 10)      AS e2_sample_rows;

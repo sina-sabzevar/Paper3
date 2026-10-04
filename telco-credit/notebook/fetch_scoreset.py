@@ -12,9 +12,14 @@ almost certainly carries a fixed low bit - a check digit, or an id derived as
 something doubled plus one. These ids are composed, not sequential: they share
 a five digit block after the two leading digits.
 
-On a parity split, that means the even half gets ZERO rows and the odd half
-gets all 11.5M. The split silently does nothing, and it is only caught after
-paying for two full scans of an 11.5M row table.
+On a parity split, that means one half gets ZERO rows and the other gets all
+11.5M. Measured on ids composed this way: 0 rows where half were expected. The
+split silently does nothing, and it is only caught after paying for two full
+scans of an 11.5M row table.
+
+Not every modulus fails this way - MOD(id, 199) is unaffected, since 199 is
+prime and coprime to 2 and 10 - but a hash removes the question instead of
+depending on the modulus being lucky.
 
 MOD on a hash has no such failure mode. MD5 and XXHASH64 are uniform over
 their output whatever structure the input has, so the halves come out even

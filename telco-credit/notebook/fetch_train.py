@@ -66,15 +66,27 @@ GOOD_KEEP = 10            # keep this many goods out of every 100
 # Every one of the ten real sbrp_id values in the handover file is odd, which
 # under uniform parity is a 1-in-1024 coincidence, so the id almost certainly
 # carries a fixed low bit. They are composed rather than sequential - they
-# share a five digit block after the two leading digits. MOD on such an id
-# does not sample, it selects a structured slice: one issuing batch, one
-# region, one SIM generation. And it does so silently, because the result
-# looks like a sample.
+# share a five digit block after the two leading digits.
 #
-# A hash is uniform over its output whatever the input encodes, so MOD on the
-# hash is a real draw. It stays deterministic, which is what matters for a
-# training set: the same subscribers are chosen on every re-run, so the data
-# does not shift under the model between one fit and the next.
+# What that does to a MOD draw depends on the modulus, and it is worth being
+# exact rather than alarmed:
+#
+#   MOD(id, 2) = 0      selects NOTHING. Measured on ids composed this way:
+#                       0 rows where half were expected.
+#   MOD(id, 100) < 10   selects the right COUNT - 10.00 pct, because among odd
+#                       numbers the endings below 10 are 5 of the 50 possible,
+#                       which is still a tenth. But it only ever selects ids
+#                       ending 01, 03, 05, 07, 09, so it is representative
+#                       only if those digits are themselves arbitrary. On a
+#                       composed id that cannot be checked from outside.
+#   MOD(id, 199) = 0    is unaffected. 199 is prime and coprime to 2 and 10,
+#                       so odd ids still spread over all 199 residues.
+#
+# So the parity split was broken outright and the hundred-modulus draw is a
+# composition risk rather than a count bug. A hash removes both questions: it
+# is uniform over its output whatever the id encodes. It stays deterministic,
+# which is what a training set needs - the same subscribers on every re-run,
+# so the data does not shift under the model between fits.
 DRAW = ("MOD(ABS(FROM_BIG_ENDIAN_64(XXHASH64(TO_UTF8("
         "CAST(sbrp_id AS VARCHAR))))), {m})")
 
