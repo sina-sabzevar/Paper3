@@ -212,24 +212,40 @@ rev AS (
     GROUP BY sbrp_id
 ),
 pm AS (
+    -- NO status filter in the WHERE. bllg_pmnt_stat_id = 2 for "successful"
+    -- was carried over from an older pipeline and has never been verified
+    -- (register item B), and every label here is built on payments. Rather
+    -- than scan this fact twice - once to check the filter and once to use
+    -- it - both totals are carried side by side and S3 computes every label
+    -- both ways. If they agree, the filter was harmless. If they do not, the
+    -- corrected version is already computed.
     SELECT   sbrp_id,
              day_key / 100                    AS month_key,
-             SUM(COALESCE(pmnt_amt, 0))       AS paid
+             SUM(COALESCE(pmnt_amt, 0))       AS paid_all,
+             COALESCE(SUM(COALESCE(pmnt_amt, 0))
+                      FILTER (WHERE bllg_pmnt_stat_id = 2), 0) AS paid_s2
     FROM     dwbi_fact_db.v_fact_pmnt_adjmt
-    WHERE    bllg_pmnt_stat_id = 2
-      AND    day_key BETWEEN 14041201 AND 14050631
+    WHERE    day_key BETWEEN 14041201 AND 14050631
     GROUP BY sbrp_id, day_key / 100
 ),
 wide AS (
     SELECT  b.sbrp_id,
             b.tenure_m,
-            COALESCE(SUM(p.paid) FILTER (WHERE p.month_key = 140412), 0) AS m1,
-            COALESCE(SUM(p.paid) FILTER (WHERE p.month_key = 140501), 0) AS m2,
-            COALESCE(SUM(p.paid) FILTER (WHERE p.month_key = 140502), 0) AS m3,
-            COALESCE(SUM(p.paid) FILTER (WHERE p.month_key = 140503), 0) AS o1,
-            COALESCE(SUM(p.paid) FILTER (WHERE p.month_key = 140504), 0) AS o2,
-            COALESCE(SUM(p.paid) FILTER (WHERE p.month_key = 140505), 0) AS o3,
-            COALESCE(SUM(p.paid) FILTER (WHERE p.month_key = 140506), 0) AS o4
+            COALESCE(SUM(p.paid_s2) FILTER (WHERE p.month_key = 140412), 0) AS m1,
+            COALESCE(SUM(p.paid_s2) FILTER (WHERE p.month_key = 140501), 0) AS m2,
+            COALESCE(SUM(p.paid_s2) FILTER (WHERE p.month_key = 140502), 0) AS m3,
+            COALESCE(SUM(p.paid_s2) FILTER (WHERE p.month_key = 140503), 0) AS o1,
+            COALESCE(SUM(p.paid_s2) FILTER (WHERE p.month_key = 140504), 0) AS o2,
+            COALESCE(SUM(p.paid_s2) FILTER (WHERE p.month_key = 140505), 0) AS o3,
+            COALESCE(SUM(p.paid_s2) FILTER (WHERE p.month_key = 140506), 0) AS o4,
+            -- the same seven months with no status filter
+            COALESCE(SUM(p.paid_all) FILTER (WHERE p.month_key = 140412), 0) AS m1a,
+            COALESCE(SUM(p.paid_all) FILTER (WHERE p.month_key = 140501), 0) AS m2a,
+            COALESCE(SUM(p.paid_all) FILTER (WHERE p.month_key = 140502), 0) AS m3a,
+            COALESCE(SUM(p.paid_all) FILTER (WHERE p.month_key = 140503), 0) AS o1a,
+            COALESCE(SUM(p.paid_all) FILTER (WHERE p.month_key = 140504), 0) AS o2a,
+            COALESCE(SUM(p.paid_all) FILTER (WHERE p.month_key = 140505), 0) AS o3a,
+            COALESCE(SUM(p.paid_all) FILTER (WHERE p.month_key = 140506), 0) AS o4a
     FROM        base b
     LEFT JOIN   pm p ON p.sbrp_id = b.sbrp_id
     GROUP BY    b.sbrp_id, b.tenure_m
@@ -260,7 +276,15 @@ SELECT  w.sbrp_id,
            >= 3, 1, 0)                                          AS y_3of4_170,
         IF(w.o1 + w.o2 + w.o3 + w.o4 >= 6800000, 1, 0)          AS y_avg170,
         IF(w.o1 + w.o2 + w.o3 + w.o4 >= 5200000, 1, 0)          AS y_repaid,
-        IF(LEAST(w.o1, w.o2, w.o3, w.o4) >= 1300000, 1, 0)      AS y_min130
+        IF(LEAST(w.o1, w.o2, w.o3, w.o4) >= 1300000, 1, 0)      AS y_min130,
+        -- the all-status mirrors. If these match the ones above, the
+        -- unverified status filter never mattered.
+        w.m1a, w.m2a, w.m3a, w.o1a, w.o2a, w.o3a, w.o4a,
+        LEAST(w.m1a, w.m2a, w.m3a)                              AS min_pre3_all,
+        LEAST(w.o1a, w.o2a, w.o3a, w.o4a)                       AS min_post4_all,
+        w.o1a + w.o2a + w.o3a + w.o4a                           AS sum_post4_all,
+        IF(LEAST(w.o1a, w.o2a, w.o3a, w.o4a) >= 1700000, 1, 0)  AS y_min170_all,
+        IF(w.o1a + w.o2a + w.o3a + w.o4a >= 5200000, 1, 0)      AS y_repaid_all
 FROM    wide w
 LEFT JOIN rev  r  ON r.sbrp_id  = w.sbrp_id
 LEFT JOIN act3 a3 ON a3.sbrp_id = w.sbrp_id
@@ -281,6 +305,24 @@ LEFT JOIN act3 a3 ON a3.sbrp_id = w.sbrp_id
 --     Pick the STRICTEST label that still clears 3,000,000. Every loosening
 --     buys volume by making a positive prediction mean less.
 -- ---------------------------------------------------------------------------
+-- FIRST: did the unverified status filter matter at all? If the two rows
+-- below are the same, bllg_pmnt_stat_id = 2 is harmless and every number
+-- after this can be read at face value. If they differ, use the _all
+-- columns and treat register item B as answered in the negative.
+SELECT  'status 2 only' AS payment_basis,
+        SUM(y_repaid)                                   AS repaid_positives,
+        SUM(y_min170)                                   AS min170_positives,
+        APPROX_PERCENTILE(sum_post4, 0.5)  / 10000      AS median_4m_k_toman,
+        COUNT(*) FILTER (WHERE min_pre3 >= 2000000)     AS rule_population
+FROM    dwbi_temp40_db.dcb_paycap
+UNION ALL
+SELECT  'all statuses' AS payment_basis,
+        SUM(y_repaid_all),
+        SUM(y_min170_all),
+        APPROX_PERCENTILE(sum_post4_all, 0.5) / 10000,
+        COUNT(*) FILTER (WHERE min_pre3_all >= 2000000)
+FROM    dwbi_temp40_db.dcb_paycap;
+
 SELECT  label,
         COUNT(*)                                            AS population,
         SUM(y)                                              AS n_positive,
