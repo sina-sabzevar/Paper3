@@ -8,6 +8,11 @@
 --
 --  A, B and C are small enough to paste. D is a file.
 --
+--  SELF-CONTAINED. Nothing from another file has to be run first. C0 below
+--  builds the one table C and D both read. An earlier version of this file
+--  referred to dcb_revdist, which is created by 32_revenue_distribution.sql
+--  and so did not exist - a dependency across files for no good reason.
+--
 --  NO IDENTITIES LEAVE. D replaces sbrp_id with a truncated hash. It is
 --  stable, so rows can be re-identified on your side, and it is one way, so
 --  it tells me nothing about who anyone is. I do not need to know.
@@ -178,9 +183,84 @@ GROUP BY bllg_pmnt_stat_id
 ORDER BY n_rows DESC;
 
 -- ---------------------------------------------------------------------------
+-- C0  THE TABLE C AND D BOTH READ. One row per permanent subscriber, with
+--     revenue and payment for each of the four months.
+--
+--     Each side is flattened to one row per subscriber BEFORE they are
+--     joined. rv carries up to four rows per subscriber and pm up to four, so
+--     joining both raw on sbrp_id alone is a sixteen-row cartesian product
+--     and a month-filtered SUM over it adds each month four times. The month
+--     FILTER does not save it - the filtered row is itself duplicated. That
+--     is the same fan-out that once turned ordinary behaviour into a 36 pct
+--     bad rate.
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS dwbi_temp40_db.dcb_sample_base;
+CREATE TABLE dwbi_temp40_db.dcb_sample_base WITH (format='PARQUET') AS
+WITH rv AS (
+    SELECT   sbrp_id,
+             month_key,
+             MAX(IF(active1_base_flag = 1, 1, 0))                 AS act1,
+             SUM(COALESCE(arpu, 0)
+                 - COALESCE(tot_arpu_tax_amt, 0))                 AS rev
+    FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip
+    WHERE    month_key IN (140503, 140504, 140505, 140506)
+      AND    sbrp_typ_id = 1
+    GROUP BY sbrp_id, month_key
+),
+pm AS (
+    -- no status filter in the WHERE: bllg_pmnt_stat_id = 2 is still
+    -- unverified, so both totals are carried and B reports the codes
+    SELECT   sbrp_id,
+             day_key / 100                                        AS month_key,
+             SUM(COALESCE(pmnt_amt, 0))                           AS paid_all,
+             COALESCE(SUM(COALESCE(pmnt_amt, 0))
+                      FILTER (WHERE bllg_pmnt_stat_id = 2), 0)    AS paid_s2
+    FROM     dwbi_fact_db.v_fact_pmnt_adjmt
+    WHERE    day_key BETWEEN 14050301 AND 14050631
+    GROUP BY sbrp_id, day_key / 100
+),
+rv_wide AS (
+    SELECT   sbrp_id,
+             COALESCE(MAX(act1), 0)                                  AS act1_any,
+             IF(COALESCE(SUM(act1), 0) = 4, 1, 0)                    AS act1_all4,
+             COALESCE(SUM(rev) FILTER (WHERE month_key = 140503), 0) AS r1,
+             COALESCE(SUM(rev) FILTER (WHERE month_key = 140504), 0) AS r2,
+             COALESCE(SUM(rev) FILTER (WHERE month_key = 140505), 0) AS r3,
+             COALESCE(SUM(rev) FILTER (WHERE month_key = 140506), 0) AS r4
+    FROM     rv
+    GROUP BY sbrp_id
+),
+pm_wide AS (
+    SELECT   sbrp_id,
+             COALESCE(SUM(paid_s2)  FILTER (WHERE month_key = 140503), 0) AS q1,
+             COALESCE(SUM(paid_s2)  FILTER (WHERE month_key = 140504), 0) AS q2,
+             COALESCE(SUM(paid_s2)  FILTER (WHERE month_key = 140505), 0) AS q3,
+             COALESCE(SUM(paid_s2)  FILTER (WHERE month_key = 140506), 0) AS q4,
+             COALESCE(SUM(paid_all) FILTER (WHERE month_key = 140503), 0) AS q1a,
+             COALESCE(SUM(paid_all) FILTER (WHERE month_key = 140504), 0) AS q2a,
+             COALESCE(SUM(paid_all) FILTER (WHERE month_key = 140505), 0) AS q3a,
+             COALESCE(SUM(paid_all) FILTER (WHERE month_key = 140506), 0) AS q4a
+    FROM     pm
+    GROUP BY sbrp_id
+)
+SELECT  v.sbrp_id,
+        v.act1_any,
+        v.act1_all4,
+        v.r1, v.r2, v.r3, v.r4,
+        -- a subscriber with no payment rows paid nothing. COALESCE here, or
+        -- the LEFT JOIN leaves NULLs and every comparison downstream fails
+        -- silently rather than counting them as zero.
+        COALESCE(p.q1, 0)  AS q1,  COALESCE(p.q2, 0)  AS q2,
+        COALESCE(p.q3, 0)  AS q3,  COALESCE(p.q4, 0)  AS q4,
+        COALESCE(p.q1a, 0) AS q1a, COALESCE(p.q2a, 0) AS q2a,
+        COALESCE(p.q3a, 0) AS q3a, COALESCE(p.q4a, 0) AS q4a
+FROM        rv_wide v
+LEFT JOIN   pm_wide p ON p.sbrp_id = v.sbrp_id
+;
+
+-- ---------------------------------------------------------------------------
 -- C  THE CROSS-TAB. How many of the four months each subscriber clears
---    170,000 Toman on revenue, against how many on payment. Needs 32_'s
---    dcb_revdist table - run that first.
+--    170,000 Toman on revenue, against how many on payment.
 --
 --    This is the single most informative table in the whole exercise. The
 --    diagonal is where capacity and collection agree. The rows where
@@ -200,7 +280,7 @@ FROM (
           + IF(q3 >= 1700000,1,0) + IF(q4 >= 1700000,1,0)   AS months_pay,
             (r1 + r2 + r3 + r4) / 4                         AS rev_avg,
             (q1 + q2 + q3 + q4) / 4                         AS pay_avg
-    FROM    dwbi_temp40_db.dcb_revdist
+    FROM    dwbi_temp40_db.dcb_sample_base
 ) t
 GROUP BY months_rev, months_pay
 ORDER BY months_rev, months_pay;
@@ -237,7 +317,7 @@ WITH banded AS (
                   IF((r1 + r2 + r3 + r4) / 4 >= 1000000, 2, 1))) AS stratum,
             MOD(ABS(FROM_BIG_ENDIAN_64(XXHASH64(TO_UTF8(
                 CAST(sbrp_id AS VARCHAR))))), 1000000)           AS draw
-    FROM    dwbi_temp40_db.dcb_revdist
+    FROM    dwbi_temp40_db.dcb_sample_base
 ),
 sized AS (
     SELECT   stratum, COUNT(*) AS stratum_pop
