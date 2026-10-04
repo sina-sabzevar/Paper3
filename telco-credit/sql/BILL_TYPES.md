@@ -3,10 +3,21 @@
 Source: `info.xlsx`, the bill-type dimension, `src_sys_id` 1999319,
 loaded 2026-10-01.
 
-`cust_bil_typ_id` is a 47–48 digit surrogate key. It cannot be written as a
-SQL literal: BIGINT holds 19 digits and Trino's DECIMAL 38, while these carry
-39–40 significant digits. **Filter on `unq_id_in_src_sys` through a join to the
-dimension, never on the id.**
+`cust_bil_typ_id` is a **VARCHAR** holding a 48-character surrogate key, so a
+quoted literal matches it exactly and the key can be used directly. Two
+cautions, both from string comparison being exact:
+
+- The end-of-cycle value on record matches the dimension's `monthly Bill` row.
+  The mid-cycle value supplied earlier does **not** — same leading digits as
+  `Hot Bill` but 47 characters and an order of magnitude small, so a character
+  was lost in transit. As a literal it would match nothing, silently.
+- Take the literals from a `GROUP BY` on the fact table (`D2` in
+  `31_bill_type_resolved.sql`), never from a spreadsheet: a spreadsheet parses
+  the text as a number for display, and float64 keeps about 17 significant
+  digits.
+
+Filtering on `unq_id_in_src_sys` through a dimension join avoids the long
+literal altogether and is the safer form where the join is acceptable.
 
 | code | `cust_bil_typ` | bears on a credit obligation? |
 |---|---|---|

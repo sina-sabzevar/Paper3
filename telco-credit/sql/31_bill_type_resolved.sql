@@ -15,18 +15,31 @@
 --  mc_billed_6m came back entirely NULL (register item G): the filter matched
 --  zero rows, and SUM(x) FILTER over zero rows is NULL, not 0.
 --
---  WHY THE ID IS NEVER WRITTEN AS A LITERAL HERE
+--  THE COLUMN IS VARCHAR, SO THE IDS CAN BE LITERALS - QUOTED
 --
---  The two ids carry 39 and 40 significant digits. BIGINT holds 19 and
---  Trino's DECIMAL holds 38, so neither can be written as a numeric literal
---  without losing digits. float64 - which is what a spreadsheet uses - holds
---  about 17, which is why both values arrived with trailing zeros that are
---  rounding rather than real digits, and why the mid-cycle one arrived an
---  order of magnitude short with a character missing.
+--  An earlier note here argued the ids could not be written as literals
+--  because they exceed DECIMAL(38). That applies to numeric storage and is
+--  irrelevant for this column: a VARCHAR holds all 48 characters exactly, and
+--  a quoted literal matches it exactly.
 --
---  So the filter JOINS the dimension and tests unq_id_in_src_sys, a one
---  character code. That is correct however the id is stored and it cannot be
---  broken by a copy, a paste or a numeric cast.
+--  What does still matter, and is independent of the type:
+--
+--    The end-of-cycle value matches the dimension's "monthly Bill" row.
+--    The mid-cycle value does NOT - it carries the same leading digits as
+--    "Hot Bill" but is an order of magnitude smaller, 47 characters against
+--    48. One character was lost in transit. Used verbatim as a VARCHAR
+--    literal it matches nothing at all, silently, exactly the way = 3 has
+--    been matching nothing.
+--
+--  Because the comparison is now a string comparison, it is also exact in
+--  ways a number is not: a stray space, a lost digit or a value that went
+--  through a spreadsheet and came back in exponent form will all fail to
+--  match while looking perfectly reasonable in the query text.
+--
+--  So D2 prints the fact's own values with their LENGTH. Copy the literals
+--  from THAT output rather than from a spreadsheet, and the class of error
+--  that produced the short mid-cycle value cannot recur. D3 offers the
+--  dimension-join form as well, which needs no long literal at any point.
 --
 --  BEFORE THIS REPLACES ANYTHING, D1 AND D2 MUST AGREE
 --
@@ -85,6 +98,40 @@ ORDER BY n_rows DESC;
 --     FROM        dwbi_fact_db.v_fact_cust_bil_daily c
 --     INNER JOIN  dwbi_fact_db.<BIL_DIM> d
 --             ON  d.cust_bil_typ_id = c.cust_bil_typ_id
+--     WHERE   c.day_key BETWEEN 14040701 AND 14041231
+--     GROUP BY c.sbrp_id, c.day_key / 100
+-- )
+-- SELECT   sbrp_id,
+--          COALESCE(SUM(ec_amt), 0) + COALESCE(SUM(mc_amt), 0) AS obligation_6m,
+--          COALESCE(SUM(ec_amt), 0)                            AS ec_billed_6m,
+--          COALESCE(SUM(mc_amt), 0)                            AS mc_billed_6m,
+--          IF(COALESCE(SUM(mc_rows), 0) > 0, 1, 0)             AS has_midcycle_billing
+-- FROM     bil
+-- GROUP BY sbrp_id;
+
+-- ---------------------------------------------------------------------------
+-- D3b  The same filter written with VARCHAR literals instead of a join, for
+--      when the dimension is not wanted in the query. Paste the two strings
+--      from D2's typ_id_text column - NOT from a spreadsheet.
+--
+--      The end-of-cycle string below is the one that matched the dimension.
+--      The mid-cycle string is deliberately left as a marker rather than
+--      filled with the 47 character value, because that value is short by a
+--      character and would match nothing.
+-- ---------------------------------------------------------------------------
+-- WITH bil AS (
+--     SELECT  c.sbrp_id,
+--             c.day_key / 100                                     AS month_key,
+--             COALESCE(SUM(COALESCE(c.payment_due_amt, 0)) FILTER (
+--                 WHERE c.cust_bil_typ_id =
+--                   '983116577831777608312765670515538102764700000000'), 0)
+--                                                                 AS ec_amt,
+--             COALESCE(SUM(COALESCE(c.payment_due_amt, 0)) FILTER (
+--                 WHERE c.cust_bil_typ_id = '<HOT_BILL_ID_FROM_D2>'), 0)
+--                                                                 AS mc_amt,
+--             COUNT(*) FILTER (
+--                 WHERE c.cust_bil_typ_id = '<HOT_BILL_ID_FROM_D2>') AS mc_rows
+--     FROM    dwbi_fact_db.v_fact_cust_bil_daily c
 --     WHERE   c.day_key BETWEEN 14040701 AND 14041231
 --     GROUP BY c.sbrp_id, c.day_key / 100
 -- )
