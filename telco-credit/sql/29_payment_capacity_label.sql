@@ -15,6 +15,32 @@
 --  payment, not as 130,000 of instalment on top of an unchanged bill. The
 --  conservative reading. Say so if it is meant the other way and S3 changes.
 --
+--  FIVE CANDIDATE LABELS, NOT ONE. WHY.
+--
+--  "Pays at least 170,000 in EVERY one of the four months" is decided by the
+--  subscriber's worst month. That is strict in a way the product is not: the
+--  operator needs 520,000 collected over four months, not 130,000 collected
+--  in each of four particular months. Someone who pays 50,000 in month one
+--  and 250,000 in month two has paid their instalments and the operator is
+--  whole. Telco payment is lumpy by nature - packages, cash top-ups, a month
+--  away - so a monthly floor punishes ordinary lumpiness as if it were
+--  default. This project has already paid for that mistake once: n_late_out
+--  >= 2 produced a 36 pct bad rate that turned out to be normal behaviour.
+--
+--  So S2 carries all five and S3 reports them side by side:
+--
+--    y_min170    MIN of the four months >= 170,000     strictest
+--    y_3of4_170  at least 3 of the 4 months >= 170,000 tolerates one bad month
+--    y_avg170    the four-month total >= 680,000       the average reading
+--    y_repaid    the four-month total >= 520,000       what the loan needs
+--    y_min130    MIN of the four months >= 130,000     instalment, no headroom
+--
+--  y_repaid is the loosest label that still means the operator got its money,
+--  which makes it the honest default. The others are there so the volume each
+--  one reaches is a measured number: pick the strictest label that still
+--  clears 3,000,000, because every loosening makes a positive prediction mean
+--  less.
+--
 --  WHAT THIS FILE IS FOR
 --
 --  Before a model is worth building, three numbers decide everything:
@@ -221,38 +247,78 @@ SELECT  w.sbrp_id,
         -- ones, and an instalment is missed in the month it is missed.
         LEAST(w.o1, w.o2, w.o3, w.o4)             AS min_post4,
         (w.m1 + w.m2 + w.m3) / 3                  AS avg_pre3,
-        (w.o1 + w.o2 + w.o3 + w.o4) / 4           AS avg_post4
+        (w.o1 + w.o2 + w.o3 + w.o4) / 4           AS avg_post4,
+        w.o1 + w.o2 + w.o3 + w.o4                 AS sum_post4,
+        -- how many of the four months cleared 170,000 Toman
+        IF(w.o1 >= 1700000, 1, 0) + IF(w.o2 >= 1700000, 1, 0)
+      + IF(w.o3 >= 1700000, 1, 0) + IF(w.o4 >= 1700000, 1, 0)
+                                                  AS n_months_over_170k,
+        -- the five candidate labels, so S3 compares rather than assumes
+        IF(LEAST(w.o1, w.o2, w.o3, w.o4) >= 1700000, 1, 0)      AS y_min170,
+        IF(IF(w.o1 >= 1700000, 1, 0) + IF(w.o2 >= 1700000, 1, 0)
+         + IF(w.o3 >= 1700000, 1, 0) + IF(w.o4 >= 1700000, 1, 0)
+           >= 3, 1, 0)                                          AS y_3of4_170,
+        IF(w.o1 + w.o2 + w.o3 + w.o4 >= 6800000, 1, 0)          AS y_avg170,
+        IF(w.o1 + w.o2 + w.o3 + w.o4 >= 5200000, 1, 0)          AS y_repaid,
+        IF(LEAST(w.o1, w.o2, w.o3, w.o4) >= 1300000, 1, 0)      AS y_min130
 FROM    wide w
 LEFT JOIN rev  r  ON r.sbrp_id  = w.sbrp_id
 LEFT JOIN act3 a3 ON a3.sbrp_id = w.sbrp_id
 ;
 
 -- ---------------------------------------------------------------------------
--- S3  THE ANSWER. Thresholds in Rial: 170,000 Toman = 1,700,000 Rial.
+-- S3  THE ANSWER. One row per candidate label, so the choice is arithmetic.
 --
---     Read `precision_pct` first. It is the share of the rule's population
---     that goes on to pay 170,000 in all four months, and it is what a model
---     has to beat. `missed` is the subscribers the rule rejects who would
---     have paid - the only place a model can add volume.
+--     Read `n_positive` against the 3,000,000 target first: any label whose
+--     n_positive is below it cannot reach the goal no matter how good the
+--     model is, because the people simply are not there.
+--
+--     Then read `rule_precision_pct` - the share of the stated eligibility
+--     rule's population that satisfies the label. That is what a model has
+--     to beat. `missed` is the subscribers the rule rejects who satisfy the
+--     label anyway, and it is the only place a model can add volume.
+--
+--     Pick the STRICTEST label that still clears 3,000,000. Every loosening
+--     buys volume by making a positive prediction mean less.
 -- ---------------------------------------------------------------------------
-SELECT  COUNT(*)                                                AS population,
-        COUNT(*) FILTER (WHERE min_pre3 >= 2000000)              AS rule_200k_3m,
-        COUNT(*) FILTER (WHERE min_post4 >= 1700000)             AS would_pay_170k_4m,
-        COUNT(*) FILTER (WHERE min_pre3  >= 2000000
-                           AND min_post4 >= 1700000)             AS rule_and_pays,
-        COUNT(*) FILTER (WHERE min_pre3  >= 2000000
-                           AND min_post4 <  1700000)             AS rule_but_fails,
-        COUNT(*) FILTER (WHERE min_pre3  <  2000000
-                           AND min_post4 >= 1700000)             AS missed,
-        100.0 * COUNT(*) FILTER (WHERE min_pre3  >= 2000000
-                                   AND min_post4 >= 1700000)
+SELECT  label,
+        COUNT(*)                                            AS population,
+        SUM(y)                                              AS n_positive,
+        100.0 * SUM(y) / COUNT(*)                           AS base_rate_pct,
+        COUNT(*) FILTER (WHERE min_pre3 >= 2000000)         AS rule_200k_3m,
+        SUM(y) FILTER (WHERE min_pre3 >= 2000000)           AS rule_and_label,
+        100.0 * SUM(y) FILTER (WHERE min_pre3 >= 2000000)
               / NULLIF(COUNT(*) FILTER (WHERE min_pre3 >= 2000000), 0)
-                                                                 AS precision_pct,
-        100.0 * COUNT(*) FILTER (WHERE min_pre3  >= 2000000
-                                   AND min_post4 >= 1700000)
-              / NULLIF(COUNT(*) FILTER (WHERE min_post4 >= 1700000), 0)
-                                                                 AS recall_pct
-FROM    dwbi_temp40_db.dcb_paycap;
+                                                            AS rule_precision_pct,
+        SUM(y) FILTER (WHERE min_pre3 < 2000000)            AS missed,
+        100.0 * SUM(y) FILTER (WHERE min_pre3 >= 2000000)
+              / NULLIF(SUM(y), 0)                           AS rule_recall_pct
+FROM (
+    SELECT  min_pre3, 'y_min170'   AS label, y_min170   AS y FROM dwbi_temp40_db.dcb_paycap
+    UNION ALL
+    SELECT  min_pre3, 'y_3of4_170' AS label, y_3of4_170 AS y FROM dwbi_temp40_db.dcb_paycap
+    UNION ALL
+    SELECT  min_pre3, 'y_avg170'   AS label, y_avg170   AS y FROM dwbi_temp40_db.dcb_paycap
+    UNION ALL
+    SELECT  min_pre3, 'y_repaid'   AS label, y_repaid   AS y FROM dwbi_temp40_db.dcb_paycap
+    UNION ALL
+    SELECT  min_pre3, 'y_min130'   AS label, y_min130   AS y FROM dwbi_temp40_db.dcb_paycap
+) u
+GROUP BY label
+ORDER BY n_positive DESC;
+
+-- How many of the four months each subscriber clears, so the shape of the
+-- lumpiness is visible rather than assumed. If most of the base clears 3 or
+-- 4 months, y_min170 is not costing much and should be kept. If the mass
+-- sits at 2, the monthly floor is what is rejecting them, not their capacity.
+SELECT  n_months_over_170k,
+        COUNT(*)                                       AS n_subscribers,
+        100.0 * COUNT(*) / SUM(COUNT(*)) OVER ()       AS share_pct,
+        APPROX_PERCENTILE(sum_post4, 0.5) / 10000      AS median_4m_total_k_toman,
+        COUNT(*) FILTER (WHERE sum_post4 >= 5200000)   AS also_repaid_520k
+FROM        dwbi_temp40_db.dcb_paycap
+GROUP BY    n_months_over_170k
+ORDER BY    n_months_over_170k;
 
 -- How the rule threshold trades volume against precision. The stated rule is
 -- the 2000000 row. Note what the revenue floor and the tenure gate cost.
