@@ -91,6 +91,13 @@
 --  PAYMENTS USE ALL STATUSES. bllg_pmnt_stat_id = 2 holds 61.2 pct of payment
 --  value and status 1 holds 38.7 pct, so filtering to 2 discards a third.
 --
+--  CURRENCY. The database stores money in RIAL. Every threshold in this file
+--  is therefore a Rial figure: the 170,000 Toman screen is coded as 1,700,000.
+--  1 Toman = 10 Rial. Columns that report Toman say so in their name, and
+--  TICKET_TOMAN in the notebook is the one figure that is natively Toman
+--  because it is a business input rather than a database value. T4 checks
+--  that payments are Rial too, which pay_months assumes.
+--
 --  NO percent character anywhere. NO CASE expressions.
 -- ============================================================================
 
@@ -349,13 +356,22 @@ CROSS JOIN  med
 -- ---------------------------------------------------------------------------
 SELECT  'MODEL' AS tbl, COUNT(*) AS n, SUM(y) AS n_bad,
         100.0 * SUM(y) / COUNT(*)                        AS bad_pct,
-        APPROX_PERCENTILE(rev_6m, 0.5) / 10000           AS med_rev_6m_k,
+        -- arpu is RIAL, so dividing by 60 gives Toman per month: 6 months of
+        -- Rial / 6 months / 10 Rial-per-Toman. The column name carries the
+        -- unit. An earlier version divided by 10000 and called it
+        -- med_rev_6m_k, which on a Rial column reads as thousands of RIAL
+        -- when it was really thousands of TOMAN - a 10x misread waiting to
+        -- happen, in a project where the screen is quoted in Toman and the
+        -- data is stored in Rial.
+        APPROX_PERCENTILE(rev_6m, 0.5) / 60              AS med_month_toman,
+        APPROX_PERCENTILE(rev_6m, 0.5)                   AS med_rev_6m_rial,
         APPROX_PERCENTILE(CAST(rev_months AS DOUBLE), 0.5) AS med_rev_months,
         SUM(IF(n_label_months >= 4, 1, 0))               AS n_fully_observed
 FROM    dwbi_temp40_db.dcb_model
 UNION ALL
 SELECT  'SCORE', COUNT(*), NULL, NULL,
-        APPROX_PERCENTILE(rev_6m, 0.5) / 10000,
+        APPROX_PERCENTILE(rev_6m, 0.5) / 60,
+        APPROX_PERCENTILE(rev_6m, 0.5),
         APPROX_PERCENTILE(CAST(rev_months AS DOUBLE), 0.5),
         NULL
 FROM    dwbi_temp40_db.dcb_score;
@@ -405,3 +421,43 @@ FROM (
 ) z
 GROUP BY IF(h < 70, 'train', IF(h < 90, 'valid', 'test'))
 ORDER BY split;
+
+-- ---------------------------------------------------------------------------
+-- T4  ARE PAYMENTS IN THE SAME UNIT AS REVENUE? An unverified assumption
+--     until this runs, and it matters.
+--
+--     arpu is Rial, and the screen bar is a Rial figure - 1,700,000 Rial for
+--     the 170,000 Toman rule. pay_months compares pmnt_amt against that SAME
+--     bar, which is only valid if pmnt_amt is also Rial. If payments are
+--     stored in Toman, the comparison is 10x too strict and pay_months is
+--     near zero for almost everybody - a silently dead feature rather than a
+--     visible error.
+--
+--     HOW TO READ IT. A postpaid subscriber pays roughly what they are
+--     billed, so pay_to_rev_ratio should land near 1. Near 0.1 means payments
+--     are in TOMAN and every payment threshold in this project is wrong by a
+--     factor of ten. Near 10 means the reverse.
+--
+--     med_pay_months is the corroborating symptom: it should be broadly
+--     similar to med_rev_months. If revenue clears the bar in 4 months and
+--     payments in 0, that is the unit mismatch showing itself.
+-- ---------------------------------------------------------------------------
+SELECT  'MODEL' AS tbl,
+        APPROX_PERCENTILE(rev_6m,  0.5)                      AS med_rev_6m_rial,
+        APPROX_PERCENTILE(paid_6m, 0.5)                      AS med_paid_6m,
+        APPROX_PERCENTILE(paid_6m, 0.5)
+            / NULLIF(APPROX_PERCENTILE(rev_6m, 0.5), 0)      AS pay_to_rev_ratio,
+        APPROX_PERCENTILE(CAST(rev_months AS DOUBLE), 0.5)   AS med_rev_months,
+        APPROX_PERCENTILE(CAST(pay_months AS DOUBLE), 0.5)   AS med_pay_months,
+        100.0 * SUM(IF(paid_6m = 0, 1, 0)) / COUNT(*)        AS pct_zero_paid
+FROM    dwbi_temp40_db.dcb_model
+UNION ALL
+SELECT  'SCORE',
+        APPROX_PERCENTILE(rev_6m,  0.5),
+        APPROX_PERCENTILE(paid_6m, 0.5),
+        APPROX_PERCENTILE(paid_6m, 0.5)
+            / NULLIF(APPROX_PERCENTILE(rev_6m, 0.5), 0),
+        APPROX_PERCENTILE(CAST(rev_months AS DOUBLE), 0.5),
+        APPROX_PERCENTILE(CAST(pay_months AS DOUBLE), 0.5),
+        100.0 * SUM(IF(paid_6m = 0, 1, 0)) / COUNT(*)
+FROM    dwbi_temp40_db.dcb_score;

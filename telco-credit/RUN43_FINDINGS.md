@@ -449,3 +449,66 @@ hazard ratios off one-decimal percentages; the same care applies here.
 | expected AUC | modest; my earlier 0.70–0.78 was too optimistic |
 
 Nothing further blocks the model. Run `42`, export, run the notebook.
+
+---
+
+# Currency: Rial vs Toman
+
+Asked whether the Rial/Toman distinction was accounted for. Audited every
+constant and conversion. **1 Toman = 10 Rial**, and the database stores Rial.
+
+## The screen conversion is right
+
+| | Rial (as coded) | Toman |
+|---|---|---|
+| production screen bar | **1,700,000** | 170,000 |
+| MODEL bar (equalizing) | 1,050,000 | 105,000 |
+| SUPERSET bar | 520,000 | 52,000 |
+| 46 ladder range | 300,000 – 3,000,000 | 30,000 – 300,000 |
+| avail/outst winsor cap | 500,000,000 | 50,000,000 |
+
+`TICKET_TOMAN = 500,000` is the one natively-Toman figure, because it is a
+business input rather than a database value — 5,000,000 Rial.
+
+**The sanity check that confirms it:** `SCORE`'s median subscriber runs
+**255,819 Toman/month** against a 170,000 Toman bar — comfortably over, as a
+screened population should be. `MODEL`'s runs 154,500 against its 105,000 bar.
+Both coherent. Had the bar been applied in the wrong unit, the screen would
+have admitted either almost nobody or almost everybody.
+
+**The book is Toman end to end:** 9,344,723 × 500,000 Toman = **4,672 bn
+Toman** (= 46,724 bn Rial), against a 15,000 bn Toman target, so 3.21× short.
+Read as bn *Rial* that gap would look 32×, not 3.2×.
+
+## One real defect, fixed
+
+`42` T1 reported `APPROX_PERCENTILE(rev_6m, 0.5) / 10000 AS med_rev_6m_k`.
+`rev_6m` is Rial, so `/10000` gives units of 10,000 Rial = 1,000 Toman. It
+returned 934.7 — which is 934,700 Toman, but `_k` on a Rial column reads as
+thousands of *Rial*, i.e. 93,470 Toman. A 10× misread waiting to happen.
+
+Replaced with two explicitly named columns: `med_month_toman` (`/60` — six
+months of Rial, divided by 6 months and by 10 Rial-per-Toman) and
+`med_rev_6m_rial`.
+
+## One assumption that was never verified — now checked
+
+`arpu` is Rial. `pay_months` compares `pmnt_amt` against **the same Rial bar**,
+which is only valid if payments are stored in Rial too. If they are in Toman,
+the comparison is 10× too strict and `pay_months` is near zero for almost
+everyone — a **silently dead feature**, not a visible error.
+
+Nothing measured so far tests this. `42` T4 now does:
+
+- **`pay_to_rev_ratio`** — a postpaid subscriber pays roughly what they are
+  billed, so this should land near **1**. Near **0.1** means payments are in
+  Toman and every payment threshold in this project is wrong by ten.
+- **`med_pay_months` against `med_rev_months`** — the corroborating symptom. If
+  revenue clears the bar in 4 months and payments in 0, that is the mismatch
+  showing itself.
+
+Indirect evidence suggests they are the same unit — `40_revenue_matrices.sql`
+produced payment and revenue spreads of the same order (17.5× and 26.5×) rather
+than differing by ten — but that is inference, not measurement. T4 settles it.
+
+The header of `42` now states the convention so this cannot drift again.
