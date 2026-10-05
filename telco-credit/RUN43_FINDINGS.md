@@ -280,3 +280,70 @@ Lower `GOOD_KEEP`, which is free and does not change who the model is about:
 rebalancing past a moderate level buys no ranking improvement and makes
 calibration worse, which isotonic then has to undo. `GOOD_KEEP = 10` is a
 reasonable place to stay.
+
+---
+
+# Does balance help? Measured
+
+Challenged: is a 10M-row dataset with 5M label=1 not good for the model?
+
+**Balance itself is fine, and I framed the earlier objection badly.** Sweeping
+the training balance across the whole range, on one fixed test set, 5 seeds:
+
+| `GOOD_KEEP` | train rows | bads in train | AUC | mean PD if weights forgotten |
+|---|---|---|---|---|
+| 100% | 1,000,000 | 0.55% | 0.7278 | 0.55% |
+| 20% | 204,412 | 2.70% | 0.7279 | 2.66% |
+| 10% | 104,963 | 5.25% | 0.7276 | 5.08% |
+| 5% | 55,239 | 9.98% | 0.7277 | 9.39% |
+| 2% | 25,404 | 21.71% | 0.7279 | 19.40% |
+| 0.55% | 10,984 | **50.21%** | 0.7274 | **42.49%** |
+
+**AUC spread across the entire sweep: 0.0005.** Balance does not change the
+ranking, which is what the limit engine consumes. What it changes is the
+*level*: at 50/50 without `sample_weight` the model predicts 42.49% against a
+true 0.55%, and the limit engine spends the level.
+
+So a balanced set would not be *worse* — it simply is not *better*, and
+down-sampling with weights already gives the balance with the level intact.
+
+## The real constraint is arithmetic, not methodological
+
+| | bads |
+|---|---|
+| needed for 10M rows at 50/50 | 5,000,000 |
+| available at the two-way label | **28,263** (177x short) |
+| available at an estimated one-way label | ~236,000 (21x short) |
+
+A 50/50 set **is** available today — keep 28,263 goods, get 56,526 rows — and
+the sweep says it ranks identically on 100x less data. 5M bads only exists if
+the population is the whole base rather than the eligible one, which is the
+population mismatch measured in the previous section.
+
+## Where more events could legitimately come from: the label
+
+This is the productive version of the request. A one-way bar means the
+subscriber **did not pay** — arguably more relevant to a credit line than being
+fully cut off, and roughly **8x more common**.
+
+`45_alternative_labels.sql` prices the menu on the *identical* cohort and the
+*identical* label window, so only the event definition varies:
+
+- **L1** the menu: two-way, one-way, either, one-way in 2+ months, 3+ months,
+  with the balanced-set size each would support. `cohort_n` must come back
+  5,100,390 and `pct_twoway` 0.5541%, which reconciles the file against 43.
+- **L2** whether a one-way bar is transient or persistent. Mass at 1 month
+  means most are a subscriber who paid late once and cured it — weak evidence
+  of default and a poor label. Mass at 2–4 months is recurring non-payment.
+- **L3** that the flags and the month counts agree. They come from different
+  aggregates (`MAX(IF(...))` against `COUNT(DISTINCT IF(...))`), so this is a
+  real test of both.
+- **L4** whether a softer label still separates across `rev_months`. This is
+  the one that decides it: if `pct_oneway_2plus` falls the way `pct_twoway`
+  does, the softer label carries the same signal with 8x the events, which is
+  the best available outcome. If it is flat, the extra events are noise.
+
+**If a softer label is adopted**, two things must follow: the same definition
+goes into `42_model_datasets.sql`, and the limit tables' LGD 100% assumption
+has to be revisited — a one-way bar does not lose the whole balance, so that
+assumption would be far too pessimistic for it.
