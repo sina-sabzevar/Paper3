@@ -88,6 +88,21 @@ SEED       = 42
 SPLIT_TRAIN = 70           # hash mod 100 under this -> train
 SPLIT_VALID = 90           # under this -> valid, at or over -> test
 
+# EXPECTED SHAPE, from 42's T1. Ported from the earlier notebook's CFG, which
+# had this right: "a missing part is otherwise undetectable - from the outside
+# it looks exactly like a smaller export". The duplicate-sbrp_id check catches
+# a part counted TWICE; nothing catches a part that never arrived, and a
+# half-loaded training set produces a perfectly plausible model on half the
+# data. The row count is the stronger form - it also catches a TRUNCATED
+# export, which a part count does not.
+#
+# Set a value to None to skip that check, and update these numbers whenever
+# 42 is re-run with a different bar.
+EXPECT = {
+    "dcb_model": dict(rows=8_701_085, parts=2),
+    "dcb_score": dict(rows=9_344_723, parts=2),
+}
+
 # The credit line per approved subscriber, in Toman. Used ONLY to turn the PD
 # ranking into money columns. It changes no fit and no metric.
 TICKET_TOMAN = 500_000
@@ -125,27 +140,61 @@ def load(stem):
     overlap is counted twice, and every rate below shifts silently.
     """
     base = os.path.join(DATA, stem)
-    for pat in (base + ".parquet", base + "*.parquet",
-                base + ".csv",     base + "*.csv"):
-        files = sorted(glob.glob(pat))
+    # GLOB ONLY, no exact-name pattern. An earlier version tried
+    # base + ".parquet" first and base + "*.parquet" second, but glob's "*"
+    # matches the empty string, so the first was a strict subset of the second:
+    # if a whole-table file AND part files both existed, the whole-table file
+    # won and the parts were silently ignored - which loads stale data without
+    # a word. Globbing only means that case concatenates everything and the
+    # duplicate-sbrp_id check below stops the run.
+    #
+    # File ORDER does not matter: the parts are concatenated and
+    # train/valid/test is assigned afterwards on a hash of sbrp_id.
+    for ext in (".parquet", ".csv"):
+        files = sorted(set(glob.glob(base + "*" + ext)))
         if not files:
             continue
-        rd = pd.read_parquet if files[0].endswith(".parquet") else pd.read_csv
+        rd = pd.read_parquet if ext == ".parquet" else pd.read_csv
         parts = [rd(f) for f in files]
         df = pd.concat(parts, ignore_index=True) if len(parts) > 1 else parts[0]
         print(f"  {stem}: {len(files)} file(s) -> {len(df):,} rows "
               f"x {df.shape[1]} cols")
+        if len(files) > 1:
+            print(f"    {', '.join(os.path.basename(f) for f in files)}")
+
+        exp = EXPECT.get(stem, {})
+        if exp.get("parts") is not None and len(files) != exp["parts"]:
+            raise ValueError(
+                f"{stem}: found {len(files)} file(s), expected "
+                f"{exp['parts']}. A missing part looks exactly like a smaller "
+                f"export from the outside, so this is the only thing that "
+                f"catches it. Check the export, or set the 'parts' entry for "
+                f"{stem} in EXPECT to None if it really is in {len(files)} "
+                f"piece(s).")
+        if exp.get("rows") is not None and len(df) != exp["rows"]:
+            raise ValueError(
+                f"{stem}: loaded {len(df):,} rows, expected {exp['rows']:,} "
+                f"(short by {exp['rows']-len(df):,}). Either a part is missing "
+                f"or truncated, or 42 was re-run with a different bar - in "
+                f"which case update EXPECT from its T1 output. A short load "
+                f"trains a plausible-looking model on less data than intended.")
         if "sbrp_id" in df.columns:
             dup = len(df) - df.sbrp_id.nunique()
             if dup:
                 raise ValueError(
-                    f"{dup:,} duplicate sbrp_id in {stem}. The parts overlap, "
-                    f"so those subscribers are counted twice and every metric "
-                    f"below would be wrong. Re-export on an exact boundary.")
+                    f"{dup:,} duplicate sbrp_id across "
+                    f"{', '.join(os.path.basename(f) for f in files)}. "
+                    f"Those subscribers are counted twice and every metric "
+                    f"below would be wrong. Two causes: a whole-table export "
+                    f"left in the directory beside its own parts, or parts cut "
+                    f"on a boundary that overlaps. Delete the extra file, or "
+                    f"re-split with sql/47_export_parts.sql and check its V1.")
         return df
     raise FileNotFoundError(
         f"nothing found for {stem} under {DATA}/. Run sql/42_model_datasets.sql "
-        f"and export dcb_model and dcb_score into {DATA}/.")
+        f"and export dcb_model and dcb_score into {DATA}/. Split exports "
+        f"are fine - name them dcb_model_p1, dcb_model_p2 and so on, and "
+        f"sql/47_export_parts.sql creates them.")
 
 
 def hash_bucket(ids):
