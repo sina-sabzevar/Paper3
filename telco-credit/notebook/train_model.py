@@ -107,8 +107,11 @@ USE_RELATIVE_ONLY = False
 
 # Not features. sbrp_id is an identity a tree would memorise; n_label_months is
 # built from the outcome and is NULL in dcb_score, so it is leakage.
+# in_band marks the production-equivalent rows. It is 1 for every row of
+# dcb_score by construction, so as a feature it is the oneway_months trap again:
+# it would carry weight in TRAIN and be unable to fire at scoring time.
 NOT_FEATURES = {"sbrp_id", "y", "cohort", "sample_weight", "n_label_months",
-                "split"}
+                "split", "in_band"}
 
 
 # ---------------------------------------------------------------------------
@@ -221,11 +224,29 @@ def decile_table(y, p, w, label=""):
     g["predicted"] = g.wp / g.weighted_n
     g["observed"]  = g.wy / g.weighted_n
     g["ratio"]     = g.observed / g.predicted.replace(0, np.nan)
-    g = g[["n", "weighted_n", "predicted", "observed", "ratio"]]
+    # The EXPECTED number of bads in the decile. The ratio is not interpretable
+    # where this is tiny: a decile of 2,239 rows at a predicted 0.0126 pct
+    # expects 0.28 bads, so observing zero is ordinary and gives a ratio of
+    # 0.000 that reads as catastrophic miscalibration. An earlier version
+    # reported exactly that as "furthest from 1.0".
+    g["exp_bad"] = g.weighted_n * g.predicted
+    g = g[["n", "weighted_n", "predicted", "observed", "exp_bad", "ratio"]]
     print(f"\n  calibration by decile{label} (ratio near 1.0 is the goal)")
     print(g.to_string(float_format=lambda v: f"{v:12.6f}"))
-    worst = g.ratio.iloc[(g.ratio - 1.0).abs().to_numpy().argmax()]
-    print(f"  furthest from 1.0: {worst:.3f}")
+
+    MIN_EXP = 10.0
+    judge = g[g.exp_bad >= MIN_EXP]
+    if len(judge) == 0:
+        print(f"  no decile expects {MIN_EXP:.0f}+ bads, so the ratios are all")
+        print("  small-sample noise and calibration cannot be judged here.")
+    else:
+        worst = judge.ratio.iloc[(judge.ratio - 1.0).abs().to_numpy().argmax()]
+        print(f"  furthest from 1.0: {worst:.3f}   "
+              f"(over the {len(judge)} of {len(g)} deciles expecting "
+              f"{MIN_EXP:.0f}+ bads)")
+        if len(judge) < len(g):
+            print(f"  the other {len(g)-len(judge)} expect too few events for "
+                  f"the ratio to mean anything")
     return g
 
 
@@ -317,6 +338,27 @@ def main():
         print(f"  WARNING split event rates differ by more than 1.5x: "
               f"{[f'{r:.4%}' for r in rates]}")
 
+    # ---- the band ---------------------------------------------------------
+    # MODEL_POP in the SQL decides what dcb_model contains. Whatever it
+    # contains, the metrics are read on in_band = 1 rows, because that is the
+    # only population dcb_score holds and therefore the only one ever scored.
+    #
+    # Measured on synthetic data: a model trained on the whole base reported an
+    # AUC of 0.78-0.82 on the whole base while performing at 0.63-0.69 in the
+    # band. Comparing a whole-base AUC against a band AUC compares two
+    # different test sets and says nothing.
+    if "in_band" not in md.columns:
+        md["in_band"] = 1
+        print("\n  no in_band column - rebuild with the current SQL. Assuming")
+        print("  every row is in band, which is only true for MODEL_POP=screened.")
+    band_share = md.in_band.mean()
+    print(f"\n  in_band rows: {int(md.in_band.sum()):,} of {len(md):,} "
+          f"({band_share:.1%})")
+    if band_share < 0.999:
+        print("  dcb_model is WIDER than the production screen, so TRAIN sees")
+        print("  rows that can never be scored. Metrics below are reported both")
+        print("  ways and only the in-band figures are comparable across runs.")
+
     # ---- features ---------------------------------------------------------
     FEATURES = [c for c in md.columns if c not in NOT_FEATURES]
     FEATURES = [c for c in FEATURES if c in sc.columns]
@@ -384,6 +426,11 @@ def main():
     Xva, yva = X(va), va.y.to_numpy(int)
     Xte, yte = X(te), te.y.to_numpy(int)
     wva, wte = np.ones(len(yva)), np.ones(len(yte))
+    # boolean masks for the production-equivalent rows
+    bva = va.in_band.to_numpy().astype(bool)
+    bte = te.in_band.to_numpy().astype(bool)
+    print(f"  VALID in band {bva.sum():,}/{len(bva):,}   "
+          f"TEST in band {bte.sum():,}/{len(bte):,}")
     del md
     gc.collect()
 
@@ -414,11 +461,15 @@ def main():
     RES = [report("logistic (champion)", ytr, champ.predict_proba(Xtr)[:, 1], wtr),
            report("HistGB (challenger)", ytr, chal.predict_proba(Xtr)[:, 1], wtr)]
 
-    print("\nVALID - the selection set")
+    print("\nVALID - the selection set, IN BAND")
     pva_c = champ.predict_proba(Xva)[:, 1]
     pva_g = chal.predict_proba(Xva)[:, 1]
-    RV = [report("logistic (champion)", yva, pva_c, wva),
-          report("HistGB (challenger)", yva, pva_g, wva)]
+    RV = [report("logistic (champion)", yva[bva], pva_c[bva], wva[bva]),
+          report("HistGB (challenger)", yva[bva], pva_g[bva], wva[bva])]
+    if bva.mean() < 0.999:
+        print("  and on ALL VALID rows, for contrast - NOT comparable:")
+        report("logistic, all rows", yva, pva_c, wva)
+        report("HistGB, all rows",   yva, pva_g, wva)
 
     best  = "HistGB" if RV[1]["auc"] > RV[0]["auc"] else "logistic"
     i     = 1 if best == "HistGB" else 0
@@ -432,22 +483,34 @@ def main():
 
     # ---- calibration: fit on VALID, judge on TEST ------------------------
     from sklearn.isotonic import IsotonicRegression
+    # Fitted on the IN-BAND half of VALID. Calibrating on a wider population
+    # would anchor the level to a base rate the scored population does not have.
     iso = IsotonicRegression(out_of_bounds="clip", y_min=1e-7, y_max=1 - 1e-7)
-    iso.fit(pva, yva)
-    anchor = np.average(yva) / max(np.average(iso.predict(pva)), 1e-9)
-    print(f"\nCALIBRATION fitted on VALID ({len(yva):,} rows)")
+    iso.fit(pva[bva], yva[bva])
+    anchor = (np.average(yva[bva])
+              / max(np.average(iso.predict(pva[bva])), 1e-9))
+    print(f"\nCALIBRATION fitted on VALID in band ({int(bva.sum()):,} rows)")
     print(f"  anchor ratio {anchor:.4f}  (1.0 = no rescaling needed)")
 
     # ---- TEST: read once -------------------------------------------------
-    print(f"\nTEST - {len(yte):,} rows, untouched until now. Nothing was tuned")
-    print("       on these, so this is the honest within-period number.")
+    print(f"\nTEST - {int(bte.sum()):,} in-band rows, untouched until now.")
+    print("       Nothing was tuned on these, so this is the honest")
+    print("       within-period number for the population that gets scored.")
     pte = np.clip(iso.predict(model.predict_proba(Xte)[:, 1]) * anchor,
                   1e-7, 0.999)
-    RT = [report(f"{best} calibrated [TEST]", yte, pte, wte)]
-    print(f"  mean PD {pte.mean():.4%}  vs observed {yte.mean():.4%}  "
-          f"-> level error "
-          f"{abs(pte.mean()-yte.mean())/max(yte.mean(),1e-9):.2%}")
-    decile_table(yte, pte, wte, " on TEST")
+    RT = [report(f"{best} calibrated [TEST in band]",
+                 yte[bte], pte[bte], wte[bte])]
+    if bte.mean() < 0.999:
+        print("  and on ALL TEST rows - NOT the scored population, shown only")
+        print("  so the gap between the two is visible:")
+        RT.append(report(f"{best} calibrated [TEST all rows]", yte, pte, wte))
+        print(f"  the all-rows AUC runs "
+              f"{RT[-1]['auc']-RT[0]['auc']:+.4f} against in-band. Quote the "
+              f"in-band figure.")
+    print(f"  mean PD {pte[bte].mean():.4%}  vs observed {yte[bte].mean():.4%} "
+          f" -> level error "
+          f"{abs(pte[bte].mean()-yte[bte].mean())/max(yte[bte].mean(),1e-9):.2%}")
+    decile_table(yte[bte], pte[bte], wte[bte], " on TEST in band")
 
     # ---- score the live set ----------------------------------------------
     print("\nSCORING THE LIVE SET")
@@ -512,6 +575,9 @@ def main():
     print("\nWHAT IS NOT REPORTED, AND WHY")
     print("  Accuracy. At a rate near 0.55 pct a model predicting 'nobody")
     print("  defaults' scores 99.45 pct, so the number says nothing.")
+    print("  A whole-population AUC, when dcb_model is wider than the screen.")
+    print("  It ran 0.13 to 0.15 above the in-band figure on synthetic data,")
+    print("  and only the in-band figure describes the lending decision.")
     print("  An out-of-time estimate. The split is random by subscriber, so")
     print("  TEST measures generalisation to other subscribers in the SAME")
     print("  period. The PSI section is what speaks to the later period, and")

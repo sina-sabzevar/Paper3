@@ -55,6 +55,45 @@ COHORTS = [
               [],                               "dcb_score", PROD_BAR),
 ]
 
+# ---------------------------------------------------------------------------
+#  WHICH POPULATION THE MODEL TRAINS ON.
+#
+#  "screened"  the production-equivalent population: revenue over the window's
+#              bar in 2+ months, never one-way, never two-way. The default.
+#  "superset"  a LOWER revenue bar, same bar-history filters. Covers the range
+#              the screen could drift over - it sits at 24.4 pct of the base
+#              now and was 14.6 pct a year ago - so the fit does not have to be
+#              redone every time the nominal bar loosens.
+#  "all"       no screen at all. Every subscriber in the window.
+#
+#  MEASURED on synthetic data, AUC evaluated IN THE BAND (the only population
+#  that is ever scored), across two worlds - one where the risk relationship is
+#  the same across the revenue range, one where it differs inside the band:
+#
+#      world            band-only   superset   whole base
+#      homogeneous         0.6835     0.6839       0.6838
+#      heterogeneous       0.7235     0.7127       0.6342
+#
+#  So "all" is break-even at best and costs 0.09 AUC at worst, while
+#  "superset" is within 0.011 of band-only in both worlds and buys the
+#  drift-robustness. The whole-base model also reports a HEADLINE AUC on the
+#  whole base of 0.78-0.82 while performing at 0.63-0.69 in the band, so the
+#  number that would be quoted is inflated by 0.13-0.15.
+#
+#  Which world the real data is in is an empirical question, and W4 in
+#  44_where_are_the_bads.sql is the free leading indicator: if the bad rate
+#  still falls across rev_months INSIDE the cohort, the relationship survives
+#  the screen and "all" is roughly harmless; if it is flat, revenue is spent
+#  inside the band and a global fit is the heterogeneous case.
+#
+#  WHATEVER IS CHOSEN, THE METRICS MUST BE READ IN THE BAND. Every MODEL row
+#  carries in_band, and the notebook restricts VALID and TEST to in_band = 1.
+#  Comparing a whole-base AUC against a band AUC is comparing two different
+#  test sets and says nothing.
+# ---------------------------------------------------------------------------
+MODEL_POP    = "screened"
+SUPERSET_BAR = 520_000     # about half the MODEL bar -> roughly the top 40 pct
+
 # Level features that get a RELATIVE twin, divided by that window's own median.
 # Raw Rial levels drift: revenue per subscriber-month grew 1.64x at the p90
 # between these two windows. A coefficient learned on 1404 Rial means something
@@ -137,6 +176,8 @@ def block(name, fm, lm, table, bar):
 
     # ---- the screened projection -------------------------------------------
     rm = " + ".join(f"IF(f.r{i}>={bar},1,0)" for i in range(1, 7))
+    rw = " + ".join(f"IF(f.r{i}>={SUPERSET_BAR},1,0)" for i in range(1, 7))
+    ob = "+".join(f"f.o{i}" for i in range(1, 7))
     pm_ = " + ".join(f"IF(COALESCE(p.q{i},0)>={bar},1,0)" for i in range(1, 7))
     L.append("proj AS (")
     L.append("    SELECT  f.sbrp_id,")
@@ -147,6 +188,8 @@ def block(name, fm, lm, table, bar):
     L.append("            (f.r4+f.r5+f.r6) - (f.r1+f.r2+f.r3)           AS rev_trend,")
     L.append(f"            {rm}")
     L.append("                                                          AS rev_months,")
+    L.append(f"            {rw}")
+    L.append("                                                          AS rev_months_wide,")
     L.append("            COALESCE(p.q1,0) AS q1, COALESCE(p.q2,0) AS q2,")
     L.append("            COALESCE(p.q3,0) AS q3, COALESCE(p.q4,0) AS q4,")
     L.append("            COALESCE(p.q5,0) AS q5, COALESCE(p.q6,0) AS q6,")
@@ -166,17 +209,37 @@ def block(name, fm, lm, table, bar):
     else:
         L.append("            CAST(NULL AS BIGINT)  AS n_label_months,")
         L.append("            CAST(NULL AS INTEGER) AS y,")
+    L.append(f"            IF({rm} >= {MIN_REV_MONTHS}")
+    L.append(f"                AND {ob} = 0 AND f.f_twoway = 0, 1, 0)")
+    L.append("                                                          AS in_band,")
     L.append(f"            '{name}' AS cohort")
     L.append("    FROM        feat f")
     L.append("    LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id")
     if lm:
         L.append("    INNER JOIN  lab  l ON l.sbrp_id = f.sbrp_id")
-    L.append(f"    -- THE SCREEN: revenue at or above {bar:,} Rial in "
-             f"{MIN_REV_MONTHS} or more")
-    L.append("    -- of 6 months, never one-way barred, never two-way barred.")
-    L.append(f"    WHERE   {rm} >= {MIN_REV_MONTHS}")
-    L.append("      AND   " + "+".join(f"f.o{i}" for i in range(1, 7)) + " = 0")
-    L.append("      AND   f.f_twoway = 0")
+    # SCORE is ALWAYS the production screen - that is the live rule. Only the
+    # MODEL table's training population is switchable.
+    pop = "screened" if not lm else MODEL_POP
+    if pop == "screened":
+        L.append(f"    -- THE SCREEN: revenue at or above {bar:,} Rial in "
+                 f"{MIN_REV_MONTHS} or more")
+        L.append("    -- of 6 months, never one-way barred, never two-way barred.")
+        L.append(f"    WHERE   {rm} >= {MIN_REV_MONTHS}")
+        L.append(f"      AND   {ob} = 0")
+        L.append("      AND   f.f_twoway = 0")
+    elif pop == "superset":
+        L.append(f"    -- SUPERSET: the lower bar of {SUPERSET_BAR:,} Rial, same")
+        L.append("    -- bar-history filters. in_band still marks the")
+        L.append("    -- production-equivalent rows, and the metrics use it.")
+        L.append(f"    WHERE   {rw} >= {MIN_REV_MONTHS}")
+        L.append(f"      AND   {ob} = 0")
+        L.append("      AND   f.f_twoway = 0")
+    else:
+        L.append("    -- NO SCREEN: every subscriber in the window. in_band marks")
+        L.append("    -- the production-equivalent rows and the metrics use it,")
+        L.append("    -- because an AUC over the whole base is not comparable to")
+        L.append("    -- an AUC in the band - it ran 0.13 to 0.15 higher.")
+        L.append("    WHERE   1 = 1")
     L.append("),")
     # ---- window medians, for the drift-robust relative features ------------
     L.append("med AS (")

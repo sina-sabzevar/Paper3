@@ -182,8 +182,12 @@ USE_RELATIVE_ONLY = False
 #   split           created below
 #   sample_weight   created by down-sampling, not observed
 #   n_label_months  built from the OUTCOME and NULL in dcb_score -> leakage
+#   in_band         marks the production-equivalent rows. It is 1 for every
+#                   row of dcb_score by construction, so as a feature it is
+#                   the oneway_months trap again - weight in TRAIN that cannot
+#                   fire at scoring time.
 NOT_FEATURES = {"sbrp_id", "y", "cohort", "sample_weight", "n_label_months",
-                "split"}
+                "split", "in_band"}
 
 os.makedirs(OUTDIR, exist_ok=True)
 rng = np.random.default_rng(SEED)
@@ -302,6 +306,63 @@ if max(rates) / max(min(rates), 1e-12) > 1.5:
           f"{[f'{r:.4%}' for r in rates]} - check the hash")
 else:
     print("\n  the three splits carry consistent event rates")
+''')
+
+# ---------------------------------------------------------------------------
+md(r"""
+---
+## 3b. The band — which rows the metrics are read on
+
+`MODEL_POP` in `sql/42_model_datasets.sql` decides what `dcb_model` contains:
+
+| `MODEL_POP` | `dcb_model` holds |
+|---|---|
+| `screened` | the production-equivalent population (default) |
+| `superset` | a lower revenue bar, same bar-history filters |
+| `all` | every subscriber in the window |
+
+**Whatever it contains, the metrics are read on `in_band = 1` rows only**,
+because that is the only population `dcb_score` holds and therefore the only
+one that ever gets scored.
+
+This is not a technicality. Measured on synthetic data, a model trained on the
+whole base reported an AUC of **0.78–0.82 on the whole base** while performing
+at **0.63–0.69 in the band**. Comparing a whole-base AUC against a band AUC
+compares two different test sets and tells you nothing — except that the
+flattering number is the one you would be tempted to quote.
+
+The same experiment, AUC always measured in the band:
+
+| | train on band | train on superset | train on whole base |
+|---|---|---|---|
+| risk relationship same across the range | 0.6835 | 0.6839 | 0.6838 |
+| relationship differs inside the band | 0.7235 | 0.7127 | **0.6342** |
+
+So `all` is break-even at best and costs 0.09 at worst; `superset` stays within
+0.011 of band-only in both worlds and buys robustness to the screen drifting
+(it sits at 24.4% of the base now and was 14.6% a year ago).
+
+**W4 in `44_where_are_the_bads.sql` is the free leading indicator** for which
+of those two worlds the real data is in: if the bad rate still falls across
+`rev_months` inside the cohort, the relationship survives the screen.
+""")
+
+code(r'''
+if "in_band" not in md_df.columns:
+    md_df["in_band"] = 1
+    print("  no in_band column - rebuild with the current SQL. Assuming every")
+    print("  row is in band, which is only true for MODEL_POP=screened.")
+
+band_share = md_df.in_band.mean()
+print(f"  in_band rows: {int(md_df.in_band.sum()):,} of {len(md_df):,} "
+      f"({band_share:.1%})")
+if band_share < 0.999:
+    print("\n  dcb_model is WIDER than the production screen, so TRAIN sees")
+    print("  rows that can never be scored. Metrics below are reported both")
+    print("  ways, and only the in-band figures are comparable across runs.")
+else:
+    print("\n  dcb_model is the production-equivalent population, so in-band")
+    print("  and all-rows metrics are the same thing here.")
 ''')
 
 # ---------------------------------------------------------------------------
@@ -509,9 +570,16 @@ Xva, yva = X(va), va.y.to_numpy(int)
 Xte, yte = X(te), te.y.to_numpy(int)
 wva, wte = np.ones(len(yva)), np.ones(len(yte))
 
+# boolean masks for the production-equivalent rows - every metric below uses
+# them, because dcb_score contains only in-band subscribers
+bva = va.in_band.to_numpy().astype(bool)
+bte = te.in_band.to_numpy().astype(bool)
+
 print(f"\n  TRAIN {Xtr.shape}  weighted rate {np.average(ytr, weights=wtr):.4%}")
-print(f"  VALID {Xva.shape}  rate {yva.mean():.4%}  (whole, no sampling)")
-print(f"  TEST  {Xte.shape}  rate {yte.mean():.4%}  (whole, untouched)")
+print(f"  VALID {Xva.shape}  rate {yva.mean():.4%}  "
+      f"in band {bva.sum():,} at {yva[bva].mean():.4%}")
+print(f"  TEST  {Xte.shape}  rate {yte.mean():.4%}  "
+      f"in band {bte.sum():,} at {yte[bte].mean():.4%}")
 ''')
 
 # ---------------------------------------------------------------------------
@@ -633,11 +701,28 @@ def decile_table(y, p, w, label=""):
     g["predicted"] = g.wp / g.weighted_n
     g["observed"]  = g.wy / g.weighted_n
     g["ratio"]     = g.observed / g.predicted.replace(0, np.nan)
-    g = g[["n", "weighted_n", "predicted", "observed", "ratio"]]
+    # The EXPECTED bads in the decile. The ratio is not interpretable where
+    # this is tiny: a decile of 2,239 rows at a predicted 0.0126 pct expects
+    # 0.28 bads, so observing zero is ordinary and gives a ratio of 0.000 that
+    # reads as catastrophic. An earlier version reported exactly that as
+    # "furthest from 1.0".
+    g["exp_bad"] = g.weighted_n * g.predicted
+    g = g[["n", "weighted_n", "predicted", "observed", "exp_bad", "ratio"]]
     print(f"\n  calibration by decile{label} (ratio near 1.0 is the goal)")
     print(g.to_string(float_format=lambda v: f"{v:12.6f}"))
-    worst = g.ratio.iloc[(g.ratio - 1.0).abs().to_numpy().argmax()]
-    print(f"  furthest from 1.0: {worst:.3f}")
+
+    MIN_EXP = 10.0
+    judge = g[g.exp_bad >= MIN_EXP]
+    if len(judge) == 0:
+        print(f"  no decile expects {MIN_EXP:.0f}+ bads, so the ratios are all")
+        print("  small-sample noise and calibration cannot be judged here.")
+    else:
+        worst = judge.ratio.iloc[(judge.ratio - 1.0).abs().to_numpy().argmax()]
+        print(f"  furthest from 1.0: {worst:.3f}   (over the {len(judge)} of "
+              f"{len(g)} deciles expecting {MIN_EXP:.0f}+ bads)")
+        if len(judge) < len(g):
+            print(f"  the other {len(g)-len(judge)} expect too few events for "
+                  f"the ratio to mean anything")
     return g
 ''')
 
@@ -648,11 +733,15 @@ RES = [report("logistic (champion)", ytr, champ.predict_proba(Xtr)[:, 1], wtr),
 ''')
 
 code(r'''
-print("VALID - the selection set")
+print("VALID - the selection set, IN BAND")
 pva_c = champ.predict_proba(Xva)[:, 1]
 pva_g = chal.predict_proba(Xva)[:, 1]
-RV = [report("logistic (champion)", yva, pva_c, wva),
-      report("HistGB (challenger)", yva, pva_g, wva)]
+RV = [report("logistic (champion)", yva[bva], pva_c[bva], wva[bva]),
+      report("HistGB (challenger)", yva[bva], pva_g[bva], wva[bva])]
+if bva.mean() < 0.999:
+    print("  and on ALL VALID rows, for contrast - NOT comparable:")
+    report("logistic, all rows", yva, pva_c, wva)
+    report("HistGB, all rows",   yva, pva_g, wva)
 
 best  = "HistGB" if RV[1]["auc"] > RV[0]["auc"] else "logistic"
 i     = 1 if best == "HistGB" else 0
@@ -687,11 +776,13 @@ earlier version of this project printed a healthy 1.0 as "99.9993%".
 code(r'''
 from sklearn.isotonic import IsotonicRegression
 
+# Fitted on the IN-BAND rows of VALID. Calibrating on a wider population
+# would anchor the level to a base rate the scored population does not have.
 iso = IsotonicRegression(out_of_bounds="clip", y_min=1e-7, y_max=1 - 1e-7)
-iso.fit(pva, yva)
-anchor = np.average(yva) / max(np.average(iso.predict(pva)), 1e-9)
+iso.fit(pva[bva], yva[bva])
+anchor = np.average(yva[bva]) / max(np.average(iso.predict(pva[bva])), 1e-9)
 
-print(f"CALIBRATION fitted on VALID ({len(yva):,} rows)")
+print(f"CALIBRATION fitted on VALID in band ({int(bva.sum()):,} rows)")
 print(f"  anchor ratio {anchor:.4f}  (1.0 = no rescaling needed; a RATIO, not a PD)")
 ''')
 
@@ -710,12 +801,19 @@ flagged significant drift, treat this AUC as a **ceiling**.
 """)
 
 code(r'''
-print(f"TEST - {len(yte):,} rows, untouched until now")
+print(f"TEST - {int(bte.sum()):,} in-band rows, untouched until now")
 pte = np.clip(iso.predict(model.predict_proba(Xte)[:, 1]) * anchor, 1e-7, 0.999)
-RT = [report(f"{best} calibrated [TEST]", yte, pte, wte)]
-print(f"  mean PD {pte.mean():.4%}  vs observed {yte.mean():.4%}  "
-      f"-> level error {abs(pte.mean()-yte.mean())/max(yte.mean(),1e-9):.2%}")
-cal_tbl = decile_table(yte, pte, wte, " on TEST")
+RT = [report(f"{best} calibrated [TEST in band]", yte[bte], pte[bte], wte[bte])]
+if bte.mean() < 0.999:
+    print("  and on ALL TEST rows - NOT the scored population, shown only so")
+    print("  the gap between the two is visible:")
+    RT.append(report(f"{best} calibrated [TEST all rows]", yte, pte, wte))
+    print(f"  the all-rows AUC runs {RT[-1]['auc']-RT[0]['auc']:+.4f} against "
+          f"in-band. Quote the in-band figure.")
+print(f"  mean PD {pte[bte].mean():.4%}  vs observed {yte[bte].mean():.4%}  "
+      f"-> level error "
+      f"{abs(pte[bte].mean()-yte[bte].mean())/max(yte[bte].mean(),1e-9):.2%}")
+cal_tbl = decile_table(yte[bte], pte[bte], wte[bte], " on TEST in band")
 ''')
 
 # ---------------------------------------------------------------------------

@@ -170,6 +170,8 @@ proj AS (
             (f.r4+f.r5+f.r6) - (f.r1+f.r2+f.r3)           AS rev_trend,
             IF(f.r1>=1050000,1,0) + IF(f.r2>=1050000,1,0) + IF(f.r3>=1050000,1,0) + IF(f.r4>=1050000,1,0) + IF(f.r5>=1050000,1,0) + IF(f.r6>=1050000,1,0)
                                                           AS rev_months,
+            IF(f.r1>=520000,1,0) + IF(f.r2>=520000,1,0) + IF(f.r3>=520000,1,0) + IF(f.r4>=520000,1,0) + IF(f.r5>=520000,1,0) + IF(f.r6>=520000,1,0)
+                                                          AS rev_months_wide,
             COALESCE(p.q1,0) AS q1, COALESCE(p.q2,0) AS q2,
             COALESCE(p.q3,0) AS q3, COALESCE(p.q4,0) AS q4,
             COALESCE(p.q5,0) AS q5, COALESCE(p.q6,0) AS q6,
@@ -182,6 +184,9 @@ proj AS (
             f.avail_max, f.avail_avg, f.outst_max, f.outst_avg,
             f.tenure_m,
             l.n_label_months, l.y,
+            IF(IF(f.r1>=1050000,1,0) + IF(f.r2>=1050000,1,0) + IF(f.r3>=1050000,1,0) + IF(f.r4>=1050000,1,0) + IF(f.r5>=1050000,1,0) + IF(f.r6>=1050000,1,0) >= 2
+                AND f.o1+f.o2+f.o3+f.o4+f.o5+f.o6 = 0 AND f.f_twoway = 0, 1, 0)
+                                                          AS in_band,
             'MODEL' AS cohort
     FROM        feat f
     LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id
@@ -280,6 +285,8 @@ proj AS (
             (f.r4+f.r5+f.r6) - (f.r1+f.r2+f.r3)           AS rev_trend,
             IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0)
                                                           AS rev_months,
+            IF(f.r1>=520000,1,0) + IF(f.r2>=520000,1,0) + IF(f.r3>=520000,1,0) + IF(f.r4>=520000,1,0) + IF(f.r5>=520000,1,0) + IF(f.r6>=520000,1,0)
+                                                          AS rev_months_wide,
             COALESCE(p.q1,0) AS q1, COALESCE(p.q2,0) AS q2,
             COALESCE(p.q3,0) AS q3, COALESCE(p.q4,0) AS q4,
             COALESCE(p.q5,0) AS q5, COALESCE(p.q6,0) AS q6,
@@ -293,6 +300,9 @@ proj AS (
             f.tenure_m,
             CAST(NULL AS BIGINT)  AS n_label_months,
             CAST(NULL AS INTEGER) AS y,
+            IF(IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0) >= 2
+                AND f.o1+f.o2+f.o3+f.o4+f.o5+f.o6 = 0 AND f.f_twoway = 0, 1, 0)
+                                                          AS in_band,
             'SCORE' AS cohort
     FROM        feat f
     LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id
