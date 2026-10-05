@@ -7,30 +7,46 @@ TARGET
     screen  revenue >= 170,000 Toman in 2 or more of 6 months,
             never one-way barred and never two-way barred in that window
     label   y = 1 if two-way barred in the 4 months immediately after
-    measured: 6,879,803 screened, 0.95 pct two-way barred within 4 months
 
 THREE COHORTS, built by sql/42_model_datasets.sql. Data runs 140301..140506.
 
-    TRAIN   features 140309..140402   label 140403..140406
-    VALID   features 140407..140412   label 140501..140504
+    TRAIN   features 140301..140306   label 140307..140310
+    VALID   features 140401..140406   label 140407..140410
     SCORE   features 140501..140506   no label - the outcome is the future
 
-TRAIN's label window ENDS at 140406, one month before VALID's feature window
-BEGINS at 140407, so the out-of-time test is genuine rather than a reshuffle
-of one period. TRAIN sits as LATE as the 4-month label allows, which matters:
-an earlier version put it at 140301..140306 and got 3,733,333 subscribers
-against VALID's 6,879,803, a 46 pct shortfall on the same screen. The screen's
-170,000 Toman threshold is FIXED NOMINAL, so a window twelve months earlier
-is a harsher screen in real terms and selects the richer tail of a different
-population. sql/43_cohort_funnel.sql measures how much drift is left.
+YEAR-OVER-YEAR ALIGNED. Every feature window is months 1-6 of its year and
+every label window is months 7-10, exactly 12 months apart, and each label
+window ends before the next cohort's features begin.
+
+That alignment is the point. An earlier version chose the windows to sit as
+close together in time as the label allowed, which put VALID on months 7-12
+and SCORE on months 1-6 - different seasons. Jalali month 1 is Farvardin and
+carries Nowruz, and telco usage is strongly seasonal, so the revenue features
+were not comparable between the window the model was judged on and the window
+it would be applied to. VALID exists to be a rehearsal of SCORE, and a
+rehearsal in a different season is not one.
+
+THE 6,879,803 AT 0.95 PCT IS NOT THIS VALID WINDOW. That figure was measured
+in 41_forward_horizons.sql on features 140407..140412 with label
+140501..140504 - a window no cohort here uses any more. The new VALID window
+has never been measured; sql/43_cohort_funnel.sql D5 establishes it, and that
+is what to check VALID against.
+
+THE COHORTS MAY NOT BE THE SAME SIZE YET. The screen's 170,000 Toman bar is
+FIXED NOMINAL, so in windows one and two years earlier it is a harsher screen
+in real terms and selects the richer tail - TRAIN at 140301..140306 returned
+3,733,333 against the 6,879,803 at 140407..140412. 43_cohort_funnel.sql D3
+measures the per-window bar that admits an equal SHARE, and
+42_model_datasets.sql COHORT_BAR takes it. Run that before trusting the fit.
 
 WHY 4 MONTHS COSTS MORE THAN TWICE 2 MONTHS
 
-Risk here is BACK-loaded, measured at p_n proportional to n^1.40. Lengthening
-the window from 2 months to 4 raises the event rate from 0.36 pct to 0.95
-pct - 2.6x, not the 2.0x a constant hazard would give. The longer window is
-the harder problem and the more honest one: a 4-month credit line is exposed
-for 4 months.
+Risk here is BACK-loaded, measured at p_n proportional to n^1.40. On the
+140407..140412 window, lengthening the horizon from 2 months to 4 raised the
+event rate from 0.36 pct to 0.95 pct - 2.6x, not the 2.0x a constant hazard
+would give. The longer window is the harder problem and the more honest one:
+a 4-month credit line is exposed for 4 months. (Those two figures belong to
+that window, not to the VALID window built here.)
 
 WHAT A 0.95 PCT EVENT RATE CHANGES
 
@@ -52,12 +68,14 @@ Goods are sampled at GOOD_KEEP pct and sample_weight restores the base rate.
 
     USE sample_weight IN EVERY FIT AND EVERY METRIC.
 
-Without it the model sees roughly a 9 pct event rate instead of 0.95 and
+Without it the model sees roughly a 9 pct event rate instead of about 1, and
 every predicted probability comes out about nine times too high. Keeping
-GOOD_KEEP pct of goods inflates the ODDS by exactly 100/GOOD_KEEP = 10x; at
-these rates that is a 9.2x inflation of the probability itself (0.95 pct
-becomes 8.75 pct). Ranking survives that; the level does not, and the limit
-engine spends the level.
+GOOD_KEEP pct of goods inflates the ODDS by exactly 100/GOOD_KEEP = 10x. As a
+worked example at the 0.95 pct measured on the 140407..140412 window, that is
+a 9.2x inflation of the probability itself (0.95 pct becomes 8.75 pct); the
+exact figure moves with whatever rate this cohort turns out to carry.
+Ranking survives that; the level does not, and the limit engine spends the
+level.
 
 CALIBRATION IS FITTED AND JUDGED ON DIFFERENT ROWS
 
@@ -203,8 +221,13 @@ def main():
         print(f"  {nm}: {len(d):,} rows, {int(d.y.sum()):,} bad, "
               f"{d.y.mean():.4%}")
     print(f"  SCORE: {len(sc_raw):,} rows, no label")
-    print("\n  VALID should land near 0.95 pct - that figure is on record from")
-    print("  41_forward_horizons.sql. A mismatch means the two files disagree.")
+    print("\n  Compare VALID's rate against 43_cohort_funnel.sql D5 for window")
+    print("  140401..140406. Do NOT compare it against the 0.95 pct from")
+    print("  41_forward_horizons.sql - that was measured on features")
+    print("  140407..140412, a different window in a different season.")
+    print("  Also compare the row counts: if TRAIN and VALID sit far below")
+    print("  SCORE, the fixed nominal bar is still selecting the richer tail")
+    print("  in the earlier windows and COHORT_BAR is not set yet.")
 
     FEATURES = [c for c in tr_raw.columns if c not in NOT_FEATURES]
     FEATURES = [c for c in FEATURES

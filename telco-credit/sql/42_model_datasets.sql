@@ -14,29 +14,48 @@
 --
 --  THREE COHORTS. Data runs 140301..140506.
 --
---      cohort    features            label (4 months)   role
---      TRAIN     140309..140402      140403..140406     fit
---      VALID     140407..140412      140501..140504     out of time
---      SCORE     140501..140506      none - the future  hand to implementation
+--      cohort    features        label (4 months)  role
+--      TRAIN     140301..140306  140307..140310    fit
+--      VALID     140401..140406  140407..140410    out of time
+--      SCORE     140501..140506  none - the future hand to implementation
 --
---  TRAIN's label window ENDS at 140406, one month before VALID's feature
---  window BEGINS at 140407, so the out-of-time test is genuine rather than a
---  reshuffle of one period.
+--  THE THREE WINDOWS ARE YEAR-OVER-YEAR ALIGNED, and that is the point.
+--  Every feature window covers months 1-6 of its year and every label window
+--  covers months 7-10, exactly 12 months apart. The generator asserts this:
+--  it refuses to emit a calendar whose windows differ in length, sit at
+--  different months-of-year, are unevenly spaced, or whose label reaches into
+--  the next cohort's features.
 --
---  TRAIN IS PACKED AS LATE AS THE 4-MONTH LABEL ALLOWS, and that is
---  deliberate. An earlier version put TRAIN at 140301..140306, the start of
---  the data, which returned 3,733,333 subscribers against VALID's 6,879,803
---  - a 46 pct shortfall. The screen uses a FIXED NOMINAL threshold of
---  170,000 Toman, so a window twelve months earlier is a materially harsher
---  screen in real terms: nominal revenue per subscriber rises with inflation
---  and tariff changes, so fewer subscribers cleared 1,700,000 Rial then. That
---  made TRAIN the richer tail of a different population from the one SCORE
---  holds. Moving TRAIN to 140309..140402 puts it 8 months closer to SCORE
---  and shrinks that drift. 43_cohort_funnel.sql measures what is left.
+--  WHY ALIGNMENT AND NOT PROXIMITY. An earlier version chose the windows to
+--  sit as close together in time as the label allowed: TRAIN 140309..140402,
+--  VALID 140407..140412, SCORE 140501..140506. That put VALID on months 7-12
+--  and SCORE on months 1-6 - different seasons. Jalali month 1 is Farvardin
+--  and carries Nowruz, and telco usage is strongly seasonal, so the revenue
+--  features were not comparable between the window the model was judged on
+--  and the window it would be applied to. VALID exists to be a rehearsal of
+--  SCORE; a rehearsal in a different season is not one. That version also
+--  had VALID's label window (140501..140504) overlapping SCORE's feature
+--  window (140501..140506), so the period used to JUDGE the model was the
+--  same period used to DESCRIBE the live population.
 --
---  VALID is the window measured in 41_forward_horizons.sql at 0.95 pct for
---  this exact screen over 4 months, so the model's validation figure is
---  directly comparable to a number already on record. T4 checks it.
+--  WHAT ALIGNMENT COSTS. TRAIN is now 24 months before SCORE rather than 8,
+--  so the fixed nominal bar bites harder, not less: TRAIN at 140301..140306
+--  returned 3,733,333 subscribers against the 6,879,803 measured at
+--  140407..140412. That is the trade accepted here, because a drifting bar
+--  is correctable - COHORT_BAR above takes a per-window threshold, and
+--  43_cohort_funnel.sql D3 measures what each one should be - while a
+--  seasonal mismatch cannot be corrected by any threshold.
+--
+--  SO THE ORDER OF WORK IS: run 43_cohort_funnel.sql, read D3 and D4, set
+--  COHORT_BAR for TRAIN and VALID, regenerate this file, then fit.
+--
+--  NO FIGURE IS ON RECORD FOR THIS VALID WINDOW YET. The 0.95 pct measured
+--  in 41_forward_horizons.sql was for features 140407..140412 with label
+--  140501..140504, which is NOT a window any cohort here uses any more. The
+--  new VALID is features 140401..140406 with label 140407..140410, and its
+--  event rate is established by 43_cohort_funnel.sql D5. T4 reports the rate
+--  rather than asserting against a number that belongs to a different
+--  window - a cross-check against the wrong reference is worse than none.
 --
 --  PARTIAL OBSERVATION. A subscriber counts as judgeable if they appear in AT
 --  LEAST ONE month of the label window - the INNER JOIN on lab enforces it,
@@ -73,7 +92,7 @@
 
 
 -- ---------------------------------------------------------------------------
--- T1  TRAIN   features 140309..140402, label 140403..140406
+-- T1  TRAIN   features 140301..140306, label 140307..140310
 -- ---------------------------------------------------------------------------
 
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb_train;
@@ -81,40 +100,40 @@ CREATE TABLE dwbi_temp40_db.dcb_train WITH (format='PARQUET') AS
 WITH pm AS (
     SELECT   sbrp_id, day_key / 100 AS mk, SUM(COALESCE(pmnt_amt,0)) AS paid
     FROM     dwbi_fact_db.v_fact_pmnt_adjmt
-    WHERE    day_key BETWEEN 14030901 AND 14040231
+    WHERE    day_key BETWEEN 14030101 AND 14030631
     GROUP BY sbrp_id, day_key / 100
 ),
 pay AS (
     SELECT  sbrp_id,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140309), 0) AS q1,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140310), 0) AS q2,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140311), 0) AS q3,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140312), 0) AS q4,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140401), 0) AS q5,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140402), 0) AS q6
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140301), 0) AS q1,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140302), 0) AS q2,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140303), 0) AS q3,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140304), 0) AS q4,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140305), 0) AS q5,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140306), 0) AS q6
     FROM    pm GROUP BY sbrp_id
 ),
 feat AS (
     SELECT  sbrp_id,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140309), 0) AS r1,
+                     FILTER (WHERE month_key = 140301), 0) AS r1,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140310), 0) AS r2,
+                     FILTER (WHERE month_key = 140302), 0) AS r2,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140311), 0) AS r3,
+                     FILTER (WHERE month_key = 140303), 0) AS r3,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140312), 0) AS r4,
+                     FILTER (WHERE month_key = 140304), 0) AS r4,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140401), 0) AS r5,
+                     FILTER (WHERE month_key = 140305), 0) AS r5,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140402), 0) AS r6,
+                     FILTER (WHERE month_key = 140306), 0) AS r6,
             SUM(IF(arpu IS NULL, 1, 0))                      AS n_arpu_null,
-            MAX(IF(month_key=140309 AND sbrp_stat_id=3,1,0)) AS o1,
-            MAX(IF(month_key=140310 AND sbrp_stat_id=3,1,0)) AS o2,
-            MAX(IF(month_key=140311 AND sbrp_stat_id=3,1,0)) AS o3,
-            MAX(IF(month_key=140312 AND sbrp_stat_id=3,1,0)) AS o4,
-            MAX(IF(month_key=140401 AND sbrp_stat_id=3,1,0)) AS o5,
-            MAX(IF(month_key=140402 AND sbrp_stat_id=3,1,0)) AS o6,
+            MAX(IF(month_key=140301 AND sbrp_stat_id=3,1,0)) AS o1,
+            MAX(IF(month_key=140302 AND sbrp_stat_id=3,1,0)) AS o2,
+            MAX(IF(month_key=140303 AND sbrp_stat_id=3,1,0)) AS o3,
+            MAX(IF(month_key=140304 AND sbrp_stat_id=3,1,0)) AS o4,
+            MAX(IF(month_key=140305 AND sbrp_stat_id=3,1,0)) AS o5,
+            MAX(IF(month_key=140306 AND sbrp_stat_id=3,1,0)) AS o6,
             MAX(IF(sbrp_stat_id=4,1,0))                      AS f_twoway,
             MAX(IF(sbrp_stat_id IN (8,9),1,0))               AS f_reclaim,
             SUM(IF(active1_base_flag=1,1,0))                 AS n_active1,
@@ -124,7 +143,7 @@ feat AS (
             LEAST(AVG(COALESCE(bill_outstanding_amt,0)), 500000000) AS outst_avg,
             GREATEST(LEAST(MAX(COALESCE(age_on_net_months,0)), 480), 0) AS tenure_m
     FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
-    WHERE   month_key IN (140309,140310,140311,140312,140401,140402)
+    WHERE   month_key IN (140301,140302,140303,140304,140305,140306)
       AND   sbrp_typ_id = 1
     GROUP BY sbrp_id
 ),
@@ -133,7 +152,7 @@ lab AS (
              MAX(IF(sbrp_stat_id = 4, 1, 0))  AS y,
              COUNT(DISTINCT month_key)        AS n_label_months
     FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip
-    WHERE    month_key IN (140403, 140404, 140405, 140406)
+    WHERE    month_key IN (140307, 140308, 140309, 140310)
       AND    sbrp_typ_id = 1
     GROUP BY sbrp_id
 )
@@ -160,7 +179,7 @@ SELECT  f.sbrp_id,
 FROM        feat f
 LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id
 INNER JOIN  lab  l ON l.sbrp_id = f.sbrp_id
--- THE SCREEN: revenue over the threshold in 2 or more months,
+-- THE SCREEN: revenue at or above 1,700,000 Rial in 2 or more months,
 -- never one-way barred, never two-way barred in the feature window.
 WHERE   IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0) >= 2
   AND   f.o1+f.o2+f.o3+f.o4+f.o5+f.o6 = 0
@@ -169,7 +188,7 @@ WHERE   IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + 
 
 
 -- ---------------------------------------------------------------------------
--- T2  VALID   features 140407..140412, label 140501..140504
+-- T2  VALID   features 140401..140406, label 140407..140410
 -- ---------------------------------------------------------------------------
 
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb_valid;
@@ -177,40 +196,40 @@ CREATE TABLE dwbi_temp40_db.dcb_valid WITH (format='PARQUET') AS
 WITH pm AS (
     SELECT   sbrp_id, day_key / 100 AS mk, SUM(COALESCE(pmnt_amt,0)) AS paid
     FROM     dwbi_fact_db.v_fact_pmnt_adjmt
-    WHERE    day_key BETWEEN 14040701 AND 14041229
+    WHERE    day_key BETWEEN 14040101 AND 14040631
     GROUP BY sbrp_id, day_key / 100
 ),
 pay AS (
     SELECT  sbrp_id,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140407), 0) AS q1,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140408), 0) AS q2,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140409), 0) AS q3,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140410), 0) AS q4,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140411), 0) AS q5,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140412), 0) AS q6
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140401), 0) AS q1,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140402), 0) AS q2,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140403), 0) AS q3,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140404), 0) AS q4,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140405), 0) AS q5,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140406), 0) AS q6
     FROM    pm GROUP BY sbrp_id
 ),
 feat AS (
     SELECT  sbrp_id,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140407), 0) AS r1,
+                     FILTER (WHERE month_key = 140401), 0) AS r1,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140408), 0) AS r2,
+                     FILTER (WHERE month_key = 140402), 0) AS r2,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140409), 0) AS r3,
+                     FILTER (WHERE month_key = 140403), 0) AS r3,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140410), 0) AS r4,
+                     FILTER (WHERE month_key = 140404), 0) AS r4,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140411), 0) AS r5,
+                     FILTER (WHERE month_key = 140405), 0) AS r5,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140412), 0) AS r6,
+                     FILTER (WHERE month_key = 140406), 0) AS r6,
             SUM(IF(arpu IS NULL, 1, 0))                      AS n_arpu_null,
-            MAX(IF(month_key=140407 AND sbrp_stat_id=3,1,0)) AS o1,
-            MAX(IF(month_key=140408 AND sbrp_stat_id=3,1,0)) AS o2,
-            MAX(IF(month_key=140409 AND sbrp_stat_id=3,1,0)) AS o3,
-            MAX(IF(month_key=140410 AND sbrp_stat_id=3,1,0)) AS o4,
-            MAX(IF(month_key=140411 AND sbrp_stat_id=3,1,0)) AS o5,
-            MAX(IF(month_key=140412 AND sbrp_stat_id=3,1,0)) AS o6,
+            MAX(IF(month_key=140401 AND sbrp_stat_id=3,1,0)) AS o1,
+            MAX(IF(month_key=140402 AND sbrp_stat_id=3,1,0)) AS o2,
+            MAX(IF(month_key=140403 AND sbrp_stat_id=3,1,0)) AS o3,
+            MAX(IF(month_key=140404 AND sbrp_stat_id=3,1,0)) AS o4,
+            MAX(IF(month_key=140405 AND sbrp_stat_id=3,1,0)) AS o5,
+            MAX(IF(month_key=140406 AND sbrp_stat_id=3,1,0)) AS o6,
             MAX(IF(sbrp_stat_id=4,1,0))                      AS f_twoway,
             MAX(IF(sbrp_stat_id IN (8,9),1,0))               AS f_reclaim,
             SUM(IF(active1_base_flag=1,1,0))                 AS n_active1,
@@ -220,7 +239,7 @@ feat AS (
             LEAST(AVG(COALESCE(bill_outstanding_amt,0)), 500000000) AS outst_avg,
             GREATEST(LEAST(MAX(COALESCE(age_on_net_months,0)), 480), 0) AS tenure_m
     FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
-    WHERE   month_key IN (140407,140408,140409,140410,140411,140412)
+    WHERE   month_key IN (140401,140402,140403,140404,140405,140406)
       AND   sbrp_typ_id = 1
     GROUP BY sbrp_id
 ),
@@ -229,7 +248,7 @@ lab AS (
              MAX(IF(sbrp_stat_id = 4, 1, 0))  AS y,
              COUNT(DISTINCT month_key)        AS n_label_months
     FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip
-    WHERE    month_key IN (140501, 140502, 140503, 140504)
+    WHERE    month_key IN (140407, 140408, 140409, 140410)
       AND    sbrp_typ_id = 1
     GROUP BY sbrp_id
 )
@@ -256,7 +275,7 @@ SELECT  f.sbrp_id,
 FROM        feat f
 LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id
 INNER JOIN  lab  l ON l.sbrp_id = f.sbrp_id
--- THE SCREEN: revenue over the threshold in 2 or more months,
+-- THE SCREEN: revenue at or above 1,700,000 Rial in 2 or more months,
 -- never one-way barred, never two-way barred in the feature window.
 WHERE   IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0) >= 2
   AND   f.o1+f.o2+f.o3+f.o4+f.o5+f.o6 = 0
@@ -342,7 +361,7 @@ SELECT  f.sbrp_id,
         'SCORE' AS cohort
 FROM        feat f
 LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id
--- THE SCREEN: revenue over the threshold in 2 or more months,
+-- THE SCREEN: revenue at or above 1,700,000 Rial in 2 or more months,
 -- never one-way barred, never two-way barred in the feature window.
 WHERE   IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0) >= 2
   AND   f.o1+f.o2+f.o3+f.o4+f.o5+f.o6 = 0
@@ -353,9 +372,16 @@ WHERE   IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + 
 -- ---------------------------------------------------------------------------
 -- T4  CHECK BEFORE EXPORTING ANYTHING.
 --
---     VALID's rate must land near 0.95 pct. That figure is on record from
---     41_forward_horizons.sql for this exact screen over a 4-month horizon,
---     so a mismatch means these two files disagree and one of them is wrong.
+--     Compare VALID's rate against 43_cohort_funnel.sql D5 for window
+--     140401..140406, which is the figure of record for THIS window. Do not
+--     compare it against the 0.95 pct from 41_forward_horizons.sql: that was
+--     measured on features 140407..140412 with label 140501..140504, a
+--     different window in a different season, and the two are not
+--     interchangeable.
+--
+--     Also compare the three row counts. If TRAIN and VALID are far below
+--     SCORE, the fixed nominal bar is still selecting the richer tail in the
+--     earlier windows and COHORT_BAR has not been set from D3 yet.
 -- ---------------------------------------------------------------------------
 SELECT  'TRAIN' AS cohort, COUNT(*) AS n, SUM(y) AS n_bad,
         100.0 * SUM(y) / COUNT(*) AS bad_pct,

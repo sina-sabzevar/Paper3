@@ -31,16 +31,20 @@ produces the two tables the limit engine needs.
 |---|---|
 | **Screen** | revenue >= 170,000 Toman in **2 or more** of 6 months, never one-way barred, never two-way barred in that window |
 | **Label** | `y = 1` if the subscriber is **two-way barred** (`sbrp_stat_id = 4`) within the **4 months immediately after** the feature window |
-| **Population** | 6,879,803 subscribers |
-| **Event rate** | **0.95%** at the 4-month horizon |
+
+> **The 6,879,803 at 0.95% belongs to a different window.** That figure was
+> measured in `41_forward_horizons.sql` on features `140407..140412` with label
+> `140501..140504`, which no cohort below uses any more. The cohorts here have
+> not been measured yet - `sql/43_cohort_funnel.sql` D5 establishes their rates,
+> and section 3 compares against that rather than against 0.95%.
 
 ### Why 4 months costs more than twice 2 months
 
-Risk is **back-loaded**: measured at `p_n` proportional to `n^1.40`. Stretching
-the window from 2 to 4 months moves the event rate 0.36% -> 0.95%, which is
-**2.6x**, not the 2.0x a constant hazard would give. The 4-month window is the
-harder problem and the honest one, because a 4-month credit line is exposed for
-four months.
+Risk is **back-loaded**: measured at `p_n` proportional to `n^1.40`. On the
+`140407..140412` window, stretching the horizon from 2 to 4 months moved the
+event rate 0.36% -> 0.95%, which is **2.6x**, not the 2.0x a constant hazard
+would give. The 4-month window is the harder problem and the honest one,
+because a 4-month credit line is exposed for four months.
 
 ### The three cohorts
 
@@ -48,30 +52,46 @@ Data runs `140301..140506`.
 
 | cohort | features | label | role |
 |---|---|---|---|
-| `TRAIN` | 140309..140402 | 140403..140406 | fit the model |
-| `VALID` | 140407..140412 | 140501..140504 | **out of time** - the real test |
+| `TRAIN` | 140301..140306 | 140307..140310 | fit the model |
+| `VALID` | 140401..140406 | 140407..140410 | **out of time** - the real test |
 | `SCORE` | 140501..140506 | none, the outcome is the future | the live set to lend to |
 
-`TRAIN`'s label window **ends** at 140406, one month before `VALID`'s feature
-window **begins** at 140407. That is what makes the validation genuinely
-out-of-time rather than a reshuffle of a single period.
+**The three windows are year-over-year aligned.** Every feature window covers
+months 1-6 of its year, every label window covers months 7-10, and they sit
+exactly 12 months apart. Each label window ends before the next cohort's
+features begin, so the out-of-time test is genuine.
 
-### Why TRAIN sits as late as it possibly can
+### Why alignment and not proximity
 
-An earlier version of this put `TRAIN` at `140301..140306`, the start of the
-data. It returned **3,733,333** subscribers against `VALID`'s **6,879,803** -
-a 46% shortfall on the *same* screen.
+An earlier version chose the windows to sit as close together in time as the
+label allowed: `TRAIN 140309..140402`, `VALID 140407..140412`,
+`SCORE 140501..140506`. That put `VALID` on **months 7-12** and `SCORE` on
+**months 1-6** - different seasons. Jalali month 1 is Farvardin and carries
+Nowruz, and telco usage is strongly seasonal, so the revenue features were not
+comparable between the window the model was judged on and the window it would
+be applied to. `VALID` exists to be a rehearsal of `SCORE`; a rehearsal in a
+different season is not one.
 
-The cause is that the screen's 170,000 Toman threshold is **fixed nominal**.
-Nominal revenue per subscriber rises with inflation and tariff changes, so the
-same bar is a materially **harsher** screen the further back the window sits.
-A window twelve months earlier therefore selects the richer tail - a different
-population from the one `SCORE` holds, which is not what you want to fit a
-model on.
+That version also had `VALID`'s label window (`140501..140504`) overlapping
+`SCORE`'s feature window (`140501..140506`), so the period used to **judge**
+the model was the same period used to **describe** the live population.
 
-`140309..140402` is the latest window a 4-month label permits, 8 months closer
-to `SCORE`. `sql/43_cohort_funnel.sql` measures how much drift is left after
-the move, and section 3 below checks the event rate.
+### What alignment costs, and what to do about it
+
+`TRAIN` is now 24 months before `SCORE` rather than 8, so the fixed nominal bar
+bites *harder*. `TRAIN` at `140301..140306` returned **3,733,333** subscribers
+against the **6,879,803** at `140407..140412` - a 46% shortfall on the same
+screen, because 170,000 Toman is a harsher bar in real terms the further back
+you go.
+
+That trade is accepted deliberately: a drifting bar **is** correctable - 
+`COHORT_BAR` in `42_model_datasets.sql` takes a per-window threshold and
+`43_cohort_funnel.sql` D3 measures what each should be - while a seasonal
+mismatch cannot be corrected by any threshold.
+
+**So run `43_cohort_funnel.sql` first**, set `COHORT_BAR`, regenerate
+`42_model_datasets.sql`, and only then fit. If the cohorts come back very
+unequal in size, that step has not been done.
 
 `VALID` is deliberately the exact window measured in
 `41_forward_horizons.sql` at **0.95%** for this same screen over 4 months, so
@@ -156,9 +176,14 @@ SEED       = 42              # fixed so two runs give the same model
 # floor is 400,000.
 TICKET_TOMAN = 500_000
 
-# The event rate this screen was measured at over a 4-month horizon, from
-# sql/41_forward_horizons.sql. Section 3 checks the loaded data against it.
-EXPECTED_RATE = 0.0095
+# The event rate of record for THIS VALID window (140401..140406 features,
+# 140407..140410 label), from sql/43_cohort_funnel.sql D5.
+#
+# Leave it None until 43 has been run. Do NOT put 0.0095 here: that figure was
+# measured on features 140407..140412 with label 140501..140504 - a different
+# window in a different season - and checking against the wrong reference is
+# worse than not checking at all, because it manufactures false confidence.
+EXPECTED_RATE = None
 
 # Columns that are NOT features:
 #   sbrp_id         an identity. A tree would happily memorise individuals.
@@ -281,18 +306,37 @@ for nm, d in (("TRAIN", tr_raw), ("VALID", va_raw)):
     print(f"  {nm}: {len(d):,} rows, {int(d.y.sum()):,} bad, {d.y.mean():.4%}")
 print(f"  SCORE: {len(sc_raw):,} rows, no label")
 
-# The cross-check. A warning, not an assertion: a modest gap is ordinary
-# sampling noise, while a large one means the two files disagree.
-obs  = va_raw.y.mean()
-drift = abs(obs - EXPECTED_RATE) / EXPECTED_RATE
-print(f"\n  VALID observed {obs:.4%} vs {EXPECTED_RATE:.4%} on record "
-      f"-> {drift:.1%} apart")
-if drift > 0.25:
-    print("  WARNING more than 25 pct apart. 42_model_datasets.sql and")
-    print("  41_forward_horizons.sql disagree about this population. Check the")
-    print("  screen and the label months in both before trusting anything below.")
+# The cross-check, when there is something to check against.
+obs = va_raw.y.mean()
+if EXPECTED_RATE is None:
+    print(f"\n  VALID observed {obs:.4%}. No figure of record for this window "
+          f"yet -")
+    print("  run sql/43_cohort_funnel.sql, read D5 for window 140401..140406,")
+    print("  and set EXPECTED_RATE in section 1 to it. Until then this is")
+    print("  unchecked: the 0.95 pct from 41_forward_horizons.sql belongs to a")
+    print("  different window and must not be used here.")
 else:
-    print("  consistent with the recorded figure.")
+    drift = abs(obs - EXPECTED_RATE) / EXPECTED_RATE
+    print(f"\n  VALID observed {obs:.4%} vs {EXPECTED_RATE:.4%} on record "
+          f"-> {drift:.1%} apart")
+    if drift > 0.25:
+        print("  WARNING more than 25 pct apart. 42_model_datasets.sql and")
+        print("  43_cohort_funnel.sql disagree about this population. Check the")
+        print("  screen and the label months in both before trusting anything.")
+    else:
+        print("  consistent with the recorded figure.")
+
+# The cohorts should be comparable in size. Very unequal sizes mean the fixed
+# nominal bar is still selecting the richer tail in the earlier windows.
+sizes = {"TRAIN": len(tr_raw), "VALID": len(va_raw), "SCORE": len(sc_raw)}
+print("\n  cohort sizes:", "  ".join(f"{k} {v:,}" for k, v in sizes.items()))
+spread = max(sizes.values()) / max(min(sizes.values()), 1)
+if spread > 1.3:
+    print(f"  WARNING largest cohort is {spread:.2f}x the smallest. The fixed")
+    print("  170,000 Toman bar is nominal, so it screens harder in the earlier")
+    print("  windows. Set COHORT_BAR in 42_model_datasets.sql from")
+    print("  43_cohort_funnel.sql D3 and rebuild, or the model is fitted on a")
+    print("  richer population than it scores.")
 ''')
 
 code(r'''
