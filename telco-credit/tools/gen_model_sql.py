@@ -17,13 +17,30 @@ MIN_REV_MONTHS = 2        # the screen: revenue over the threshold in 2+ months
 WINSOR  = 500_000_000     # available_credit reaches 40.9 trillion raw
 TENURE_CAP = 480          # age_on_net_months runs -232 to 1,285 raw
 
-# Jalali: months 1-6 have 31 days, 7-11 have 30, month 12 has 29 in 1404.
-LAST_DAY = {1:31,2:31,3:31,4:31,5:31,6:31,7:30,8:30,9:30,10:30,11:30,12:29}
+# Jalali month lengths: months 1-6 have 31 days, months 7-11 have 30, and
+# month 12 has 29 normally or 30 in a leap year. The leap years in the current
+# 33-year cycle fall at offsets {1,5,9,13,17,22,26,30} of year mod 33, which
+# makes 1403 a leap year (1403 mod 33 = 17) and 1404 an ordinary one (18).
+#
+# This only bites when a feature window ENDS on month 12, because the payment
+# filter is a BETWEEN over day_key and every interior month is covered
+# whatever its length. It is handled properly anyway: getting it wrong would
+# silently drop the last day of a window, and a silent one-day loss is exactly
+# the kind of defect that never gets noticed.
+LEAP_OFFSETS = {1, 5, 9, 13, 17, 22, 26, 30}
+
+def last_day(month_key):
+    y, mo = month_key // 100, month_key % 100
+    if mo <= 6:
+        return 31
+    if mo <= 11:
+        return 30
+    return 30 if (y % 33) in LEAP_OFFSETS else 29
 
 COHORTS = [
     # name,   feature months,                      label months (4),            table
-    ("TRAIN", [140301,140302,140303,140304,140305,140306],
-               [140307,140308,140309,140310], "dcb_train"),
+    ("TRAIN", [140309,140310,140311,140312,140401,140402],
+               [140403,140404,140405,140406], "dcb_train"),
     ("VALID", [140407,140408,140409,140410,140411,140412],
                [140501,140502,140503,140504], "dcb_valid"),
     ("SCORE", [140501,140502,140503,140504,140505,140506],
@@ -32,7 +49,7 @@ COHORTS = [
 
 def day_span(months):
     a, b = months[0], months[-1]
-    return a * 100 + 1, b * 100 + LAST_DAY[b % 100]
+    return a * 100 + 1, b * 100 + last_day(b)
 
 def rev_expr(m):
     return ("COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))\n"
@@ -156,13 +173,24 @@ HEADER = f"""-- ================================================================
 --  THREE COHORTS. Data runs 140301..140506.
 --
 --      cohort    features            label (4 months)   role
---      TRAIN     140301..140306      140307..140310     fit
+--      TRAIN     140309..140402      140403..140406     fit
 --      VALID     140407..140412      140501..140504     out of time
 --      SCORE     140501..140506      none - the future  hand to implementation
 --
---  TRAIN's label window ENDS at 140310, before VALID's feature window BEGINS
---  at 140407, so the out-of-time test is genuine rather than a reshuffle of
---  one period.
+--  TRAIN's label window ENDS at 140406, one month before VALID's feature
+--  window BEGINS at 140407, so the out-of-time test is genuine rather than a
+--  reshuffle of one period.
+--
+--  TRAIN IS PACKED AS LATE AS THE 4-MONTH LABEL ALLOWS, and that is
+--  deliberate. An earlier version put TRAIN at 140301..140306, the start of
+--  the data, which returned 3,733,333 subscribers against VALID's 6,879,803
+--  - a 46 pct shortfall. The screen uses a FIXED NOMINAL threshold of
+--  170,000 Toman, so a window twelve months earlier is a materially harsher
+--  screen in real terms: nominal revenue per subscriber rises with inflation
+--  and tariff changes, so fewer subscribers cleared 1,700,000 Rial then. That
+--  made TRAIN the richer tail of a different population from the one SCORE
+--  holds. Moving TRAIN to 140309..140402 puts it 8 months closer to SCORE
+--  and shrinks that drift. 43_cohort_funnel.sql measures what is left.
 --
 --  VALID is the window measured in 41_forward_horizons.sql at 0.95 pct for
 --  this exact screen over 4 months, so the model's validation figure is

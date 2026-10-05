@@ -11,15 +11,18 @@ TARGET
 
 THREE COHORTS, built by sql/42_model_datasets.sql. Data runs 140301..140506.
 
-    TRAIN   features 140301..140306   label 140307..140310
+    TRAIN   features 140309..140402   label 140403..140406
     VALID   features 140407..140412   label 140501..140504
     SCORE   features 140501..140506   no label - the outcome is the future
 
-TRAIN's label window ENDS at 140310, before VALID's feature window BEGINS at
-140407, so the out-of-time test is genuine rather than a reshuffle of one
-period. The 4-month label is what pushes TRAIN back to 140301: a 4-month
-label on 140401..140406 features would run to 140410 and collide with
-VALID's feature window.
+TRAIN's label window ENDS at 140406, one month before VALID's feature window
+BEGINS at 140407, so the out-of-time test is genuine rather than a reshuffle
+of one period. TRAIN sits as LATE as the 4-month label allows, which matters:
+an earlier version put it at 140301..140306 and got 3,733,333 subscribers
+against VALID's 6,879,803, a 46 pct shortfall on the same screen. The screen's
+170,000 Toman threshold is FIXED NOMINAL, so a window twelve months earlier
+is a harsher screen in real terms and selects the richer tail of a different
+population. sql/43_cohort_funnel.sql measures how much drift is left.
 
 WHY 4 MONTHS COSTS MORE THAN TWICE 2 MONTHS
 

@@ -48,15 +48,30 @@ Data runs `140301..140506`.
 
 | cohort | features | label | role |
 |---|---|---|---|
-| `TRAIN` | 140301..140306 | 140307..140310 | fit the model |
+| `TRAIN` | 140309..140402 | 140403..140406 | fit the model |
 | `VALID` | 140407..140412 | 140501..140504 | **out of time** - the real test |
 | `SCORE` | 140501..140506 | none, the outcome is the future | the live set to lend to |
 
-`TRAIN`'s label window **ends** at 140310, before `VALID`'s feature window
-**begins** at 140407. That gap is what makes the validation genuinely
-out-of-time rather than a reshuffle of a single period. It is also why `TRAIN`
-sits back at 140301: a 4-month label on `140401..140406` features would run to
-140410 and collide with `VALID`'s features.
+`TRAIN`'s label window **ends** at 140406, one month before `VALID`'s feature
+window **begins** at 140407. That is what makes the validation genuinely
+out-of-time rather than a reshuffle of a single period.
+
+### Why TRAIN sits as late as it possibly can
+
+An earlier version of this put `TRAIN` at `140301..140306`, the start of the
+data. It returned **3,733,333** subscribers against `VALID`'s **6,879,803** -
+a 46% shortfall on the *same* screen.
+
+The cause is that the screen's 170,000 Toman threshold is **fixed nominal**.
+Nominal revenue per subscriber rises with inflation and tariff changes, so the
+same bar is a materially **harsher** screen the further back the window sits.
+A window twelve months earlier therefore selects the richer tail - a different
+population from the one `SCORE` holds, which is not what you want to fit a
+model on.
+
+`140309..140402` is the latest window a 4-month label permits, 8 months closer
+to `SCORE`. `sql/43_cohort_funnel.sql` measures how much drift is left after
+the move, and section 3 below checks the event rate.
 
 `VALID` is deliberately the exact window measured in
 `41_forward_horizons.sql` at **0.95%** for this same screen over 4 months, so

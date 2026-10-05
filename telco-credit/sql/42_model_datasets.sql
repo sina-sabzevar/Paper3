@@ -15,13 +15,24 @@
 --  THREE COHORTS. Data runs 140301..140506.
 --
 --      cohort    features            label (4 months)   role
---      TRAIN     140301..140306      140307..140310     fit
+--      TRAIN     140309..140402      140403..140406     fit
 --      VALID     140407..140412      140501..140504     out of time
 --      SCORE     140501..140506      none - the future  hand to implementation
 --
---  TRAIN's label window ENDS at 140310, before VALID's feature window BEGINS
---  at 140407, so the out-of-time test is genuine rather than a reshuffle of
---  one period.
+--  TRAIN's label window ENDS at 140406, one month before VALID's feature
+--  window BEGINS at 140407, so the out-of-time test is genuine rather than a
+--  reshuffle of one period.
+--
+--  TRAIN IS PACKED AS LATE AS THE 4-MONTH LABEL ALLOWS, and that is
+--  deliberate. An earlier version put TRAIN at 140301..140306, the start of
+--  the data, which returned 3,733,333 subscribers against VALID's 6,879,803
+--  - a 46 pct shortfall. The screen uses a FIXED NOMINAL threshold of
+--  170,000 Toman, so a window twelve months earlier is a materially harsher
+--  screen in real terms: nominal revenue per subscriber rises with inflation
+--  and tariff changes, so fewer subscribers cleared 1,700,000 Rial then. That
+--  made TRAIN the richer tail of a different population from the one SCORE
+--  holds. Moving TRAIN to 140309..140402 puts it 8 months closer to SCORE
+--  and shrinks that drift. 43_cohort_funnel.sql measures what is left.
 --
 --  VALID is the window measured in 41_forward_horizons.sql at 0.95 pct for
 --  this exact screen over 4 months, so the model's validation figure is
@@ -62,7 +73,7 @@
 
 
 -- ---------------------------------------------------------------------------
--- T1  TRAIN   features 140301..140306, label 140307..140310
+-- T1  TRAIN   features 140309..140402, label 140403..140406
 -- ---------------------------------------------------------------------------
 
 DROP TABLE IF EXISTS dwbi_temp40_db.dcb_train;
@@ -70,40 +81,40 @@ CREATE TABLE dwbi_temp40_db.dcb_train WITH (format='PARQUET') AS
 WITH pm AS (
     SELECT   sbrp_id, day_key / 100 AS mk, SUM(COALESCE(pmnt_amt,0)) AS paid
     FROM     dwbi_fact_db.v_fact_pmnt_adjmt
-    WHERE    day_key BETWEEN 14030101 AND 14030631
+    WHERE    day_key BETWEEN 14030901 AND 14040231
     GROUP BY sbrp_id, day_key / 100
 ),
 pay AS (
     SELECT  sbrp_id,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140301), 0) AS q1,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140302), 0) AS q2,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140303), 0) AS q3,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140304), 0) AS q4,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140305), 0) AS q5,
-            COALESCE(SUM(paid) FILTER (WHERE mk = 140306), 0) AS q6
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140309), 0) AS q1,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140310), 0) AS q2,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140311), 0) AS q3,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140312), 0) AS q4,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140401), 0) AS q5,
+            COALESCE(SUM(paid) FILTER (WHERE mk = 140402), 0) AS q6
     FROM    pm GROUP BY sbrp_id
 ),
 feat AS (
     SELECT  sbrp_id,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140301), 0) AS r1,
+                     FILTER (WHERE month_key = 140309), 0) AS r1,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140302), 0) AS r2,
+                     FILTER (WHERE month_key = 140310), 0) AS r2,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140303), 0) AS r3,
+                     FILTER (WHERE month_key = 140311), 0) AS r3,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140304), 0) AS r4,
+                     FILTER (WHERE month_key = 140312), 0) AS r4,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140305), 0) AS r5,
+                     FILTER (WHERE month_key = 140401), 0) AS r5,
             COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
-                     FILTER (WHERE month_key = 140306), 0) AS r6,
+                     FILTER (WHERE month_key = 140402), 0) AS r6,
             SUM(IF(arpu IS NULL, 1, 0))                      AS n_arpu_null,
-            MAX(IF(month_key=140301 AND sbrp_stat_id=3,1,0)) AS o1,
-            MAX(IF(month_key=140302 AND sbrp_stat_id=3,1,0)) AS o2,
-            MAX(IF(month_key=140303 AND sbrp_stat_id=3,1,0)) AS o3,
-            MAX(IF(month_key=140304 AND sbrp_stat_id=3,1,0)) AS o4,
-            MAX(IF(month_key=140305 AND sbrp_stat_id=3,1,0)) AS o5,
-            MAX(IF(month_key=140306 AND sbrp_stat_id=3,1,0)) AS o6,
+            MAX(IF(month_key=140309 AND sbrp_stat_id=3,1,0)) AS o1,
+            MAX(IF(month_key=140310 AND sbrp_stat_id=3,1,0)) AS o2,
+            MAX(IF(month_key=140311 AND sbrp_stat_id=3,1,0)) AS o3,
+            MAX(IF(month_key=140312 AND sbrp_stat_id=3,1,0)) AS o4,
+            MAX(IF(month_key=140401 AND sbrp_stat_id=3,1,0)) AS o5,
+            MAX(IF(month_key=140402 AND sbrp_stat_id=3,1,0)) AS o6,
             MAX(IF(sbrp_stat_id=4,1,0))                      AS f_twoway,
             MAX(IF(sbrp_stat_id IN (8,9),1,0))               AS f_reclaim,
             SUM(IF(active1_base_flag=1,1,0))                 AS n_active1,
@@ -113,7 +124,7 @@ feat AS (
             LEAST(AVG(COALESCE(bill_outstanding_amt,0)), 500000000) AS outst_avg,
             GREATEST(LEAST(MAX(COALESCE(age_on_net_months,0)), 480), 0) AS tenure_m
     FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
-    WHERE   month_key IN (140301,140302,140303,140304,140305,140306)
+    WHERE   month_key IN (140309,140310,140311,140312,140401,140402)
       AND   sbrp_typ_id = 1
     GROUP BY sbrp_id
 ),
@@ -122,7 +133,7 @@ lab AS (
              MAX(IF(sbrp_stat_id = 4, 1, 0))  AS y,
              COUNT(DISTINCT month_key)        AS n_label_months
     FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip
-    WHERE    month_key IN (140307, 140308, 140309, 140310)
+    WHERE    month_key IN (140403, 140404, 140405, 140406)
       AND    sbrp_typ_id = 1
     GROUP BY sbrp_id
 )
