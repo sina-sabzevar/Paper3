@@ -279,11 +279,32 @@ def load(stem):
                     f"on a boundary that overlaps. Delete the extra file, or "
                     f"re-split with sql/47_export_parts.sql and check its V1.")
         return df
-    raise FileNotFoundError(
-        f"nothing found for {stem} under {DATA}/. Run sql/42_model_datasets.sql "
-        f"and export dcb_model and dcb_score into {DATA}/. Split exports "
-        f"are fine - name them dcb_model_p1, dcb_model_p2 and so on, and "
-        f"sql/47_export_parts.sql creates them.")
+    # Nothing matched. A bare "not found" sends you hunting, so say what the
+    # glob looked for and what is actually in the directory - the usual cause
+    # is a file carrying an older stem, such as dcbtrain or dcbs_scoreset from
+    # the previous pipeline, which the glob cannot match.
+    tried = [os.path.join(DATA, stem) + "*" + e for e in (".parquet", ".csv")]
+    here = []
+    if os.path.isdir(DATA):
+        here = sorted(f for f in os.listdir(DATA)
+                      if f.endswith((".parquet", ".csv")))
+    lines = [f"nothing found for {stem}.",
+             f"  looked for : {' , '.join(tried)}",
+             f"  DATA={DATA!r} resolves to {os.path.abspath(DATA)}",
+             f"  cwd        : {os.getcwd()}"]
+    if here:
+        lines.append(f"  data files present but NOT matching: {here}")
+        lines.append(f"  -> only the STEM matters. Rename so the file begins "
+                     f"'{stem}'; any suffix works, e.g. {stem}_even, "
+                     f"{stem}_odd, {stem}_p1.")
+    elif os.path.isdir(DATA):
+        lines.append(f"  {DATA}/ exists but holds no .parquet or .csv at all.")
+    else:
+        lines.append(f"  {DATA}/ does not exist from this cwd - the notebook "
+                     f"may be running from a different directory.")
+    lines.append("  Build the tables with sql/42_model_datasets.sql; "
+                 "sql/47_export_parts.sql splits them if needed.")
+    raise FileNotFoundError("\n".join(lines))
 
 
 print("LOADING")
