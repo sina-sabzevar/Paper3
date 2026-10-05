@@ -347,3 +347,105 @@ fully cut off, and roughly **8x more common**.
 goes into `42_model_datasets.sql`, and the limit tables' LGD 100% assumption
 has to be revisited — a one-way bar does not lose the whole balance, so that
 assumption would be far too pessimistic for it.
+
+---
+
+# 44 and 45, measured
+
+`w2` reconciles exactly with 43's D1 and `l3` returns all zeros, so both files
+are internally correct and the figures below can be trusted.
+
+## 1. The screen is doing enormous work — keep it
+
+Window B (`140401..140406` features, `140407..140410` label), forward two-way
+rate by stratum:
+
+| stratum | n | forward rate | vs the cohort |
+|---|---|---|---|
+| fails the revenue bar | 32,185,293 | 2.737% | 4.9x |
+| one-way barred in window | 382,142 | **11.622%** | **21.0x** |
+| two-way barred in window | 21,834 | 35.761% | 64.5x |
+| **SCREENED (the cohort)** | 5,100,390 | **0.554%** | 1.0x |
+
+The one-way filter alone separates 21x. This is not a screen that shrinks the
+book for nothing.
+
+## 2. Do NOT admit the one-way group
+
+Their forward two-way rate is **11.62%**. Against the decision table recorded
+earlier — admit under 2%, smaller line at 3–5%, decline at 10%+ — this is a
+clear decline:
+
+| | |
+|---|---|
+| volume gained | +7.5% |
+| blended book rate | 0.5541% → **1.3256%** (2.39x) |
+
+7.5% more customers for 2.4x the loss rate. The question is closed.
+
+## 3. Do NOT train on the whole base — W4 answered it
+
+Bad rate by `rev_months` **inside** the cohort:
+
+| `rev_months` | n | bad rate |
+|---|---|---|
+| 2 | 1,284,520 | 0.6768% |
+| 3 | 924,415 | 0.5865% |
+| 4 | 775,661 | 0.5829% |
+| 5 | 788,032 | 0.5143% |
+| 6 | 1,327,762 | 0.4198% |
+
+Monotone, but the gradient is only **1.61x** across the whole range, and
+`rev_months` used alone as a score gives an **AUC of 0.5479**.
+
+So the revenue dimension is largely **spent by the screen**. That is the
+*heterogeneous* world from the training-population experiment, where fitting on
+the whole base cost **−0.09 AUC** in the band. `MODEL_POP` stays `"screened"`.
+
+**And it corrects an expectation I set earlier.** I said that if W4 fell
+steadily, to expect AUC around 0.70–0.78. That was too optimistic: it falls,
+but weakly. How much the model achieves now depends on whether `outst_max`,
+the payment columns and `tenure_m` carry signal independent of revenue, which
+nothing measured so far tests. The notebook's own output answers it.
+
+## 4. Keep the two-way label
+
+| label | n | share | vs two-way count |
+|---|---|---|---|
+| two-way (current) | 28,263 | 0.554% | 1.00x |
+| one-way, any | 166,994 | 3.274% | **5.91x** |
+| one-way 2+ months | 22,696 | 0.445% | **0.80x** |
+| one-way 3+ months | 6,649 | 0.130% | 0.24x |
+
+- **`one-way 2+ months` fails its own purpose** — it is *rarer* than two-way
+  (0.80x), so it cannot supply more events whatever its separation.
+- **`one-way any`** does give 5.91x the events, but its gradient across
+  `rev_months` is 3.6% → 2.8%, visibly flatter than two-way's. More events,
+  less signal.
+- **86.4% of one-way bars lasted a single month** — a subscriber who paid late
+  once and cured it. That is weak evidence of default for a credit line.
+
+One caution on reading `l2`: the apparent fall in "also two-way" as one-way
+months rise (7.7% → 7.4% → 5.3% → 0.0%) is at least partly **mechanical**, not
+behavioural. Status is one value per subscriber-month, so a subscriber one-way
+barred in all four label months has no month left to show status 4. Do not read
+that column as a behavioural finding.
+
+A second caution: `l4` reports to one decimal place only, so gradient ratios
+computed from it are imprecise — `one-way 2+` at 0.6% → 0.3% could be anywhere
+from 1.6x to 2.6x. The two-way gradient of 1.61x is exact because W4 carries
+counts. This project has previously reported a spurious spread by reading
+hazard ratios off one-decimal percentages; the same care applies here.
+
+## Settled
+
+| question | answer |
+|---|---|
+| screen earning its keep? | yes — 21x on the one-way filter |
+| admit the one-way group? | **no** — 11.62% forward rate |
+| train on the whole base? | **no** — revenue is spent inside the band |
+| `MODEL_POP` | `"screened"` |
+| label | two-way bar, unchanged |
+| expected AUC | modest; my earlier 0.70–0.78 was too optimistic |
+
+Nothing further blocks the model. Run `42`, export, run the notebook.
