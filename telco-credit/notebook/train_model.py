@@ -1,154 +1,169 @@
 # -*- coding: utf-8 -*-
-"""Train, validate out of time, and score — for the chosen target.
+"""Fit, select, test and score - 6-month features, 4-month label.
 
     python3 train_model.py
 
 TARGET
-    screen  revenue >= 170,000 Toman in 2 or more of 6 months,
+    screen  revenue at or above the window's bar in 2 or more of 6 months,
             never one-way barred and never two-way barred in that window
-    label   y = 1 if two-way barred in the 4 months immediately after
+    label   y = 1 if two-way barred in the 4 months IMMEDIATELY AFTER
 
-THREE COHORTS, built by sql/42_model_datasets.sql. Data runs 140301..140506.
+TWO TABLES, built by sql/42_model_datasets.sql. 1403 is deliberately unused.
 
-    TRAIN   features 140301..140306   label 140307..140310
-    VALID   features 140401..140406   label 140407..140410
-    SCORE   features 140501..140506   no label - the outcome is the future
+    dcb_model   features 140401..140406   label 140407..140410
+    dcb_score   features 140501..140506   no label - the outcome is the future
 
-YEAR-OVER-YEAR ALIGNED. Every feature window is months 1-6 of its year and
-every label window is months 7-10, exactly 12 months apart, and each label
-window ends before the next cohort's features begin.
+dcb_model is split 70/20/10 here, on a hash of sbrp_id:
 
-That alignment is the point. An earlier version chose the windows to sit as
-close together in time as the label allowed, which put VALID on months 7-12
-and SCORE on months 1-6 - different seasons. Jalali month 1 is Farvardin and
-carries Nowruz, and telco usage is strongly seasonal, so the revenue features
-were not comparable between the window the model was judged on and the window
-it would be applied to. VALID exists to be a rehearsal of SCORE, and a
-rehearsal in a different season is not one.
+    TRAIN  70 pct   fit both models
+    VALID  20 pct   choose between them, and fit the calibrator
+    TEST   10 pct   read ONCE, at the end. Nothing is tuned on it.
 
-THE 6,879,803 AT 0.95 PCT IS NOT THIS VALID WINDOW. That figure was measured
-in 41_forward_horizons.sql on features 140407..140412 with label
-140501..140504 - a window no cohort here uses any more. The new VALID window
-has never been measured; sql/43_cohort_funnel.sql D5 establishes it, and that
-is what to check VALID against.
+MEASURED: this window returned 5,100,390 subscribers at 0.5541 pct in
+43_cohort_funnel.sql D5, at the production bar. dcb_model uses a lower bar
+(see the SQL header), so expect more rows and a somewhat higher rate.
 
-THE COHORTS MAY NOT BE THE SAME SIZE YET. The screen's 170,000 Toman bar is
-FIXED NOMINAL, so in windows one and two years earlier it is a harsher screen
-in real terms and selects the richer tail - TRAIN at 140301..140306 returned
-3,733,333 against the 6,879,803 at 140407..140412. 43_cohort_funnel.sql D3
-measures the per-window bar that admits an equal SHARE, and
-42_model_datasets.sql COHORT_BAR takes it. Run that before trusting the fit.
+WHAT A RANDOM SPLIT CAN AND CANNOT TELL YOU
 
-WHY 4 MONTHS COSTS MORE THAN TWICE 2 MONTHS
+A 70/20/10 split by subscriber measures generalisation to OTHER SUBSCRIBERS
+IN THE SAME PERIOD. It cannot measure generalisation to a LATER period, and
+a later period is exactly where this model is applied.
 
-Risk here is BACK-loaded, measured at p_n proportional to n^1.40. On the
-140407..140412 window, lengthening the horizon from 2 months to 4 raised the
-event rate from 0.36 pct to 0.95 pct - 2.6x, not the 2.0x a constant hazard
-would give. The longer window is the harder problem and the more honest one:
-a 4-month credit line is exposed for 4 months. (Those two figures belong to
-that window, not to the VALID window built here.)
+That matters here more than it usually would, because the drift has been
+measured rather than guessed. 43_cohort_funnel.sql found revenue per
+subscriber-month up 1.64x at the p90 between the model window and the scoring
+window, and the fixed 170,000 Toman screen admitting 14.6 pct of the base in
+one and 24.4 pct in the other.
 
-WHAT A 0.95 PCT EVENT RATE CHANGES
+So TEST AUC is an UPPER BOUND on live performance, not an estimate of it. Two
+things are done about that rather than noting it and moving on:
 
-A model predicting "nobody defaults" is 99.05 pct accurate, so accuracy is
-meaningless here and is not reported. What is reported:
+    1 the PSI section below measures feature drift between dcb_model and
+      dcb_score directly, which is the part a random split hides;
+    2 each level feature has a RELATIVE twin from the SQL, divided by its own
+      window's median. Raw Rial levels drift; a ratio to the window median
+      does not. Set USE_RELATIVE_ONLY if PSI says the raw levels have moved.
+
+WHY NO ACCURACY IS REPORTED
+
+At a rate near 0.55 pct a model predicting "nobody defaults" scores 99.45 pct.
+The number cannot tell a working model from an empty one. What is reported:
 
     AUC and Gini     ranking, which is what the limit engine consumes
     KS               separation at the best cut
     Brier, WEIGHTED  calibration. Unweighted on a down-sampled file this read
-                     0.29 on a 2 pct problem in an earlier version of this
-                     project, purely from the weighting error.
-    decile table     predicted against observed, on rows the calibrator
-                     never saw
+                     0.29 on a 2 pct problem earlier in this project, purely
+                     from the weighting error.
+    decile table     predicted against observed, on TEST
 
 DOWN-SAMPLING AND sample_weight
 
-Every bad is kept - at 0.95 pct they are the scarce half of the problem.
-Goods are sampled at GOOD_KEEP pct and sample_weight restores the base rate.
+Every bad is kept; goods are sampled at GOOD_KEEP pct and sample_weight
+restores the base rate. USE sample_weight IN EVERY FIT AND EVERY METRIC.
+Keeping 10 pct of goods inflates the ODDS by exactly 100/GOOD_KEEP = 10x, and
+at these rates roughly 9x the probability itself. Ranking survives that; the
+level does not, and the limit engine spends the level.
 
-    USE sample_weight IN EVERY FIT AND EVERY METRIC.
-
-Without it the model sees roughly a 9 pct event rate instead of about 1, and
-every predicted probability comes out about nine times too high. Keeping
-GOOD_KEEP pct of goods inflates the ODDS by exactly 100/GOOD_KEEP = 10x. As a
-worked example at the 0.95 pct measured on the 140407..140412 window, that is
-a 9.2x inflation of the probability itself (0.95 pct becomes 8.75 pct); the
-exact figure moves with whatever rate this cohort turns out to carry.
-Ranking survives that; the level does not, and the limit engine spends the
-level.
+Only TRAIN is down-sampled. VALID and TEST stay whole, so their metrics need
+no weighting correction.
 
 CALIBRATION IS FITTED AND JUDGED ON DIFFERENT ROWS
 
-Fitting isotonic on a set and then reading its calibration off the same rows
-gives a ratio of 1.0000 in every decile by construction - a perfect-looking
-table that proves nothing. An earlier version of this project did exactly
-that. VALID is split in half: one half calibrates, the other is judged.
+Isotonic is fitted on VALID and judged on TEST. Fitting and judging on the
+same rows gives a ratio of 1.0000 in every decile by construction - a
+perfect-looking table that proves nothing. An earlier version of this project
+did exactly that.
 """
-import gc, os, sys, time
+import gc, os, glob, time, hashlib
 import numpy as np
 import pandas as pd
 
 DATA       = "data"
-TRAIN_FILE = "dcb_train"
-VALID_FILE = "dcb_valid"
+MODEL_FILE = "dcb_model"
 SCORE_FILE = "dcb_score"
 OUTDIR     = "outputs"
-GOOD_KEEP  = 10          # keep this many goods out of every 100
+GOOD_KEEP  = 10            # keep this many goods out of every 100, in TRAIN
 SEED       = 42
 
-# The credit line per approved subscriber, in Toman. Used only to turn the PD
-# ranking into exposure and expected-loss columns - it changes no model fit.
-# 500,000 is the line discussed for this product; the stated floor is 400,000.
+SPLIT_TRAIN = 70           # hash mod 100 under this -> train
+SPLIT_VALID = 90           # under this -> valid, at or over -> test
+
+# The credit line per approved subscriber, in Toman. Used ONLY to turn the PD
+# ranking into money columns. It changes no fit and no metric.
 TICKET_TOMAN = 500_000
 
-# Columns that are NOT features. y and cohort are the label and the tag;
-# sbrp_id is an identity and would let a tree memorise individuals.
-# n_label_months counts how many months of the LABEL window the subscriber
-# appeared in. It is built from the outcome and is NULL in SCORE, so it is
-# leakage, not a feature - it is carried in the data to measure partial
-# observation, and excluded here.
-NOT_FEATURES = {"sbrp_id", "y", "cohort", "sample_weight", "n_label_months"}
+# Measured for THIS window at the PRODUCTION bar by 43_cohort_funnel.sql D5:
+# 28,263 bad of 5,100,390 screened = 0.5541 pct. dcb_model uses a lower bar,
+# so the rate here should sit somewhat above it. A rate near 0.95 pct would
+# mean the LABEL months are wrong - that is the months 1-4 figure, and these
+# labels are months 7-10.
+REFERENCE_RATE = 0.005541
+
+# Raw Rial level features that have a _rel twin from the SQL. Setting
+# USE_RELATIVE_ONLY drops the raw ones and keeps the ratios, which is the
+# drift-robust choice when PSI says the levels have moved.
+RAW_WITH_REL = ["rev_6m", "rev_max", "paid_6m", "outst_max", "avail_max"]
+USE_RELATIVE_ONLY = False
+
+# Not features. sbrp_id is an identity a tree would memorise; n_label_months is
+# built from the outcome and is NULL in dcb_score, so it is leakage.
+NOT_FEATURES = {"sbrp_id", "y", "cohort", "sample_weight", "n_label_months",
+                "split"}
 
 
 # ---------------------------------------------------------------------------
 #  LOADING
 # ---------------------------------------------------------------------------
 def load(stem):
-    """Reads parquet if present, else CSV, else the _part* files of either."""
-    import glob
+    """Parquet if present, else CSV, else the _part* files of either.
+
+    Raises on duplicate sbrp_id: when a table is exported in parts by a range
+    condition, a wrong boundary gives overlapping parts, every row in the
+    overlap is counted twice, and every rate below shifts silently.
+    """
     base = os.path.join(DATA, stem)
     for pat in (base + ".parquet", base + "*.parquet",
                 base + ".csv",     base + "*.csv"):
         files = sorted(glob.glob(pat))
-        if files:
-            rd = pd.read_parquet if files[0].endswith(".parquet") else pd.read_csv
-            parts = [rd(f) for f in files]
-            df = pd.concat(parts, ignore_index=True) if len(parts) > 1 else parts[0]
-            print(f"  {stem}: {len(files)} file(s) -> {len(df):,} rows "
-                  f"x {df.shape[1]} cols")
-            if "sbrp_id" in df.columns:
-                dup = len(df) - df.sbrp_id.nunique()
-                if dup:
-                    raise ValueError(
-                        f"{dup:,} duplicate sbrp_id in {stem}. Parts overlap, so "
-                        f"some subscribers are counted twice and the metrics "
-                        f"below would be wrong.")
-            return df
+        if not files:
+            continue
+        rd = pd.read_parquet if files[0].endswith(".parquet") else pd.read_csv
+        parts = [rd(f) for f in files]
+        df = pd.concat(parts, ignore_index=True) if len(parts) > 1 else parts[0]
+        print(f"  {stem}: {len(files)} file(s) -> {len(df):,} rows "
+              f"x {df.shape[1]} cols")
+        if "sbrp_id" in df.columns:
+            dup = len(df) - df.sbrp_id.nunique()
+            if dup:
+                raise ValueError(
+                    f"{dup:,} duplicate sbrp_id in {stem}. The parts overlap, "
+                    f"so those subscribers are counted twice and every metric "
+                    f"below would be wrong. Re-export on an exact boundary.")
+        return df
     raise FileNotFoundError(
         f"nothing found for {stem} under {DATA}/. Run sql/42_model_datasets.sql "
-        f"and export dcb_train, dcb_valid and dcb_score.")
+        f"and export dcb_model and dcb_score into {DATA}/.")
 
 
-def downsample(df, keep_pct, seed):
-    """Every bad, keep_pct of the goods, with sample_weight to put the base
-    rate back. The draw is on a HASH of sbrp_id, not on sbrp_id itself: every
-    observed id in this base is odd and they share a five-digit block, so MOD
-    on the raw id selects a structured slice rather than a sample."""
-    import hashlib
-    bad = df[df.y == 1]
-    good = df[df.y == 0]
-    h = good.sbrp_id.astype(str).map(
+def hash_bucket(ids):
+    """MD5(sbrp_id) mod 100.
+
+    On a HASH, never on sbrp_id itself: every observed id in this base is odd
+    and they share a five-digit block, so MOD on the raw id selects a
+    structured slice of the network rather than a sample. A parity split on
+    sbrp_id once put all 11.5M rows in one half.
+    """
+    return ids.astype(str).map(
         lambda s: int(hashlib.md5(s.encode()).hexdigest()[:8], 16) % 100)
+
+
+def downsample(df, keep_pct):
+    """Every bad, keep_pct of the goods, with sample_weight to restore the
+    base rate. The draw is on the same hash, offset so that it is independent
+    of the train/valid/test assignment."""
+    bad, good = df[df.y == 1], df[df.y == 0]
+    h = good.sbrp_id.astype(str).map(
+        lambda s: int(hashlib.md5(("ds" + s).encode()).hexdigest()[:8], 16) % 100)
     good = good[h.values < keep_pct]
     out = pd.concat([bad, good], ignore_index=True)
     out["sample_weight"] = np.where(out.y == 1, 1.0, 100.0 / keep_pct)
@@ -166,10 +181,9 @@ def report(name, y, p, w):
     from sklearn.metrics import roc_auc_score, brier_score_loss
     auc = roc_auc_score(y, p, sample_weight=w)
     br  = brier_score_loss(y, p, sample_weight=w)
-    # weighted KS
-    o = np.argsort(p)
+    o  = np.argsort(p)
     ys, ws = np.asarray(y)[o], np.asarray(w)[o]
-    cb = np.cumsum(ws * ys);      cb = cb / cb[-1]
+    cb = np.cumsum(ws * ys);       cb = cb / cb[-1]
     cg = np.cumsum(ws * (1 - ys)); cg = cg / cg[-1]
     ks = np.max(np.abs(cb - cg))
     print(f"  {name:<28} AUC {auc:.4f}   Gini {2*auc-1:.4f}   "
@@ -178,18 +192,27 @@ def report(name, y, p, w):
 
 
 def decile_table(y, p, w, label=""):
-    """Predicted against observed, weighted, on rows the calibrator never saw.
+    """Predicted against observed by score decile, weighted.
 
-    Weighted sums through agg rather than groupby.apply: apply needs the
-    include_groups argument on pandas 2.2+ and raises a TypeError without it on
-    older versions, so the apply form would break on an older pandas in the
-    warehouse environment. The aggregation form works on every version, is
-    faster, and was checked to give identical numbers.
+    Weighted sums through agg rather than groupby.apply: apply needs
+    include_groups on pandas 2.2+ and raises a TypeError without it on older
+    versions, so the apply form would break on an older pandas in the
+    warehouse environment.
     """
+    # Bins by RANK POSITION, not by value quantile. Isotonic regression is a
+    # step function and produces heavy ties, so pd.qcut with duplicates="drop"
+    # collapses bins: a first run of this gave 9 bins holding 8,090 and 433
+    # rows, and the "furthest from 1.0" figure was then read off the 433-row
+    # bin. Rank bins are always equal-sized, so the deciles are comparable.
+    pv = np.asarray(p, dtype=float)
+    n  = len(pv)
+    order = np.argsort(pv, kind="mergesort")
+    dec = np.empty(n, dtype=int)
+    dec[order] = np.arange(n) * 10 // n
     d = pd.DataFrame({
-        "d": pd.qcut(p, 10, labels=False, duplicates="drop"),
+        "d": dec,
         "y": np.asarray(y, dtype=float),
-        "p": np.asarray(p, dtype=float),
+        "p": pv,
         "w": np.asarray(w, dtype=float)})
     d["wp"] = d.w * d.p
     d["wy"] = d.w * d.y
@@ -206,83 +229,169 @@ def decile_table(y, p, w, label=""):
     return g
 
 
+def psi(expected, actual, bins=10):
+    """Population Stability Index between two samples of one feature.
+
+    Bin edges come from the EXPECTED sample's quantiles, except for
+    low-cardinality features, which are compared on their values. Convention:
+        under 0.10   stable
+        0.10 to 0.25 moderate shift
+        over 0.25    significant shift
+    Returns NaN only when a sample is empty.
+    """
+    e = np.asarray(expected, dtype=float)
+    a = np.asarray(actual, dtype=float)
+    e = e[np.isfinite(e)]
+    a = a[np.isfinite(a)]
+    if len(e) == 0 or len(a) == 0:
+        return np.nan
+
+    # Low-cardinality features - flags, small counts - cannot be split into
+    # ten quantile bins, and an earlier version returned NaN for them. A
+    # binary flag can drift as easily as anything else, so those are compared
+    # on their VALUES instead of on quantiles. f_reclaim was invisible before.
+    vals = np.unique(e)
+    if len(vals) <= bins:
+        cats = np.unique(np.concatenate([vals, np.unique(a)]))
+        pe = np.array([(e == v).sum() for v in cats], dtype=float)
+        pa = np.array([(a == v).sum() for v in cats], dtype=float)
+    else:
+        edges = np.unique(np.quantile(e, np.linspace(0, 1, bins + 1)))
+        if len(edges) < 3:
+            return np.nan
+        edges[0], edges[-1] = -np.inf, np.inf
+        pe, _ = np.histogram(e, bins=edges)
+        pa, _ = np.histogram(a, bins=edges)
+        pe = pe.astype(float)
+        pa = pa.astype(float)
+    if pe.sum() == 0 or pa.sum() == 0:
+        return np.nan
+    pe = pe / pe.sum()
+    pa = pa / pa.sum()
+    # a floor so an empty bin does not send the log to infinity
+    pe = np.clip(pe, 1e-6, None)
+    pa = np.clip(pa, 1e-6, None)
+    return float(np.sum((pa - pe) * np.log(pa / pe)))
+
+
 # ---------------------------------------------------------------------------
 def main():
     os.makedirs(OUTDIR, exist_ok=True)
     rng = np.random.default_rng(SEED)
 
     print("LOADING")
-    tr_raw = load(TRAIN_FILE)
-    va_raw = load(VALID_FILE)
-    sc_raw = load(SCORE_FILE)
+    md = load(MODEL_FILE)
+    sc = load(SCORE_FILE)
 
-    print("\nEVENT RATES AS BUILT")
-    for nm, d in (("TRAIN", tr_raw), ("VALID", va_raw)):
-        print(f"  {nm}: {len(d):,} rows, {int(d.y.sum()):,} bad, "
+    shared = set(md.columns) & set(sc.columns)
+    only_md = sorted(set(md.columns) - shared)
+    only_sc = sorted(set(sc.columns) - shared)
+    if only_md or only_sc:
+        print(f"\n  columns only in dcb_model: {only_md}")
+        print(f"  columns only in dcb_score: {only_sc}")
+        print("  (y and n_label_months are expected here; anything else means")
+        print("   one table was built by an older run of the SQL)")
+
+    # ---- the 70/20/10 split ----------------------------------------------
+    print("\nSPLITTING dcb_model 70/20/10 on a hash of sbrp_id")
+    h = hash_bucket(md.sbrp_id).to_numpy()
+    md["split"] = np.where(h < SPLIT_TRAIN, "train",
+                  np.where(h < SPLIT_VALID, "valid", "test"))
+    for nm in ("train", "valid", "test"):
+        d = md[md.split == nm]
+        print(f"  {nm:<6} {len(d):>10,} rows  {int(d.y.sum()):>7,} bad  "
               f"{d.y.mean():.4%}")
-    print(f"  SCORE: {len(sc_raw):,} rows, no label")
-    print("\n  Compare VALID's rate against 43_cohort_funnel.sql D5 for window")
-    print("  140401..140406. Do NOT compare it against the 0.95 pct from")
-    print("  41_forward_horizons.sql - that was measured on features")
-    print("  140407..140412, a different window in a different season.")
-    print("  Also compare the row counts: if TRAIN and VALID sit far below")
-    print("  SCORE, the fixed nominal bar is still selecting the richer tail")
-    print("  in the earlier windows and COHORT_BAR is not set yet.")
+    print(f"\n  whole table {len(md):,} rows at {md.y.mean():.4%}")
+    drift = abs(md.y.mean() - REFERENCE_RATE) / REFERENCE_RATE
+    print(f"  reference for this window at the production bar "
+          f"{REFERENCE_RATE:.4%} -> {drift:.1%} apart")
+    if md.y.mean() > 0.0080:
+        print("  WARNING the rate is approaching the 0.95 pct that belongs to a")
+        print("  months 1-4 label. These labels should be months 7-10. Check the")
+        print("  label months in 42_model_datasets.sql before going further.")
 
-    FEATURES = [c for c in tr_raw.columns if c not in NOT_FEATURES]
-    FEATURES = [c for c in FEATURES
-                if c in va_raw.columns and c in sc_raw.columns]
-    FEATURES = [c for c in FEATURES
-                if pd.api.types.is_numeric_dtype(tr_raw[c])]
+    # The three splits must have similar event rates. They are random draws
+    # from one table, so a real gap means the hash is not behaving.
+    rates = [md[md.split == nm].y.mean() for nm in ("train", "valid", "test")]
+    if max(rates) / max(min(rates), 1e-12) > 1.5:
+        print(f"  WARNING split event rates differ by more than 1.5x: "
+              f"{[f'{r:.4%}' for r in rates]}")
 
-    # Drop columns with no variance. oneway_months is zero for every row by
-    # construction - the screen requires it - and a constant column is at best
-    # dead weight and at worst, in an earlier run of this project, a PSI of
-    # 13.89 that read as catastrophic drift when it was really a loading gap.
-    # Checked on all three cohorts: a column constant in TRAIN but moving in
-    # SCORE is worse than one constant everywhere.
-    dead = []
-    for c in FEATURES:
-        nun = (tr_raw[c].nunique(dropna=True), va_raw[c].nunique(dropna=True),
-               sc_raw[c].nunique(dropna=True))
-        if max(nun) <= 1:
-            dead.append((c, nun))
+    # ---- features ---------------------------------------------------------
+    FEATURES = [c for c in md.columns if c not in NOT_FEATURES]
+    FEATURES = [c for c in FEATURES if c in sc.columns]
+    FEATURES = [c for c in FEATURES if pd.api.types.is_numeric_dtype(md[c])]
+
+    # Zero-variance columns. oneway_months is zero for every row by
+    # construction - the screen requires it - and a constant column is dead
+    # weight at best. At worst it is the trap debt_scr and suspend_scr set
+    # earlier here: all-zero in 6 of 10 months, producing a PSI of 13.89 that
+    # read as catastrophic drift when it was a loading gap.
+    dead = [(c, (md[c].nunique(dropna=True), sc[c].nunique(dropna=True)))
+            for c in FEATURES
+            if max(md[c].nunique(dropna=True), sc[c].nunique(dropna=True)) <= 1]
     if dead:
-        print("\nDROPPED - no variance in any cohort:")
+        print("\nDROPPED - no variance in either table:")
         for c, nun in dead:
-            print(f"  {c:16s} distinct values TRAIN/VALID/SCORE {nun}")
+            print(f"  {c:16s} distinct values MODEL/SCORE {nun}")
         FEATURES = [c for c in FEATURES if c not in {d[0] for d in dead}]
 
-    # A column constant in TRAIN but varying elsewhere is a different problem:
-    # the model cannot learn a coefficient for it, then meets it moving at
-    # scoring time. Report loudly rather than drop silently.
-    for c in FEATURES:
-        if tr_raw[c].nunique(dropna=True) <= 1:
-            print(f"  WARNING {c} is constant in TRAIN but not in VALID/SCORE")
+    if USE_RELATIVE_ONLY:
+        drop = [c for c in RAW_WITH_REL if c + "_rel" in FEATURES]
+        FEATURES = [c for c in FEATURES if c not in drop]
+        print(f"\nUSE_RELATIVE_ONLY: dropped the raw twins {drop}")
 
+    leak = [c for c in FEATURES
+            if c in ("y", "cohort", "n_label_months", "sample_weight", "split")]
+    assert not leak, f"label or label-derived column in the features: {leak}"
+    assert FEATURES, "no features survived selection"
     print(f"\nFEATURES: {len(FEATURES)}")
     print(f"  {FEATURES}")
-    leak = [c for c in FEATURES
-            if c in ("y", "cohort", "n_label_months", "sample_weight")]
-    assert not leak, f"label or label-derived column in the feature list: {leak}"
-    assert FEATURES, "no features survived selection"
 
-    print("\nDOWN-SAMPLING TRAIN")
-    tr = downsample(tr_raw, GOOD_KEEP, SEED)
-    del tr_raw; gc.collect()
+    # ---- PSI: the drift a random split cannot show -----------------------
+    print("\nFEATURE DRIFT, dcb_model against dcb_score (PSI)")
+    print("  under 0.10 stable, 0.10-0.25 moderate, over 0.25 significant")
+    rows = sorted(((c, psi(md[c], sc[c])) for c in FEATURES),
+                  key=lambda t: -(t[1] if np.isfinite(t[1]) else -1))
+    for c, v in rows:
+        flag = ("" if not np.isfinite(v) else
+                "   <-- significant" if v > 0.25 else
+                "   <-- moderate" if v > 0.10 else "")
+        print(f"  {c:18s} {v:8.4f}{flag}")
+    big = [c for c, v in rows if np.isfinite(v) and v > 0.25]
+    if big:
+        print(f"\n  {len(big)} feature(s) have shifted significantly. This is")
+        print("  measured drift, not noise: 43_cohort_funnel.sql found revenue")
+        print("  per subscriber-month up 1.64x at the p90 between these two")
+        print("  windows. The TEST metrics below are an UPPER BOUND on live")
+        print("  performance.")
+        raw_big = [c for c in big if c in RAW_WITH_REL]
+        if raw_big and not USE_RELATIVE_ONLY:
+            print(f"\n  {raw_big} are raw Rial levels with _rel twins already in")
+            print("  the data. Set USE_RELATIVE_ONLY = True and re-run to fit on")
+            print("  the ratios instead, then compare TEST AUC. If it holds up,")
+            print("  prefer that model - it will age better.")
 
-    Xtr, ytr, wtr = tr[FEATURES].to_numpy(float), tr.y.to_numpy(int), \
-                    tr.sample_weight.to_numpy(float)
-    Xva, yva = va_raw[FEATURES].to_numpy(float), va_raw.y.to_numpy(int)
-    wva = np.ones(len(yva))          # VALID is the full population, no sampling
-    Xtr = np.nan_to_num(Xtr, nan=0.0, posinf=0.0, neginf=0.0)
-    Xva = np.nan_to_num(Xva, nan=0.0, posinf=0.0, neginf=0.0)
+    # ---- matrices ---------------------------------------------------------
+    tr = downsample(md[md.split == "train"], GOOD_KEEP)
+    va = md[md.split == "valid"]
+    te = md[md.split == "test"]
 
-    # ---- champion: logistic on standardised features ----------------------
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.pipeline import make_pipeline
-    print("\nFITTING")
+    def X(d):
+        return np.nan_to_num(d[FEATURES].to_numpy(float),
+                             nan=0.0, posinf=0.0, neginf=0.0)
+    Xtr, ytr, wtr = X(tr), tr.y.to_numpy(int), tr.sample_weight.to_numpy(float)
+    Xva, yva = X(va), va.y.to_numpy(int)
+    Xte, yte = X(te), te.y.to_numpy(int)
+    wva, wte = np.ones(len(yva)), np.ones(len(yte))
+    del md
+    gc.collect()
+
+    # ---- champion: logistic ----------------------------------------------
+    from sklearn.linear_model   import LogisticRegression
+    from sklearn.preprocessing  import StandardScaler
+    from sklearn.pipeline       import make_pipeline
+    print("\nFITTING champion")
     t0 = time.time()
     champ = make_pipeline(
         StandardScaler(),
@@ -290,76 +399,80 @@ def main():
     champ.fit(Xtr, ytr, logisticregression__sample_weight=wtr)
     print(f"  logistic fitted in {time.time()-t0:,.0f}s")
 
-    # ---- challenger: gradient boosting ------------------------------------
+    # ---- challenger: gradient boosting -----------------------------------
     from sklearn.ensemble import HistGradientBoostingClassifier
+    print("FITTING challenger")
     t0 = time.time()
     chal = HistGradientBoostingClassifier(
         max_iter=400, learning_rate=0.06, max_leaf_nodes=31,
         early_stopping=True, validation_fraction=0.15, random_state=SEED)
     chal.fit(Xtr, ytr, sample_weight=wtr)
     print(f"  gradient boosting fitted in {time.time()-t0:,.0f}s, "
-          f"{chal.n_iter_} iterations")
+          f"{chal.n_iter_} iterations of a 400 ceiling")
 
-    print("\nIN-SAMPLE (TRAIN, weighted)")
-    RES = [report("logistic (champion)", ytr, champ.predict_proba(Xtr)[:,1], wtr),
-           report("HistGB (challenger)", ytr, chal.predict_proba(Xtr)[:,1], wtr)]
+    print("\nIN-SAMPLE (TRAIN, weighted) - flatters both, reported for the gap")
+    RES = [report("logistic (champion)", ytr, champ.predict_proba(Xtr)[:, 1], wtr),
+           report("HistGB (challenger)", ytr, chal.predict_proba(Xtr)[:, 1], wtr)]
 
-    print("\nOUT OF TIME (VALID - a later period, never seen in training)")
-    pva_c = champ.predict_proba(Xva)[:,1]
-    pva_g = chal.predict_proba(Xva)[:,1]
+    print("\nVALID - the selection set")
+    pva_c = champ.predict_proba(Xva)[:, 1]
+    pva_g = chal.predict_proba(Xva)[:, 1]
     RV = [report("logistic (champion)", yva, pva_c, wva),
           report("HistGB (challenger)", yva, pva_g, wva)]
 
-    best = "HistGB" if RV[1]["auc"] > RV[0]["auc"] else "logistic"
-    pva  = pva_g if best == "HistGB" else pva_c
-    model = chal if best == "HistGB" else champ
-    print(f"\n  selected on OUT-OF-TIME AUC: {best}")
-    gap = RES[1 if best=='HistGB' else 0]["auc"] - RV[1 if best=='HistGB' else 0]["auc"]
+    best  = "HistGB" if RV[1]["auc"] > RV[0]["auc"] else "logistic"
+    i     = 1 if best == "HistGB" else 0
+    pva   = pva_g if best == "HistGB" else pva_c
+    model = chal  if best == "HistGB" else champ
+    print(f"\n  selected on VALID AUC: {best}")
+    gap = RES[i]["auc"] - RV[i]["auc"]
     print(f"  train-to-valid AUC gap {gap:+.4f}"
-          + ("   <-- overfitted, reduce max_iter" if gap > 0.05 else ""))
+          + ("   <-- overfitted, reduce max_iter" if gap > 0.05
+             else "   (acceptable)"))
 
-    # ---- calibration: fit on half of VALID, judge on the other half -------
+    # ---- calibration: fit on VALID, judge on TEST ------------------------
     from sklearn.isotonic import IsotonicRegression
-    h = rng.random(len(yva)) < 0.5
-    iso = IsotonicRegression(out_of_bounds="clip", y_min=1e-7, y_max=1-1e-7)
-    iso.fit(pva[h], yva[h])
-    anchor = np.average(yva[h]) / max(np.average(iso.predict(pva[h])), 1e-9)
-    print(f"\nCALIBRATION  fitted on {h.sum():,} rows, judged on "
-          f"{(~h).sum():,} HELD-BACK rows")
+    iso = IsotonicRegression(out_of_bounds="clip", y_min=1e-7, y_max=1 - 1e-7)
+    iso.fit(pva, yva)
+    anchor = np.average(yva) / max(np.average(iso.predict(pva)), 1e-9)
+    print(f"\nCALIBRATION fitted on VALID ({len(yva):,} rows)")
     print(f"  anchor ratio {anchor:.4f}  (1.0 = no rescaling needed)")
-    pcal = np.clip(iso.predict(pva[~h]) * anchor, 1e-7, 0.999)
-    print(f"  mean PD {pcal.mean():.4%}  vs observed {yva[~h].mean():.4%}  "
-          f"-> level error {abs(pcal.mean()-yva[~h].mean())/max(yva[~h].mean(),1e-9):.2%}")
-    decile_table(yva[~h], pcal, np.ones((~h).sum()), " on the held-back half")
+
+    # ---- TEST: read once -------------------------------------------------
+    print(f"\nTEST - {len(yte):,} rows, untouched until now. Nothing was tuned")
+    print("       on these, so this is the honest within-period number.")
+    pte = np.clip(iso.predict(model.predict_proba(Xte)[:, 1]) * anchor,
+                  1e-7, 0.999)
+    RT = [report(f"{best} calibrated [TEST]", yte, pte, wte)]
+    print(f"  mean PD {pte.mean():.4%}  vs observed {yte.mean():.4%}  "
+          f"-> level error "
+          f"{abs(pte.mean()-yte.mean())/max(yte.mean(),1e-9):.2%}")
+    decile_table(yte, pte, wte, " on TEST")
 
     # ---- score the live set ----------------------------------------------
     print("\nSCORING THE LIVE SET")
-    Xsc = np.nan_to_num(sc_raw[FEATURES].to_numpy(float),
-                        nan=0.0, posinf=0.0, neginf=0.0)
-    psc = np.clip(iso.predict(model.predict_proba(Xsc)[:,1]) * anchor,
+    psc = np.clip(iso.predict(model.predict_proba(X(sc))[:, 1]) * anchor,
                   1e-7, 0.999)
-    out = pd.DataFrame({"sbrp_id": sc_raw.sbrp_id.values, "pd_4m": psc})
-    out["grade"] = pd.cut(out.pd_4m,
-                          [-1, 0.002, 0.005, 0.010, 0.020, 1.0],
+    out = pd.DataFrame({"sbrp_id": sc.sbrp_id.values, "pd_4m": psc})
+    out["grade"] = pd.cut(out.pd_4m, [-1, 0.002, 0.005, 0.010, 0.020, 1.0],
                           labels=["A", "B", "C", "D", "E"])
     print(f"  scored {len(out):,} subscribers")
     print(f"  mean predicted PD {out.pd_4m.mean():.4%}  "
-          f"(VALID observed {yva.mean():.4%})")
+          f"(TEST observed {yte.mean():.4%})")
+    if out.pd_4m.mean() > 1.5 * yte.mean():
+        print("  NOTE the live set scores materially riskier than TEST. That is")
+        print("  consistent with the measured drift - the lower bar admits a")
+        print("  broader population in the scoring window - and is a reason to")
+        print("  trust the PD ranking more than the PD level.")
     print("\n  by grade")
-    gb = out.groupby("grade", observed=True).agg(
-        n=("pd_4m", "size"), mean_pd=("pd_4m", "mean"))
+    gb = out.groupby("grade", observed=True).agg(n=("pd_4m", "size"),
+                                                 mean_pd=("pd_4m", "mean"))
     gb["share"] = gb.n / gb.n.sum()
     print(gb.to_string(float_format=lambda v: f"{v:12.6f}"))
 
-    # cumulative, which is what the limit engine reads
+    # ---- the tables the limit engine consumes ----------------------------
     o = out.sort_values("pd_4m").reset_index(drop=True)
-    o["cum_n"] = np.arange(1, len(o)+1)
     o["cum_pd"] = o.pd_4m.expanding().mean()
-    # ---- the table the limit engine consumes ------------------------------
-    # Ranked safest first, so row n answers "if I lend to the n safest, what
-    # is the average PD of that book". Shares rather than only absolute counts:
-    # absolute milestones silently vanish on any population smaller than the
-    # smallest milestone, which made this table one useless row in testing.
     print("\n  SELECTING THE SAFEST N - this is the table the limit engine uses")
     print(f"  {'take':>12} {'share':>7} {'book mean PD':>13} "
           f"{'exposure':>14} {'expected loss':>14}")
@@ -367,48 +480,42 @@ def main():
              (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)]
     marks += [n for n in (3_000_000,) if n <= len(o)]
     for n in sorted(set(m for m in marks if m > 0)):
-        pdn = o.cum_pd.iloc[n - 1]
-        expo = n * TICKET_TOMAN
+        pdn, expo = o.cum_pd.iloc[n - 1], n * TICKET_TOMAN
         print(f"  {n:>12,} {n/len(o):>6.1%} {pdn:>12.4%} "
               f"{expo/1e12:>11,.1f} tn {expo*pdn/1e9:>11,.1f} bn")
 
-    # ---- the same question from the other side ----------------------------
-    # Not "how many can I take" but "how many can I take without the book's
-    # average PD crossing a ceiling". This is the form a credit committee
-    # states its appetite in.
     print("\n  LARGEST BOOK UNDER A PD CEILING")
     print(f"  {'ceiling':>9} {'take':>12} {'share':>7} {'exposure':>14} "
           f"{'expected loss':>14}")
     for ceil in (0.0025, 0.005, 0.0075, 0.010, 0.015, 0.020):
         under = np.flatnonzero(o.cum_pd.to_numpy() <= ceil)
         if len(under) == 0:
-            print(f"  {ceil:>8.2%} {'-':>12} {'-':>7}   "
-                  f"no subscriber qualifies")
+            print(f"  {ceil:>8.2%} {'-':>12} {'-':>7}   no subscriber qualifies")
             continue
-        n = int(under[-1]) + 1
-        expo = n * TICKET_TOMAN
+        n, expo = int(under[-1]) + 1, (int(under[-1]) + 1) * TICKET_TOMAN
         print(f"  {ceil:>8.2%} {n:>12,} {n/len(o):>6.1%} "
               f"{expo/1e12:>11,.1f} tn {expo*o.cum_pd.iloc[n-1]/1e9:>11,.1f} bn")
 
     print(f"\n  Exposure assumes every approved subscriber draws the full "
-          f"{TICKET_TOMAN:,} Toman")
-    print("  line, and expected loss assumes a two-way bar loses the WHOLE")
-    print("  balance (LGD 100 pct). Both are deliberately pessimistic: the")
-    print("  operator keeps collecting after a bar, and most subscribers will")
-    print("  not draw the full line. Treat these as a ceiling on the loss, not")
-    print("  a forecast of it. The PD column is the model's output; the money")
-    print("  columns are that PD times assumptions the business owns.")
+          f"{TICKET_TOMAN:,} Toman line, and expected loss assumes a two-way")
+    print("  bar loses the WHOLE balance (LGD 100 pct). Both are deliberately")
+    print("  pessimistic. Treat them as a ceiling on the loss, not a forecast.")
 
     path = os.path.join(OUTDIR, "handover_scores.csv")
     out.to_csv(path, index=False)
-    print(f"\n  written to {path}")
-    pd.DataFrame(RES + [dict(r, model=r["model"] + " [OOT]") for r in RV]) \
-      .to_csv(os.path.join(OUTDIR, "metrics.csv"), index=False)
+    print(f"\n  written to {path}  ({len(out):,} rows)")
+    metrics = pd.DataFrame(
+        RES + [dict(r, model=r["model"] + " [VALID]") for r in RV] + RT)
+    metrics.to_csv(os.path.join(OUTDIR, "metrics.csv"), index=False)
     print(f"  metrics written to {OUTDIR}/metrics.csv")
 
     print("\nWHAT IS NOT REPORTED, AND WHY")
-    print("  Accuracy. At a 0.95 pct event rate a model predicting 'nobody")
-    print("  defaults' scores 99.05 pct, so the number says nothing.")
+    print("  Accuracy. At a rate near 0.55 pct a model predicting 'nobody")
+    print("  defaults' scores 99.45 pct, so the number says nothing.")
+    print("  An out-of-time estimate. The split is random by subscriber, so")
+    print("  TEST measures generalisation to other subscribers in the SAME")
+    print("  period. The PSI section is what speaks to the later period, and")
+    print("  it says the features have moved.")
 
 
 if __name__ == "__main__":
