@@ -251,6 +251,27 @@ HEADER = f"""-- ================================================================
 --  window's median. A coefficient learned on 1404 Rial means something
 --  different applied to 1405 Rial; a ratio to the window median does not.
 --
+--  WHY THE BARRED SUBSCRIBERS ARE NOT ADDED TO GET MORE label = 1. They were
+--  proposed as a way to balance the classes with real bads. Measured on
+--  synthetic data giving the barred group the SAME revenue-to-risk
+--  relationship as the clean cohort - the assumption most favourable to the
+--  idea - adding them moved AUC on the clean population by a mean of -0.0001
+--  over six seeds, while the fit put 0.72 of coefficient weight on
+--  oneway_months, which the screen forces to ZERO in dcb_score so it cannot
+--  fire at scoring time. rev_max fell from 0.208 to 0.108 and tenure_m from
+--  0.033 to 0.010 to pay for it.
+--
+--  The balance needs no help: 28,263 bads over 33 features is 856 events per
+--  variable, and down-sampling at GOOD_KEEP=10 already shows the model 5.28
+--  pct bads rather than 0.55 pct.
+--
+--  The version that DOES work is a product decision, not a modelling one: if
+--  those subscribers belong in training they belong in scoring too, so the
+--  screen changes on BOTH tables. Stratum 2 - cleared the revenue bar,
+--  one-way barred, never two-way, 382,142 subscribers - is the real
+--  candidate, and W1 in 44_where_are_the_bads.sql measures the forward rate
+--  that decides it. See RUN43_FINDINGS.md for the decision table.
+--
 --  EXCLUDED ON PURPOSE
 --      debt_scr, suspend_scr   all zero in 6 of 10 months - their PSI of
 --                              13.89 and 14.41 was a loading gap, not drift

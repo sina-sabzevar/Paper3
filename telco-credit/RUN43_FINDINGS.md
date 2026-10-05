@@ -189,3 +189,94 @@ feature window, so its forward bad is largely the same bar continuing rather
 than a new event predicted. Expect it near 100% and do not read it as signal.
 Stratum 2 is the interesting one — one-way but not two-way, so a forward
 two-way bar there is a real escalation.
+
+---
+
+# Should we add barred subscribers to get more label = 1?
+
+Proposed: add subscribers who hold at least one filter (revenue above 170k) but
+fail the bar filters, to balance the classes with more real bads.
+
+**Not to the training table alone.** Two separate things are being conflated —
+class *balance* and population *definition* — and the balance is already solved.
+
+## The bad count is not a constraint
+
+28,263 bads against 33 features is **856 events per variable**, roughly 57x the
+usual 10–20 rule of thumb for a stable logistic fit.
+
+And down-sampling already fixes the ratio. At `GOOD_KEEP = 10` the model sees
+**5.28%** bads, not 0.55%. Adding both barred strata would move the *raw* rate
+from 0.5541% to 1.10% — marginal next to what weighting already does, and it is
+the weighted rate the fit actually sees.
+
+## Measured: it does not help, and it costs
+
+Fitted on synthetic data where the barred group carries the **same**
+revenue-to-risk relationship as the clean cohort, just a higher baseline rate
+and its bar flags set — the most favourable realistic assumption for the
+proposal. TEST is always the clean population, because that is what `dcb_score`
+contains.
+
+| | AUC on clean TEST |
+|---|---|
+| clean TRAIN | baseline |
+| TRAIN + barred | **mean delta −0.0001** over 6 seeds (−0.0018 to +0.0015) |
+
+No gain. And the coefficients show why:
+
+| feature | clean | + barred |
+|---|---|---|
+| `rev_6m` | 0.833 | 0.952 |
+| `rev_max` | 0.208 | **0.108** |
+| `outst_max` | 0.539 | 0.544 |
+| `tenure_m` | 0.033 | **0.010** |
+| `oneway_months` | 0.000 | **0.720** ← constant 0 in `dcb_score` |
+
+The model spends 0.72 of weight on a feature that **cannot vary at scoring
+time**, because the screen forces it to zero in the live set. That weight does
+nothing, and `rev_max` and `tenure_m` are diluted to pay for it.
+
+This is the same train/score mismatch the seasonal alignment and the per-window
+bar were introduced to remove — reintroduced deliberately. It is also
+detectable: PSI on `oneway_months` would go from 0 to very large.
+
+## The version of the idea that does work
+
+**If you want them in training, you must also want them in scoring.** Change
+the screen on *both* tables — which makes it a product decision, not a
+modelling one.
+
+Stratum 2 is the real candidate: **382,142** subscribers who cleared the
+revenue bar, were one-way barred, and were never two-way barred. A forward
+two-way bar there is a genuine escalation, not a continuation. Admitting them
+adds **191 bn Toman** of book at 500,000 each — against the cohort's 2,550 bn.
+
+| their forward rate | blended rate | extra expected loss | |
+|---|---|---|---|
+| 1% | 0.585% | 1.9 bn | admit |
+| 2% | 0.655% | 3.8 bn | admit |
+| 3% | 0.725% | 5.7 bn | admit on a smaller line |
+| 5% | 0.864% | 9.6 bn | admit on a smaller line |
+| 10% | 1.213% | 19.1 bn | decline |
+| 20% | 1.910% | 38.2 bn | decline |
+
+**W1 in `44_where_are_the_bads.sql` measures the real rate.** That single number
+decides it; the table above is just the decision frame.
+
+Stratum 3 (21,834, already two-way barred) is not a candidate at all — their
+forward bar is largely the same bar continuing, so it is not a prediction and
+they are not a lending decision.
+
+If the rate lands in the "smaller line" band, the drill-down worth having is
+stratum 2 by **how many** one-way months they had: one bar event is a different
+risk from four. That needs a new aggregate — `dcb_funnel` only carries `ow_any`
+as a flag — so it is worth writing only once W1 says the group is promising.
+
+## If more balance is wanted anyway
+
+Lower `GOOD_KEEP`, which is free and does not change who the model is about:
+`GOOD_KEEP = 5` gives 10.0% bads, `GOOD_KEEP = 2` gives 21.8%. Be aware that
+rebalancing past a moderate level buys no ranking improvement and makes
+calibration worse, which isotonic then has to undo. `GOOD_KEEP = 10` is a
+reasonable place to stay.
