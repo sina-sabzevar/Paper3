@@ -211,7 +211,6 @@ med AS (
     SELECT  APPROX_PERCENTILE(rev_6m, 0.5) AS m_rev_6m,
             APPROX_PERCENTILE(rev_max, 0.5) AS m_rev_max,
             APPROX_PERCENTILE(paid_6m, 0.5) AS m_paid_6m,
-            APPROX_PERCENTILE(outst_max, 0.5) AS m_outst_max,
             APPROX_PERCENTILE(avail_max, 0.5) AS m_avail_max
     FROM    proj
 )
@@ -219,7 +218,6 @@ SELECT      proj.*,
             proj.rev_6m / NULLIF(med.m_rev_6m, 0) AS rev_6m_rel,
             proj.rev_max / NULLIF(med.m_rev_max, 0) AS rev_max_rel,
             proj.paid_6m / NULLIF(med.m_paid_6m, 0) AS paid_6m_rel,
-            proj.outst_max / NULLIF(med.m_outst_max, 0) AS outst_max_rel,
             proj.avail_max / NULLIF(med.m_avail_max, 0) AS avail_max_rel
 FROM        proj
 CROSS JOIN  med
@@ -326,7 +324,6 @@ med AS (
     SELECT  APPROX_PERCENTILE(rev_6m, 0.5) AS m_rev_6m,
             APPROX_PERCENTILE(rev_max, 0.5) AS m_rev_max,
             APPROX_PERCENTILE(paid_6m, 0.5) AS m_paid_6m,
-            APPROX_PERCENTILE(outst_max, 0.5) AS m_outst_max,
             APPROX_PERCENTILE(avail_max, 0.5) AS m_avail_max
     FROM    proj
 )
@@ -334,7 +331,6 @@ SELECT      proj.*,
             proj.rev_6m / NULLIF(med.m_rev_6m, 0) AS rev_6m_rel,
             proj.rev_max / NULLIF(med.m_rev_max, 0) AS rev_max_rel,
             proj.paid_6m / NULLIF(med.m_paid_6m, 0) AS paid_6m_rel,
-            proj.outst_max / NULLIF(med.m_outst_max, 0) AS outst_max_rel,
             proj.avail_max / NULLIF(med.m_avail_max, 0) AS avail_max_rel
 FROM        proj
 CROSS JOIN  med

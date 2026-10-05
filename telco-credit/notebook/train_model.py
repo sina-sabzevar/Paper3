@@ -117,7 +117,10 @@ REFERENCE_RATE = 0.005541
 # Raw Rial level features that have a _rel twin from the SQL. Setting
 # USE_RELATIVE_ONLY drops the raw ones and keeps the ratios, which is the
 # drift-robust choice when PSI says the levels have moved.
-RAW_WITH_REL = ["rev_6m", "rev_max", "paid_6m", "outst_max", "avail_max"]
+# outst_max is deliberately absent: its raw PSI is 0.0551 (stable) while
+# outst_max_rel measured 1.1404, because dividing a stable column by its
+# window's near-zero median manufactures drift. The twin is no longer built.
+RAW_WITH_REL = ["rev_6m", "rev_max", "paid_6m", "avail_max"]
 USE_RELATIVE_ONLY = False
 
 # Not features. sbrp_id is an identity a tree would memorise; n_label_months is

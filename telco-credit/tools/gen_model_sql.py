@@ -100,7 +100,27 @@ SUPERSET_BAR = 520_000     # about half the MODEL bar -> roughly the top 40 pct
 # different applied to 1405 Rial - a subscriber on 2,000,000 was upper-tail in
 # 1404 and mid-pack in 1405 - so the model would read them as safer than their
 # peers warrant. The ratio to the window median is stable under that drift.
-RELATIVE = ["rev_6m", "rev_max", "paid_6m", "outst_max", "avail_max"]
+# MEASURED on the first real run. Four of the five twins did their job; one
+# did the opposite and is removed:
+#
+#     feature      raw PSI   _rel PSI
+#     rev_6m        1.0865     0.0038   twin fixes it
+#     rev_max       3.0223     0.0242   twin fixes it
+#     paid_6m       0.3338     0.0034   twin fixes it
+#     avail_max     0.1938     0.0501   twin fixes it
+#     outst_max     0.0551     1.1404   twin MADE IT WORSE  <- removed
+#
+# outst_max is already STABLE across the two windows, and dividing it by its
+# own window's median manufactured drift where there was none. Most
+# subscribers carry zero outstanding, so that median sits near zero and is
+# itself unstable between windows - a stable numerator over an unstable
+# near-zero denominator is a ratio that moves for no behavioural reason.
+# NULLIF guards a median of exactly zero, not a small one.
+#
+# THE RULE THIS ESTABLISHES: a relative twin is only worth building for a
+# feature whose RAW column actually drifts AND whose median sits well away
+# from zero. Check both before adding one here.
+RELATIVE = ["rev_6m", "rev_max", "paid_6m", "avail_max"]
 
 
 def day_span(months):
