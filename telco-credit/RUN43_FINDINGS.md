@@ -121,3 +121,71 @@ business decision about line size, not a modelling one.
 3. **Whether the screen should stay nominal.** A fixed bar is a drifting rule.
    Options: re-express it in real terms, re-set it periodically, or define it as a
    percentile of the base. This needs a decision, not a query.
+
+---
+
+# Where are the label = 1 subscribers?
+
+Asked after the first run, and worth recording because the answer is easy to
+misread.
+
+**The 5,100,390 is not "the good users".** It is the *eligible* population, and
+the bads are inside it:
+
+| | | |
+|---|---|---|
+| the cohort | 5,100,390 | |
+| label = 1 | 28,263 | 0.5541% |
+| label = 0 | 5,072,127 | 99.4459% |
+
+A label = 1 subscriber is one who was **clean through the feature window and
+then went two-way barred in the label window**. That is exactly the event the
+product has to predict — someone already barred is not a lending decision.
+
+## After the 70/20/10 split
+
+| split | rows | bads |
+|---|---|---|
+| TRAIN | 3,570,273 | ~19,784 |
+| VALID | 1,020,078 | ~5,652 |
+| TEST | 510,039 | ~2,826 |
+
+~19,784 bads is ample to fit on, and ~2,826 in TEST gives an AUC with a tight
+interval. **The constraint is the ratio, not the count**, and `sample_weight`
+handles the ratio.
+
+## What the screen removed, and why it is not withheld training data
+
+403,976 subscribers cleared the revenue bar but already had a bar event **in**
+the feature window — 382,142 one-way and 21,834 two-way. The product will not
+extend credit to a subscriber who is already barred, so they sit outside the
+product rather than being data we declined to use.
+
+The part that matters: **`dcb_score` applies the same screen.** The fitting
+population and the scoring population are filtered identically, so there is no
+selection mismatch between them. This is not the classic reject-inference
+problem, because the screen conditions on observable features we also hold for
+the scoring population — not on an unobserved model score.
+
+## What is not yet known
+
+Whether the screen is doing real work. `44_where_are_the_bads.sql` answers it
+from the existing `dcb_funnel` table, so it is cheap:
+
+- **W1** the forward two-way rate in each rejected stratum against the cohort's
+  0.5541%. Much higher in the rejected strata means the screen removes genuine
+  risk; similar means it shrinks the book for nothing.
+- **W2** reconciles the strata against D1's funnel steps — verified
+  arithmetically that the identity holds.
+- **W3** the screen's lift: how many times riskier the population is without it.
+- **W4** the bad rate by `rev_months` **inside** the cohort. This is the most
+  useful number for setting AUC expectations before fitting: a rate that falls
+  steadily as `rev_months` rises means real separation remains; a flat rate
+  means the screen already extracted what revenue can say and the model must
+  lean on payment, outstanding and tenure instead.
+
+Read W1 with one caveat: stratum 3 was **already** two-way barred during the
+feature window, so its forward bad is largely the same bar continuing rather
+than a new event predicted. Expect it near 100% and do not read it as signal.
+Stratum 2 is the interesting one — one-way but not two-way, so a forward
+two-way bar there is a real escalation.
