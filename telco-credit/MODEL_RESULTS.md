@@ -107,3 +107,75 @@ and so on), which is scale-free by construction and needs no window median, so
 it is immune to both inflation and the window effect. That is a change to the
 SQL and a re-run, and worth doing before this model goes anywhere near
 production — but the current result stands on its own.
+
+---
+
+# The chosen book: 4,672,361
+
+Decision: take the safest 4,672,361 — half the scored population — on the basis
+that the loss rate stays under 0.5%.
+
+## Cumulative against marginal
+
+The cumulative table alone hides the number that decides where to stop:
+
+| take | share | book PD | **marginal PD** | exposure | exp loss |
+|---|---|---|---|---|---|
+| 934,472 | 10% | 0.0965% | 0.0965% | 467 bn | 0.5 bn |
+| 1,868,944 | 20% | 0.1379% | 0.1793% | 934 bn | 1.3 bn |
+| 2,803,416 | 30% | 0.1595% | 0.2027% | 1,402 bn | 2.2 bn |
+| 3,737,889 | 40% | 0.1832% | 0.2543% | 1,869 bn | 3.4 bn |
+| **4,672,361** | **50%** | **0.2094%** | **0.3142%** | **2,336 bn** | **4.9 bn** |
+| 5,606,833 | 60% | 0.2437% | 0.4152% | 2,803 bn | 6.8 bn |
+| 6,541,306 | 70% | 0.2782% | 0.4852% | 3,271 bn | 9.1 bn |
+| 7,475,778 | 80% | 0.3199% | **0.6118%** | 3,738 bn | 12.0 bn |
+| 9,344,723 | 100% | 0.6046% | 2.5918% | 4,672 bn | 28.2 bn |
+
+**Book PD** is the average over everyone taken — it sets total loss. **Marginal
+PD** is the last subscriber admitted — it says whether the next slice is worth
+taking. At 4,672,361 both clear the ceiling: book 0.2094%, marginal 0.3142%.
+
+The marginal rate first crosses 0.5% at the **80%** mark (0.6118%), so there is
+headroom well past this cut if volume is wanted later.
+
+## Stress
+
+| scenario | rate | loss | |
+|---|---|---|---|
+| as predicted | 0.2094% | 4.9 bn | within |
+| +17% drift seen in the live set | 0.2450% | 5.7 bn | within |
+| lending into months 1-4 (measured 1.68×) | 0.3518% | 8.2 bn | within |
+| twice predicted | 0.4188% | 9.8 bn | within |
+| three times predicted | 0.6282% | 14.7 bn | **breaches** |
+
+**It takes a 2.4× miss to breach 0.5%.** At 3,000,000 it took 3.0× — so this
+cut trades some cushion for 836 bn more book. A deliberate trade with a wide
+margin remaining.
+
+Against the 15,000 bn target this book is 6.42× short, so the gap is a
+line-size and screen-width question (`46_bar_ladder_risk.sql`), not a
+model one.
+
+## notebook/select_book.py
+
+Cuts the book out of `handover_scores.csv` and reports the PD cutoff, the book
+and marginal rates against appetite, the money at the chosen ticket and LGD,
+the stress table, and the grade mix. Writes `outputs/approved_book.csv`.
+
+Separate from the notebook on purpose: the model's job ended at a ranked score
+per subscriber. Where to cut will be revisited — different appetite, different
+line, different month — and none of that should mean re-running an 8.7M row fit.
+
+`TAKE`, `TICKET_TOMAN`, `APPETITE` and `LGD` are the four knobs. `LGD = 1.00`
+is pessimistic by choice: the operator keeps collecting after a bar.
+
+## What has not changed
+
+`pd_4m` is the probability of a **two-way bar within 4 months**, not the share
+of credit repaid. Every label behind it came from subscribers who had **no
+credit line**, so the model predicts "would be cut off for not paying their own
+bill" — a proxy for "would not repay credit", not a measurement of it. On TEST
+it ran about 10% conservative in this score region, which is the right
+direction, but the behavioural effect of handing someone spendable credit is
+unmeasured and unmeasurable from this data. A pilot is the only thing that
+closes it.
