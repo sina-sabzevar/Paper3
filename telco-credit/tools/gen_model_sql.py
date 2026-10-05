@@ -30,10 +30,28 @@ MIN_REV_MONTHS = 2        # the screen: revenue over the threshold in 2+ months
 # here once it has run. Until then all three use the production bar, which
 # keeps the cohorts honest but leaves TRAIN and VALID smaller and richer
 # than SCORE, and the model fitted on a population it will not meet.
+# MEASURED (43_cohort_funnel.sql, first run). The fixed bar admits:
+#
+#     12.0 pct of the base in 140301..140306   ->  3,733,333 screened
+#     14.6 pct                140401..140406   ->  5,100,390
+#     24.4 pct                140501..140506   ->  9,344,723
+#
+# Coverage was ruled out as the cause: months-seen (5.88, 5.88, 5.80) and the
+# NULL-arpu rate (1.35, 1.39, 1.36) are flat across the windows, and the base
+# itself grows 33.6M -> 41.3M. It is nominal drift, and it is large: revenue
+# per subscriber-month grew 1.88x at the p90 from 1403 to 1405.
+#
+# These two values are INTERIM, derived from the ratio of upper-tail
+# percentiles (p75, p90, mean) between each window and SCORE, which averaged
+# 1.86x for TRAIN and 1.64x for VALID. They equalize the admitted SHARE to
+# about 24 pct in all three windows, which is the point. Replace them with
+# the exact figures from 43_cohort_funnel.sql D3 - that sheet was not in the
+# first export, and it reads the pass share at seven candidate bars directly
+# instead of assuming the distribution scales.
 COHORT_BAR = {
-    "TRAIN": REV_T,       # <- set from 43_cohort_funnel.sql D3
-    "VALID": REV_T,       # <- set from 43_cohort_funnel.sql D3
-    "SCORE": REV_T,       # production bar, do not change
+    "TRAIN":   910_000,   # interim, from percentile ratios; D3 gives the exact
+    "VALID": 1_050_000,   # interim, from percentile ratios; D3 gives the exact
+    "SCORE":    REV_T,    # production bar, do not change
 }
 WINSOR  = 500_000_000     # available_credit reaches 40.9 trillion raw
 TENURE_CAP = 480          # age_on_net_months runs -232 to 1,285 raw

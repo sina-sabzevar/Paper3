@@ -176,14 +176,15 @@ SEED       = 42              # fixed so two runs give the same model
 # floor is 400,000.
 TICKET_TOMAN = 500_000
 
-# The event rate of record for THIS VALID window (140401..140406 features,
-# 140407..140410 label), from sql/43_cohort_funnel.sql D5.
+# MEASURED for THIS VALID window (features 140401..140406, label
+# 140407..140410) by sql/43_cohort_funnel.sql D5: 28,263 bad out of 5,100,390
+# screened = 0.5541 pct.
 #
-# Leave it None until 43 has been run. Do NOT put 0.0095 here: that figure was
-# measured on features 140407..140412 with label 140501..140504 - a different
-# window in a different season - and checking against the wrong reference is
-# worse than not checking at all, because it manufactures false confidence.
-EXPECTED_RATE = None
+# This is roughly HALF the 0.95 pct that was on record. That figure was
+# measured on a label window of months 1-4; this one is months 7-10, and the
+# two-way bar rate in months 1-4 ran 1.68x the rate in months 7-10. Section 3
+# checks the loaded data against the right one.
+EXPECTED_RATE = 0.005541
 
 # Columns that are NOT features:
 #   sbrp_id         an identity. A tree would happily memorise individuals.

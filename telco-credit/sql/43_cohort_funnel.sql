@@ -37,6 +37,7 @@
 --      B_140401_140406  features 140401..140406  label 140407..140410  VALID - months 1-6 of 1404
 --      C_140501_140506  features 140501..140506  no label        SCORE - months 1-6 of 1405, no label, the outcome is the future
 --      D_140407_140412  features 140407..140412  label 140501..140504  ANCHOR - the old VALID, measured at 0.95 pct in 41_forward_horizons.sql
+--      E_140307_140312  features 140307..140312  label 140401..140404  SEASON CONTROL - a second window whose LABEL lands on months 1-4
 --
 --  D IS THE CORRECTNESS ANCHOR. Its screened population should come back near
 --  6,879,803 and its event rate near 0.95 pct, because that is exactly what
@@ -77,7 +78,8 @@ tagged AS (
             IF(month_key BETWEEN 140401 AND 140406, 'B_140401_140406',
             IF(month_key BETWEEN 140501 AND 140506, 'C_140501_140506',
             IF(month_key BETWEEN 140407 AND 140412, 'D_140407_140412',
-               NULL)))) AS win
+            IF(month_key BETWEEN 140307 AND 140312, 'E_140307_140312',
+               NULL))))) AS win
     FROM    sm
 ),
 fw AS (
@@ -105,7 +107,8 @@ lb AS (
                 IF(month_key BETWEEN 140307 AND 140310, 'A_140301_140306',
                 IF(month_key BETWEEN 140407 AND 140410, 'B_140401_140406',
                 IF(month_key BETWEEN 140501 AND 140504, 'D_140407_140412',
-                   NULL))) AS win
+                IF(month_key BETWEEN 140401 AND 140404, 'E_140307_140312',
+                   NULL)))) AS win
         FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
         WHERE   month_key BETWEEN 140307 AND 140504
           AND   sbrp_typ_id = 1
@@ -192,7 +195,8 @@ tagged AS (
             IF(month_key BETWEEN 140401 AND 140406, 'B_140401_140406',
             IF(month_key BETWEEN 140501 AND 140506, 'C_140501_140506',
             IF(month_key BETWEEN 140407 AND 140412, 'D_140407_140412',
-               NULL)))) AS win
+            IF(month_key BETWEEN 140307 AND 140312, 'E_140307_140312',
+               NULL))))) AS win
     FROM    sm
 ),
 per AS (
@@ -245,6 +249,11 @@ ORDER BY win;
 --     against the 0.95 pct figure - that belongs to D.
 -- ---------------------------------------------------------------------------
 SELECT  win,
+        IF(win = 'A_140301_140306', '140307_140310',
+        IF(win = 'B_140401_140406', '140407_140410',
+        IF(win = 'D_140407_140412', '140501_140504',
+        IF(win = 'E_140307_140312', '140401_140404',
+           'none'))))                                    AS label_span,
         COUNT(*)                                             AS screened,
         SUM(y)                                               AS n_bad,
         100.0 * SUM(y) / NULLIF(COUNT(*), 0)                 AS bad_pct,
@@ -256,34 +265,40 @@ WHERE   rev_months >= 2
   AND   ow_any = 0
   AND   tw_any = 0
   AND   n_label_months IS NOT NULL
-GROUP BY win
+GROUP BY win, IF(win = 'A_140301_140306', '140307_140310',
+        IF(win = 'B_140401_140406', '140407_140410',
+        IF(win = 'D_140407_140412', '140501_140504',
+        IF(win = 'E_140307_140312', '140401_140404',
+           'none'))))
 ORDER BY win;
 
 -- ---------------------------------------------------------------------------
--- D6  SEASON OR YEAR? The decomposition.
+-- D6  SEASON OR YEAR? The grid, now that there are five windows.
 --
---     A vs B vs C are all months 1-6, one year apart: that difference is the
---     YEAR effect, which is the nominal drift.
---     B vs D are both in 1404, months 1-6 against months 7-12: that
---     difference is the SEASON effect.
+--     MEASURED on the first run, before window E existed:
 --
---     If the season effect is large, the earlier calendar - which validated
---     on months 7-12 and scored months 1-6 - was comparing populations that
---     were never comparable, and the year-over-year alignment in
---     42_model_datasets.sql is doing real work rather than being tidy.
+--       pass share at the fixed bar, months 1-6:  12.0 (1403) -> 14.6 (1404)
+--                                                 -> 24.4 (1405)
+--       so the fixed nominal bar admits TWICE the share of the base in 1405
+--       that it did in 1403. The screen has loosened on its own.
+--
+--       event rate: 1403 m7-10 label 0.5730 pct, 1404 m7-10 label 0.5541 pct,
+--       1405 m1-4 label 0.9492 pct. The first two agree closely while sitting
+--       at DIFFERENT screen breadths (12.0 and 14.6 pct), so breadth is not
+--       what moves the rate. The third differs mainly in LABEL SEASON and is
+--       1.68x higher.
+--
+--     WINDOW E IS THE CONTROL FOR THAT CLAIM. The 1.68x rests on a single
+--     observation of a months 1-4 label. E's label is 140401..140404, also
+--     months 1-4, in a different year. If E comes back near 0.95 pct the
+--     seasonal reading holds; if E comes back near 0.56 pct it does not, and
+--     the D figure is about 1405 specifically rather than about the season.
 -- ---------------------------------------------------------------------------
-SELECT  'YEAR effect, constant season (months 1-6)'       AS comparison,
-        MAX(IF(win = 'A_140301_140306', pass_pct, NULL))  AS a_1403,
-        MAX(IF(win = 'B_140401_140406', pass_pct, NULL))  AS b_1404,
-        MAX(IF(win = 'C_140501_140506', pass_pct, NULL))  AS c_1405,
-        NULL                                              AS d_1404_h2
-FROM    dwbi_temp40_db.dcb_funnel_bars
-WHERE   bar = 1700000
-UNION ALL
-SELECT  'SEASON effect, constant year (1404)',
-        NULL,
-        MAX(IF(win = 'B_140401_140406', pass_pct, NULL)),
-        NULL,
-        MAX(IF(win = 'D_140407_140412', pass_pct, NULL))
-FROM    dwbi_temp40_db.dcb_funnel_bars
-WHERE   bar = 1700000;
+SELECT   win,
+         bar,
+         present,
+         pass_2plus,
+         pass_pct
+FROM     dwbi_temp40_db.dcb_funnel_bars
+WHERE    bar = 1700000
+ORDER BY win;

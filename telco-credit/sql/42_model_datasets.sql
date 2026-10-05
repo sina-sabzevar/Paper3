@@ -162,13 +162,13 @@ SELECT  f.sbrp_id,
         GREATEST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)              AS rev_max,
         LEAST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)                 AS rev_min,
         (f.r4+f.r5+f.r6) - (f.r1+f.r2+f.r3)                  AS rev_trend,
-        IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0)
+        IF(f.r1>=910000,1,0) + IF(f.r2>=910000,1,0) + IF(f.r3>=910000,1,0) + IF(f.r4>=910000,1,0) + IF(f.r5>=910000,1,0) + IF(f.r6>=910000,1,0)
                                                              AS rev_months,
         COALESCE(p.q1,0) AS q1, COALESCE(p.q2,0) AS q2, COALESCE(p.q3,0) AS q3,
         COALESCE(p.q4,0) AS q4, COALESCE(p.q5,0) AS q5, COALESCE(p.q6,0) AS q6,
         COALESCE(p.q1,0) + COALESCE(p.q2,0) + COALESCE(p.q3,0) + COALESCE(p.q4,0) + COALESCE(p.q5,0) + COALESCE(p.q6,0)  AS paid_6m,
         GREATEST(COALESCE(p.q1,0), COALESCE(p.q2,0), COALESCE(p.q3,0), COALESCE(p.q4,0), COALESCE(p.q5,0), COALESCE(p.q6,0)) AS paid_max,
-        IF(COALESCE(p.q1,0)>=1700000,1,0) + IF(COALESCE(p.q2,0)>=1700000,1,0) + IF(COALESCE(p.q3,0)>=1700000,1,0) + IF(COALESCE(p.q4,0)>=1700000,1,0) + IF(COALESCE(p.q5,0)>=1700000,1,0) + IF(COALESCE(p.q6,0)>=1700000,1,0)
+        IF(COALESCE(p.q1,0)>=910000,1,0) + IF(COALESCE(p.q2,0)>=910000,1,0) + IF(COALESCE(p.q3,0)>=910000,1,0) + IF(COALESCE(p.q4,0)>=910000,1,0) + IF(COALESCE(p.q5,0)>=910000,1,0) + IF(COALESCE(p.q6,0)>=910000,1,0)
                                                              AS pay_months,
         f.o1+f.o2+f.o3+f.o4+f.o5+f.o6                        AS oneway_months,
         f.n_arpu_null, f.n_active1, f.f_reclaim,
@@ -179,9 +179,9 @@ SELECT  f.sbrp_id,
 FROM        feat f
 LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id
 INNER JOIN  lab  l ON l.sbrp_id = f.sbrp_id
--- THE SCREEN: revenue at or above 1,700,000 Rial in 2 or more months,
+-- THE SCREEN: revenue at or above 910,000 Rial in 2 or more months,
 -- never one-way barred, never two-way barred in the feature window.
-WHERE   IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0) >= 2
+WHERE   IF(f.r1>=910000,1,0) + IF(f.r2>=910000,1,0) + IF(f.r3>=910000,1,0) + IF(f.r4>=910000,1,0) + IF(f.r5>=910000,1,0) + IF(f.r6>=910000,1,0) >= 2
   AND   f.o1+f.o2+f.o3+f.o4+f.o5+f.o6 = 0
   AND   f.f_twoway = 0
 ;
@@ -258,13 +258,13 @@ SELECT  f.sbrp_id,
         GREATEST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)              AS rev_max,
         LEAST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)                 AS rev_min,
         (f.r4+f.r5+f.r6) - (f.r1+f.r2+f.r3)                  AS rev_trend,
-        IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0)
+        IF(f.r1>=1050000,1,0) + IF(f.r2>=1050000,1,0) + IF(f.r3>=1050000,1,0) + IF(f.r4>=1050000,1,0) + IF(f.r5>=1050000,1,0) + IF(f.r6>=1050000,1,0)
                                                              AS rev_months,
         COALESCE(p.q1,0) AS q1, COALESCE(p.q2,0) AS q2, COALESCE(p.q3,0) AS q3,
         COALESCE(p.q4,0) AS q4, COALESCE(p.q5,0) AS q5, COALESCE(p.q6,0) AS q6,
         COALESCE(p.q1,0) + COALESCE(p.q2,0) + COALESCE(p.q3,0) + COALESCE(p.q4,0) + COALESCE(p.q5,0) + COALESCE(p.q6,0)  AS paid_6m,
         GREATEST(COALESCE(p.q1,0), COALESCE(p.q2,0), COALESCE(p.q3,0), COALESCE(p.q4,0), COALESCE(p.q5,0), COALESCE(p.q6,0)) AS paid_max,
-        IF(COALESCE(p.q1,0)>=1700000,1,0) + IF(COALESCE(p.q2,0)>=1700000,1,0) + IF(COALESCE(p.q3,0)>=1700000,1,0) + IF(COALESCE(p.q4,0)>=1700000,1,0) + IF(COALESCE(p.q5,0)>=1700000,1,0) + IF(COALESCE(p.q6,0)>=1700000,1,0)
+        IF(COALESCE(p.q1,0)>=1050000,1,0) + IF(COALESCE(p.q2,0)>=1050000,1,0) + IF(COALESCE(p.q3,0)>=1050000,1,0) + IF(COALESCE(p.q4,0)>=1050000,1,0) + IF(COALESCE(p.q5,0)>=1050000,1,0) + IF(COALESCE(p.q6,0)>=1050000,1,0)
                                                              AS pay_months,
         f.o1+f.o2+f.o3+f.o4+f.o5+f.o6                        AS oneway_months,
         f.n_arpu_null, f.n_active1, f.f_reclaim,
@@ -275,9 +275,9 @@ SELECT  f.sbrp_id,
 FROM        feat f
 LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id
 INNER JOIN  lab  l ON l.sbrp_id = f.sbrp_id
--- THE SCREEN: revenue at or above 1,700,000 Rial in 2 or more months,
+-- THE SCREEN: revenue at or above 1,050,000 Rial in 2 or more months,
 -- never one-way barred, never two-way barred in the feature window.
-WHERE   IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0) >= 2
+WHERE   IF(f.r1>=1050000,1,0) + IF(f.r2>=1050000,1,0) + IF(f.r3>=1050000,1,0) + IF(f.r4>=1050000,1,0) + IF(f.r5>=1050000,1,0) + IF(f.r6>=1050000,1,0) >= 2
   AND   f.o1+f.o2+f.o3+f.o4+f.o5+f.o6 = 0
   AND   f.f_twoway = 0
 ;
