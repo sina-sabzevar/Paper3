@@ -157,17 +157,27 @@ def report(name, y, p, w):
 
 
 def decile_table(y, p, w, label=""):
-    """Predicted against observed, weighted, on rows the calibrator never saw."""
-    q = pd.qcut(p, 10, labels=False, duplicates="drop")
-    d = pd.DataFrame({"d": q, "y": y, "p": p, "w": w})
-    g = d.groupby("d").apply(
-        lambda t: pd.Series({
-            "n":         len(t),
-            "weighted_n": t.w.sum(),
-            "predicted": np.average(t.p, weights=t.w),
-            "observed":  np.average(t.y, weights=t.w),
-        }), include_groups=False)
-    g["ratio"] = g.observed / g.predicted.replace(0, np.nan)
+    """Predicted against observed, weighted, on rows the calibrator never saw.
+
+    Weighted sums through agg rather than groupby.apply: apply needs the
+    include_groups argument on pandas 2.2+ and raises a TypeError without it on
+    older versions, so the apply form would break on an older pandas in the
+    warehouse environment. The aggregation form works on every version, is
+    faster, and was checked to give identical numbers.
+    """
+    d = pd.DataFrame({
+        "d": pd.qcut(p, 10, labels=False, duplicates="drop"),
+        "y": np.asarray(y, dtype=float),
+        "p": np.asarray(p, dtype=float),
+        "w": np.asarray(w, dtype=float)})
+    d["wp"] = d.w * d.p
+    d["wy"] = d.w * d.y
+    g = d.groupby("d").agg(n=("y", "size"), weighted_n=("w", "sum"),
+                           wp=("wp", "sum"), wy=("wy", "sum"))
+    g["predicted"] = g.wp / g.weighted_n
+    g["observed"]  = g.wy / g.weighted_n
+    g["ratio"]     = g.observed / g.predicted.replace(0, np.nan)
+    g = g[["n", "weighted_n", "predicted", "observed", "ratio"]]
     print(f"\n  calibration by decile{label} (ratio near 1.0 is the goal)")
     print(g.to_string(float_format=lambda v: f"{v:12.6f}"))
     worst = g.ratio.iloc[(g.ratio - 1.0).abs().to_numpy().argmax()]
