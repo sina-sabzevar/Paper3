@@ -194,6 +194,25 @@ REFERENCE_RATE = 0.005541
 RAW_WITH_REL = ["rev_6m", "rev_max", "paid_6m", "avail_max"]
 USE_RELATIVE_ONLY = False
 
+# WHICH FEATURES THE MODEL SEES.
+#
+#   "full"        every column 42 produces, Rial levels included.
+#   "scale_free"  no Rial amount anywhere. Each month becomes a share of the
+#                 subscriber's own 6-month total, plus payment coverage, the
+#                 counts and the flags.
+#
+# MEASURED by validate_model.ipynb on this data: full 0.8278, scale_free
+# 0.8230. The 0.0048 is worth paying. Twelve features in the full model drift
+# significantly (rev_max at PSI 3.0223), so its 0.8278 is an UPPER BOUND on
+# live performance; a scale-free feature cannot drift with inflation, so
+# 0.8230 is an ESTIMATE of it. A bounded number traded for an unbounded one is
+# the wrong way round, and the nominal design also needs re-tuning every year
+# as the Rial moves.
+#
+# Left at "full" so a re-run reproduces what was run before. Set it to
+# "scale_free" to switch.
+FEATURE_SET = "full"
+
 # Not features:
 #   sbrp_id         an identity; a tree would memorise individuals
 #   y, cohort       the label and a constant tag
@@ -210,7 +229,7 @@ NOT_FEATURES = {"sbrp_id", "y", "cohort", "sample_weight", "n_label_months",
 os.makedirs(OUTDIR, exist_ok=True)
 rng = np.random.default_rng(SEED)
 print(f"outputs -> {OUTDIR}/   seed {SEED}   ticket {TICKET_TOMAN:,} Toman")
-print(f"relative-only features: {USE_RELATIVE_ONLY}")
+print(f"relative-only features: {USE_RELATIVE_ONLY}   feature set: {FEATURE_SET}")
 ''')
 
 # ---------------------------------------------------------------------------
@@ -460,6 +479,45 @@ produces a beautiful AUC and a worthless model.
 """)
 
 code(r'''
+def add_scale_free(d):
+    """Every Rial column re-expressed against the subscriber's own 6-month total.
+
+    Scale-free BY CONSTRUCTION: no window median, so unlike a _rel twin it
+    cannot manufacture drift when the median sits near zero - which is what
+    put outst_max_rel at PSI 1.1404 against its raw column's 0.0551 and got it
+    removed. A share of your own total needs nothing from the window at all.
+    """
+    rev = d.rev_6m.to_numpy(dtype=np.float64)
+    n_zero = int((rev <= 0).sum())
+    den = np.where(rev > 0, rev, np.nan)       # nan, not 0 - an undefined share
+    new = {}
+    for i in range(1, 7):
+        new[f"r{i}_sh"] = d[f"r{i}"].to_numpy() / den
+        new[f"q{i}_sh"] = d[f"q{i}"].to_numpy() / den
+    for nm, col in (("rev_min_sh", "rev_min"), ("rev_max_sh", "rev_max"),
+                    ("rev_trend_sh", "rev_trend"), ("paid_max_sh", "paid_max"),
+                    ("outst_max_sh", "outst_max"), ("outst_avg_sh", "outst_avg"),
+                    ("avail_max_sh", "avail_max"), ("avail_avg_sh", "avail_avg"),
+                    ("pay_cover", "paid_6m")):
+        new[nm] = d[col].to_numpy() / den
+    for k, v in new.items():
+        d[k] = v.astype(np.float32)
+    return sorted(new), n_zero
+
+
+SCALE_FREE_KEEP = ["rev_months", "rev_months_wide", "pay_months", "n_arpu_null",
+                   "n_active1", "f_reclaim", "tenure_m", "pre_months_seen",
+                   "pre_ow_any", "pre_tw_any", "pre_ow_months", "pre_tw_months",
+                   "pre_absent"]
+
+if FEATURE_SET == "scale_free":
+    made, nz_m = add_scale_free(md_df)
+    _,    nz_s = add_scale_free(sc)
+    print(f"SCALE-FREE: built {len(made)} share columns in both tables")
+    if nz_m or nz_s:
+        print(f"  rows with rev_6m <= 0 (every share undefined, becomes 0.0 in X): "
+              f"{nz_m:,} model / {nz_s:,} score")
+
 FEATURES = [c for c in md_df.columns if c not in NOT_FEATURES]
 FEATURES = [c for c in FEATURES if c in sc.columns]
 FEATURES = [c for c in FEATURES if pd.api.types.is_numeric_dtype(md_df[c])]
@@ -472,6 +530,16 @@ if dead:
     for c, nun in dead:
         print(f"  {c:16s} distinct values MODEL/SCORE {nun}")
     FEATURES = [c for c in FEATURES if c not in {d[0] for d in dead}]
+
+if FEATURE_SET == "scale_free":
+    keep = set(SCALE_FREE_KEEP) | {c for c in FEATURES if c.endswith("_sh")} | {"pay_cover"}
+    dropped_rial = [c for c in FEATURES if c not in keep]
+    FEATURES = [c for c in FEATURES if c in keep]
+    print(f"\nSCALE-FREE: {len(FEATURES)} features, dropped {len(dropped_rial)} "
+          f"carrying a Rial level")
+    print(f"  dropped: {dropped_rial}")
+    leftover = [c for c in FEATURES if c.endswith("_rel")]
+    assert not leftover, f"a _rel twin survived the scale-free filter: {leftover}"
 
 if USE_RELATIVE_ONLY:
     drop = [c for c in RAW_WITH_REL if c + "_rel" in FEATURES]
