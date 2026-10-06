@@ -1,0 +1,707 @@
+<title>Telco Credit Line Pipeline</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow analytical column; each pipeline stage is a numbered band
+   with its own chart, read top to bottom in the order the data moves. */
+:root{
+  --plane:#f7f7f5; --surface:#fcfcfb; --raise:#f1f1ed;
+  --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --rule:rgba(11,11,11,0.10);
+  --o1:#86b6ef; --o2:#3987e5; --o3:#256abf; --o4:#104281;
+  --s1:#2a78d6; --s2:#eb6834;
+  --cut:#d9d8d1;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b; --good-ink:#006300;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  color-scheme:dark;
+  --plane:#0d0d0d; --surface:#17171a; --raise:#1f1f22;
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#898781;
+  --grid:#2c2c2a; --axis:#383835; --rule:rgba(255,255,255,0.10);
+  --o1:#184f95; --o2:#2a78d6; --o3:#86b6ef; --o4:#cde2fb;
+  --s1:#3987e5; --s2:#d95926;
+  --cut:#2c2c2a;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b; --good-ink:#0ca30c;
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --plane:#0d0d0d; --surface:#17171a; --raise:#1f1f22;
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#898781;
+  --grid:#2c2c2a; --axis:#383835; --rule:rgba(255,255,255,0.10);
+  --o1:#184f95; --o2:#2a78d6; --o3:#86b6ef; --o4:#cde2fb;
+  --s1:#3987e5; --s2:#d95926;
+  --cut:#2c2c2a;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b; --good-ink:#0ca30c;
+}
+*{box-sizing:border-box}
+body{background:var(--plane);color:var(--ink);font-family:var(--sans);
+  font-size:15px;line-height:1.55;margin:0;-webkit-font-smoothing:antialiased}
+.wrap{max-width:860px;margin:0 auto;padding-inline:20px;padding-block:40px 72px}
+h1,h2,h3{text-wrap:balance;margin:0}
+h1{font-size:clamp(28px,5.2vw,40px);font-weight:600;letter-spacing:-0.02em;line-height:1.12}
+h2{font-size:clamp(19px,3vw,23px);font-weight:600;letter-spacing:-0.01em}
+h3{font-size:14px;font-weight:600;letter-spacing:0.01em}
+p{margin:0}
+.lede{color:var(--ink-2);font-size:16px;max-width:62ch}
+.eyebrow{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:0.1em;
+  text-transform:uppercase;color:var(--ink-3)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+header{display:flex;flex-direction:column;gap:14px;padding-bottom:28px}
+.chain{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 12px;
+  font-family:var(--mono);font-size:13px;color:var(--ink-2);
+  border-top:1px solid var(--rule);padding-top:18px}
+.chain b{color:var(--ink);font-weight:600}
+.chain i{color:var(--ink-3);font-style:normal}
+
+/* numbered stage bands - the pipeline genuinely is a sequence */
+section{margin-top:40px}
+.band{display:flex;gap:16px;align-items:baseline;border-top:1px solid var(--rule);
+  padding-top:16px;margin-bottom:18px}
+.band .n{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink-3);
+  flex:0 0 26px;padding-top:4px}
+.band .t{min-width:0;display:flex;flex-direction:column;gap:6px}
+.band .t p{color:var(--ink-2);font-size:14.5px;max-width:60ch}
+
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
+  padding:20px 18px;margin-left:42px}
+@media (max-width:620px){ .card{margin-left:0} .band{gap:10px} }
+.card + .card{margin-top:14px}
+.cap{color:var(--ink-3);font-size:12.5px;line-height:1.5;margin-top:14px;max-width:66ch}
+.cap b{color:var(--ink-2);font-weight:500}
+
+/* ---- funnel ---- */
+.fun{display:flex;flex-direction:column;gap:18px}
+.frow{display:flex;flex-direction:column;gap:7px}
+.fhead{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.fhead .nm{font-size:14px;font-weight:600}
+.fhead .rule{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.ftrack{display:flex;height:26px;width:100%}
+.fkeep{border-radius:0 4px 4px 0;min-width:3px}
+.frow:first-child .fkeep{border-radius:4px}
+.fcut{background:var(--cut);border-radius:0 4px 4px 0;margin-left:2px;min-width:3px}
+.ffoot{display:flex;flex-wrap:wrap;gap:3px 16px;font-family:var(--mono);font-size:12px}
+.ffoot .keep{color:var(--ink);font-weight:600}
+.ffoot .cut{color:var(--ink-3)}
+.ffoot .why{color:var(--ink-3);font-family:var(--sans);font-size:12px}
+
+/* ---- share bar ---- */
+.share{display:flex;height:30px;margin-top:4px}
+.share div{min-width:3px}
+.share div + div{margin-left:2px}
+.shlegend{display:flex;flex-direction:column;gap:7px;margin-top:14px}
+.shrow{display:flex;align-items:baseline;gap:9px;font-size:13px;flex-wrap:wrap}
+.sw{width:10px;height:10px;border-radius:2px;flex:0 0 auto;transform:translateY(1px)}
+.shrow .v{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-2);margin-left:auto}
+
+/* ---- stat tiles ---- */
+.kpi{--cols:4;display:grid;grid-template-columns:repeat(var(--cols),minmax(0,1fr));gap:1px;
+  background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden;
+  margin-left:42px}
+.kpi.c6{--cols:3}
+@media (max-width:720px){ .kpi{--cols:2} }
+@media (max-width:620px){ .kpi{margin-left:0} }
+.tile{background:var(--surface);padding:15px 16px 16px;display:flex;flex-direction:column;gap:5px}
+.tile .k{font-family:var(--mono);font-size:10.5px;letter-spacing:0.07em;
+  text-transform:uppercase;color:var(--ink-3)}
+.tile .v{font-family:var(--mono);font-size:24px;font-weight:600;letter-spacing:-0.015em;line-height:1}
+.tile .s{font-size:12px;color:var(--ink-3);line-height:1.4}
+.hero .v{font-size:clamp(23px,4.3vw,35px)}
+
+/* ---- tables ---- */
+.tbl-s{overflow-x:auto;margin-top:16px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:430px}
+th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--axis)}
+tbody td{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-2)}
+tbody td:first-child{font-family:var(--sans);color:var(--ink)}
+tr.mark td{color:var(--ink);font-weight:600;background:var(--raise)}
+tr.mark td:first-child{font-weight:600}
+tfoot td{font-family:var(--sans);font-size:12.5px;line-height:1.5;color:var(--ink-3);
+  border-bottom:none;padding-top:11px;white-space:normal;text-align:left}
+tfoot b{color:var(--ink-2);font-weight:500}
+
+/* ---- meters / stress ---- */
+.meter{display:flex;flex-direction:column;gap:9px}
+.mrow{display:flex;flex-direction:column;gap:6px}
+.mhead{display:flex;gap:10px;align-items:baseline;font-size:13.5px}
+.mhead .mv{margin-left:auto;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  color:var(--ink-2)}
+.mtrack{position:relative;height:22px;background:var(--raise);border-radius:4px}
+.mfill{position:absolute;inset:0 auto 0 0;border-radius:4px;min-width:3px}
+.mref{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--crit)}
+.state{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:3px;
+  letter-spacing:0.03em}
+.ok{color:var(--good-ink);background:color-mix(in srgb,var(--good) 13%,transparent)}
+.no{color:var(--crit);background:color-mix(in srgb,var(--crit) 15%,transparent)}
+
+/* ---- legend / svg ---- */
+.lg{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:12px;font-size:12.5px;
+  color:var(--ink-2)}
+.lg span{display:flex;align-items:center;gap:7px}
+.lg i{width:14px;height:2px;border-radius:1px;display:block}
+.svgbox{overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+.gl{stroke:var(--grid);stroke-width:1}
+.ax{stroke:var(--axis);stroke-width:1}
+.tk{fill:var(--ink-3);font-family:var(--mono);font-size:10.5px}
+.dl{font-family:var(--mono);font-size:11px;font-weight:600}
+.an{fill:var(--ink-3);font-family:var(--sans);font-size:11px}
+
+/* ---- notes ---- */
+.notes{display:flex;flex-direction:column;gap:0}
+.note{display:flex;gap:13px;padding:13px 0;border-bottom:1px solid var(--rule)}
+.note:last-child{border-bottom:none}
+.note .fl{flex:0 0 auto;width:9px;height:9px;border-radius:50%;margin-top:6px}
+.note .bd{min-width:0}
+.note .bd h3{margin-bottom:3px}
+.note .bd p{color:var(--ink-2);font-size:13.5px}
+.note code{font-family:var(--mono);font-size:12.5px;background:var(--raise);
+  padding:1px 4px;border-radius:3px}
+
+footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
+  color:var(--ink-3);font-size:12px;display:flex;flex-direction:column;gap:5px}
+
+/* ---- tooltip ---- */
+#tip{position:fixed;z-index:50;pointer-events:none;opacity:0;transition:opacity .09s;
+  background:var(--surface);color:var(--ink);border:1px solid var(--axis);
+  border-radius:5px;padding:7px 9px;font-size:12px;line-height:1.45;
+  box-shadow:0 4px 14px rgba(0,0,0,0.13);max-width:240px}
+#tip .tt{font-weight:600;margin-bottom:2px}
+#tip .tv{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-2)}
+[data-tip]{cursor:default}
+:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">Postpaid credit line &middot; cohort 140501&ndash;140506 &middot; measured, not projected</p>
+  <h1>From 41.27 million subscribers to a book of 4,672,361</h1>
+  <p class="lede">Every filter in the pipeline, with the count it removed and the rule that removed it.
+  One screen does 97.67 percent of the work. All figures are query output or notebook output
+  from this repository; nothing here is an estimate.</p>
+  <div class="chain">
+    <span><i>present</i> <b class="num">41,270,092</b></span>
+    <span>&rarr;</span>
+    <span><i>scored</i> <b class="num">9,344,723</b></span>
+    <span>&rarr;</span>
+    <span><i>approved</i> <b class="num">4,672,361</b></span>
+    <span>&rarr;</span>
+    <span><i>exposure</i> <b class="num">2,336 bn Toman</b></span>
+    <span>&rarr;</span>
+    <span><i>expected loss</i> <b class="num">4.9 bn</b></span>
+  </div>
+</header>
+<section>
+  <div class="band"><div class="n">01</div><div class="t">
+    <h2>The population screen</h2>
+    <p>Three filters run on the six-month feature window. Each row below is drawn to the
+    width of the stage above it, so the pale segment is exactly what that filter removed.</p>
+  </div></div>
+  <div class="card">
+    <div class="fun">
+      <div class="frow">
+        <div class="fhead"><span class="nm">Permanent subscribers in the window</span><span class="rule">sbrp_typ_id = 1, month_key 140501..140506</span></div>
+        <div class="ftrack" style="width:100.0000%">
+          <div class="fkeep" style="width:100.0000%;background:var(--o1)" data-tip="Permanent subscribers in the window|41,270,092 subscribers &middot; 100.00 pct of the starting base"></div>
+        </div>
+        <div class="ffoot"><span class="keep">41,270,092 kept</span><span class="why">the starting base, 6-month distinct count</span></div>
+      </div>
+      <div class="frow">
+        <div class="fhead"><span class="nm">Cleared the revenue bar</span><span class="rule">revenue &ge; 170,000 Toman in 2 or more of the 6 months</span></div>
+        <div class="ftrack" style="width:100.0000%">
+          <div class="fkeep" style="width:24.4438%;background:var(--o2)" data-tip="Cleared the revenue bar|10,087,975 subscribers &middot; 24.44 pct of the starting base"></div>
+          <div class="fcut" style="width:75.5562%" data-tip="Removed here|31,182,117 subscribers &middot; 97.67 pct of all exclusions"></div>
+        </div>
+        <div class="ffoot"><span class="keep">10,087,975 kept</span><span class="cut">&minus;31,182,117</span><span class="why">did not bill 170,000 Toman in any 2 months</span></div>
+      </div>
+      <div class="frow">
+        <div class="fhead"><span class="nm">Never one-way barred</span><span class="rule">sbrp_stat_id = 3 in no month of the window</span></div>
+        <div class="ftrack" style="width:24.4438%">
+          <div class="fkeep" style="width:93.5494%;background:var(--o3)" data-tip="Never one-way barred|9,437,240 subscribers &middot; 22.87 pct of the starting base"></div>
+          <div class="fcut" style="width:6.4506%" data-tip="Removed here|650,735 subscribers &middot; 2.04 pct of all exclusions"></div>
+        </div>
+        <div class="ffoot"><span class="keep">9,437,240 kept</span><span class="cut">&minus;650,735</span><span class="why">outgoing service suspended at least once</span></div>
+      </div>
+      <div class="frow">
+        <div class="fhead"><span class="nm">Never two-way barred &mdash; SCORED</span><span class="rule">sbrp_stat_id = 4 in no month of the window</span></div>
+        <div class="ftrack" style="width:22.8670%">
+          <div class="fkeep" style="width:99.0197%;background:var(--o4)" data-tip="Never two-way barred|9,344,723 subscribers &middot; 22.64 pct of the starting base"></div>
+          <div class="fcut" style="width:0.9803%" data-tip="Removed here|92,517 subscribers &middot; 0.29 pct of all exclusions"></div>
+        </div>
+        <div class="ffoot"><span class="keep">9,344,723 kept</span><span class="cut">&minus;92,517</span><span class="why">incoming service suspended at least once</span></div>
+      </div>
+    </div>
+    <p class="cap"><b>Read the pale segments.</b> The revenue bar removes
+    31,182,117 subscribers; the two service-bar filters together remove 743,252.
+    The starting figure is a distinct count across six months, so a subscriber present
+    in any one of them counts once &mdash; average months seen is 5.797 of 6.</p>
+  </div>
+  <div class="card">
+    <h3>Where the 31,925,369 exclusions come from</h3>
+    <div class="share">
+      <div style="width:97.6719%;background:var(--o2)" data-tip="The revenue bar|31,182,117 subscribers &middot; 97.67 pct of exclusions"></div>
+      <div style="width:2.0383%;background:var(--o3)" data-tip="The one-way filter|650,735 subscribers &middot; 2.04 pct of exclusions"></div>
+      <div style="width:0.2898%;background:var(--o4)" data-tip="The two-way filter|92,517 subscribers &middot; 0.29 pct of exclusions"></div>
+    </div>
+    <div class="shlegend">
+      <div class="shrow"><span class="sw" style="background:var(--o2)"></span><span>The revenue bar</span><span class="v">31,182,117 &middot; 97.67 pct</span></div>
+      <div class="shrow"><span class="sw" style="background:var(--o3)"></span><span>The one-way filter</span><span class="v">650,735 &middot; 2.04 pct</span></div>
+      <div class="shrow"><span class="sw" style="background:var(--o4)"></span><span>The two-way filter</span><span class="v">92,517 &middot; 0.29 pct</span></div>
+    </div>
+    <p class="cap">The credit screen is not rejecting risky subscribers. It is rejecting
+    subscribers who do not bill enough. The two filters that <i>are</i> about payment
+    behaviour &mdash; the one-way and two-way service bars &mdash; account for
+    <b>2.33 percent</b> of all exclusions between them.</p>
+  </div>
+  <div class="card">
+    <h3>Why the revenue bar removes three quarters of the base</h3>
+    <div class="svgbox">
+    <svg viewBox="0 0 720 188" role="img" aria-label="Average monthly revenue distribution against the 170,000 Toman bar, log scale">
+      <rect x="570.41" y="26" width="131.59" height="62.00" fill="var(--s1)" opacity="0.07"/>
+      <line class="gl" x1="18.00" y1="26" x2="18.00" y2="88"/>
+      <text class="tk" x="18.00" y="103" text-anchor="middle">100</text>
+      <line class="gl" x1="189.00" y1="26" x2="189.00" y2="88"/>
+      <text class="tk" x="189.00" y="103" text-anchor="middle">1k</text>
+      <line class="gl" x1="360.00" y1="26" x2="360.00" y2="88"/>
+      <text class="tk" x="360.00" y="103" text-anchor="middle">10k</text>
+      <line class="gl" x1="531.00" y1="26" x2="531.00" y2="88"/>
+      <text class="tk" x="531.00" y="103" text-anchor="middle">100k</text>
+      <line class="gl" x1="702.00" y1="26" x2="702.00" y2="88"/>
+      <text class="tk" x="702.00" y="103" text-anchor="middle">1M</text>
+      <line class="ax" x1="18" y1="88" x2="702" y2="88"/>
+      <text class="tk" x="18" y="180" text-anchor="start">Toman per month, log scale</text>
+      <line x1="570.41" y1="20" x2="570.41" y2="92" stroke="var(--crit)" stroke-width="2"/>
+      <text class="dl" x="564.41" y="14" text-anchor="end" fill="var(--crit)">the bar &mdash; 170,000</text>
+      <line class="ax" x1="151.31" y1="34" x2="151.31" y2="88"/>
+      <circle cx="151.31" cy="34" r="4.5" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <text class="dl" x="151.31" y="128" text-anchor="middle" fill="var(--ink-2)">p25  602</text>
+      <line class="gl" x1="151.31" y1="90" x2="151.31" y2="119"/>
+      <line class="ax" x1="438.94" y1="34" x2="438.94" y2="88"/>
+      <circle cx="438.94" cy="34" r="4.5" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <text class="dl" x="438.94" y="152" text-anchor="middle" fill="var(--ink-2)">median  28,948</text>
+      <line class="gl" x1="438.94" y1="90" x2="438.94" y2="143"/>
+      <line class="ax" x1="553.77" y1="34" x2="553.77" y2="88"/>
+      <circle cx="553.77" cy="34" r="4.5" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <text class="dl" x="553.77" y="128" text-anchor="middle" fill="var(--ink-2)">p75  135,881</text>
+      <line class="gl" x1="553.77" y1="90" x2="553.77" y2="119"/>
+      <line class="ax" x1="610.97" y1="34" x2="610.97" y2="88"/>
+      <circle cx="610.97" cy="34" r="4.5" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <text class="dl" x="610.97" y="152" text-anchor="middle" fill="var(--ink-2)">p90  293,525</text>
+      <line class="gl" x1="610.97" y1="90" x2="610.97" y2="143"/>
+    </svg>
+    </div>
+    <p class="cap"><b>The bar sits at 5.9&times; the median subscriber.</b> Half the base
+    bills under 28,948 Toman a month, against a screen set at 170,000. It still admits
+    24.4 percent, because the rule tests <i>individual months</i> &mdash; two of six above the
+    bar &mdash; not the average. So a subscriber well below the bar on average can pass on
+    two good months, and the shaded region overstates who qualifies.</p>
+  </div>
+</section>
+
+<section>
+  <div class="band"><div class="n">02</div><div class="t">
+    <h2>The bar is fixed in Rial, so it loosens every year</h2>
+    <p>Nobody changed the 170,000 Toman rule. Revenue inflated past it, so the same rule
+    admits a larger share of the base each window. Left alone it keeps loosening and the
+    eligible population keeps growing without a decision being taken.</p>
+  </div></div>
+  <div class="card">
+    <div class="meter">
+      <div class="mrow" data-tip="1403 h1|12.0 pct of the base &middot; 3,733,333 screened">
+        <div class="mhead"><span style="font-weight:400">1403 h1</span><span class="num" style="color:var(--ink-3);font-size:12px">140301..140306</span><span class="mv">12.0 pct &middot; 3,733,333</span></div>
+        <div class="mtrack"><div class="mfill" style="width:46.154%;background:var(--o2)"></div></div>
+      </div>
+      <div class="mrow" data-tip="1404 h1|14.6 pct of the base &middot; 5,100,390 screened">
+        <div class="mhead"><span style="font-weight:400">1404 h1</span><span class="num" style="color:var(--ink-3);font-size:12px">140401..140406</span><span class="mv">14.6 pct &middot; 5,100,390</span></div>
+        <div class="mtrack"><div class="mfill" style="width:56.154%;background:var(--o2)"></div></div>
+      </div>
+      <div class="mrow" data-tip="1404 h2|18.4 pct of the base &middot; 6,879,803 screened">
+        <div class="mhead"><span style="font-weight:400">1404 h2</span><span class="num" style="color:var(--ink-3);font-size:12px">140407..140412</span><span class="mv">18.4 pct &middot; 6,879,803</span></div>
+        <div class="mtrack"><div class="mfill" style="width:70.769%;background:var(--o2)"></div></div>
+      </div>
+      <div class="mrow" data-tip="1405 h1|24.4 pct of the base &middot; 9,344,723 screened">
+        <div class="mhead"><span style="font-weight:600">1405 h1</span><span class="num" style="color:var(--ink-3);font-size:12px">140501..140506</span><span class="mv">24.4 pct &middot; 9,344,723</span></div>
+        <div class="mtrack"><div class="mfill" style="width:93.846%;background:var(--o4)"></div></div>
+      </div>
+    </div>
+    <p class="cap">Revenue per subscriber-month grew <b>1.86&times;</b> at the mean from 1403 h1 to
+    1405 h1 &mdash; plus 13 percent in the first year, plus 64 percent in the second. Tracks are
+    drawn to a 26 percent full scale. <b>The 6,879,803 figure on record is stale:</b> at the same
+    rule the current window holds 9,344,723, up 35.8 percent.</p>
+  </div>
+</section>
+
+<section>
+  <div class="band"><div class="n">03</div><div class="t">
+    <h2>What the model is trained to predict</h2>
+    <p>A subscriber is <i>bad</i> if, in the four months after the feature window, the operator
+    had to bar their service for non-payment. The training cohort runs its features over
+    140401&ndash;140406 and its label over 140407&ndash;140410, at the same months-of-year the live
+    book will actually face.</p>
+  </div></div>
+  <div class="kpi">
+    <div class="tile"><span class="k">Training rows</span><span class="v">8,701,085</span>
+      <span class="s">screened on the same three filters</span></div>
+    <div class="tile"><span class="k">Bads</span><span class="v">45,361</span>
+      <span class="s">barred within the 4-month label window</span></div>
+    <div class="tile"><span class="k">Event rate</span><span class="v">0.5213%</span>
+      <span class="s">months 7&ndash;10, the product's real season</span></div>
+    <div class="tile"><span class="k">Fully observed</span><span class="v">100.00%</span>
+      <span class="s">nobody screened in disappears</span></div>
+  </div>
+  <div class="card">
+    <h3>The event rate is a property of when you lend, not only who</h3>
+    <div class="tbl-s"><table>
+      <thead><tr><th>Window</th><th>Label months</th><th>Season</th><th>Screen breadth</th><th>Event rate</th></tr></thead>
+      <tbody>
+        <tr><td>A &middot; 1403 h1</td><td>140307&ndash;140310</td><td>7&ndash;10</td><td>12.0 pct</td><td>0.5730%</td></tr>
+        <tr class="mark"><td>B &middot; 1404 h1</td><td>140407&ndash;140410</td><td>7&ndash;10</td><td>14.6 pct</td><td>0.5541%</td></tr>
+        <tr><td>D &middot; 1404 h2</td><td>140501&ndash;140504</td><td>1&ndash;4</td><td>18.4 pct</td><td>0.9492%</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="5">A and B sit at very different breadths and give nearly the same rate,
+      so screen width does not move it. D differs mainly in season and is <b>1.68&times;</b> higher &mdash;
+      Jalali months 1&ndash;4 contain Nowruz.</td></tr></tfoot>
+    </table></div>
+    <p class="cap">The 0.95 percent figure on record was measured over months 1&ndash;4, the wrong
+    season for this window. Features run to 140506, so a four-month line is exposed over
+    <b>140507&ndash;140510</b> &mdash; months 7&ndash;10. Lending timed into Nowruz would face the higher rate.</p>
+  </div>
+</section>
+
+<section>
+  <div class="band"><div class="n">04</div><div class="t">
+    <h2>The model, on held-out subscribers</h2>
+    <p>Gradient boosting against a standardised logistic baseline, 70/20/10 split by
+    subscriber, calibrated by isotonic regression, read on the in-band rows only.</p>
+  </div></div>
+  <div class="kpi">
+    <div class="tile hero"><span class="k">AUC, test in band</span><span class="v">0.8017</span>
+      <span class="s">HistGB, calibrated</span></div>
+    <div class="tile"><span class="k">Gini</span><span class="v">0.6034</span>
+      <span class="s">&nbsp;</span></div>
+    <div class="tile"><span class="k">KS</span><span class="v">0.4551</span>
+      <span class="s">&nbsp;</span></div>
+    <div class="tile"><span class="k">Level error</span><span class="v">1.72%</span>
+      <span class="s">0.5234 predicted vs 0.5146 observed</span></div>
+  </div>
+  <div class="card">
+    <div class="tbl-s"><table>
+      <thead><tr><th>Model</th><th>Split</th><th>AUC</th><th>Gini</th><th>KS</th></tr></thead>
+      <tbody>
+        <tr><td>Logistic, standardised</td><td>valid</td><td>0.7385</td><td>0.4769</td><td>0.3652</td></tr>
+        <tr><td>HistGB</td><td>valid</td><td>0.7918</td><td>0.5836</td><td>0.4346</td></tr>
+        <tr class="mark"><td>HistGB, calibrated</td><td>test, in band</td><td>0.8017</td><td>0.6034</td><td>0.4551</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="5">Boosting beat the linear baseline by <b>+0.0533</b> on valid, so the
+      interactions are real. Train-to-valid gap +0.0205. All 10 of 10 deciles expect 10 or more
+      bads, so every decile ratio is readable; worst 0.822, best 1.049.</td></tr></tfoot>
+    </table></div>
+  </div>
+</section>
+
+<section>
+  <div class="band"><div class="n">05</div><div class="t">
+    <h2>Where to stop: book rate against marginal rate</h2>
+    <p>Rank every scored subscriber safest first and admit them in order. <b>Book PD</b> is the
+    average over everyone taken and sets total loss. <b>Marginal PD</b> is the last subscriber
+    admitted and says whether the next slice is worth having. The cumulative curve alone
+    hides the number that decides the cut.</p>
+  </div></div>
+  <div class="card">
+    <div class="lg">
+      <span><i style="background:var(--s1)"></i>Book PD, cumulative</span>
+      <span><i style="background:var(--s2)"></i>Marginal PD, last admitted</span>
+      <span><i style="background:var(--crit);height:2px"></i>0.50 pct appetite ceiling</span>
+    </div>
+    <div class="svgbox">
+    <svg viewBox="0 0 720 336" role="img" aria-label="Book and marginal default rate against the size of the book">
+      <line class="gl" x1="54" y1="254.00" x2="612" y2="254.00"/>
+      <text class="tk" x="45" y="257.50" text-anchor="end">0</text>
+      <line class="gl" x1="54" y1="218.92" x2="612" y2="218.92"/>
+      <text class="tk" x="45" y="222.42" text-anchor="end">0.1%</text>
+      <line class="gl" x1="54" y1="183.85" x2="612" y2="183.85"/>
+      <text class="tk" x="45" y="187.35" text-anchor="end">0.2%</text>
+      <line class="gl" x1="54" y1="148.77" x2="612" y2="148.77"/>
+      <text class="tk" x="45" y="152.27" text-anchor="end">0.3%</text>
+      <line class="gl" x1="54" y1="113.69" x2="612" y2="113.69"/>
+      <text class="tk" x="45" y="117.19" text-anchor="end">0.4%</text>
+      <line class="gl" x1="54" y1="78.62" x2="612" y2="78.62"/>
+      <text class="tk" x="45" y="82.12" text-anchor="end">0.5%</text>
+      <line class="gl" x1="54" y1="43.54" x2="612" y2="43.54"/>
+      <text class="tk" x="45" y="47.04" text-anchor="end">0.6%</text>
+      <line x1="54" y1="78.62" x2="612" y2="78.62" stroke="var(--crit)" stroke-width="2"/>
+      <text class="dl" x="60" y="71.62" fill="var(--crit)">0.50% ceiling</text>
+      <line x1="372.86" y1="26" x2="372.86" y2="254" stroke="var(--axis)" stroke-width="1"/>
+      <text class="an" x="372.86" y="18" text-anchor="middle" fill="var(--ink-2)">the chosen cut</text>
+      <line class="ax" x1="54" y1="254" x2="612" y2="254"/>
+      <text class="tk" x="54.00" y="271" text-anchor="middle">10%</text>
+      <text class="tk" x="54.00" y="285" text-anchor="middle" opacity="0.8">0.93M</text>
+      <text class="tk" x="133.71" y="271" text-anchor="middle">20%</text>
+      <text class="tk" x="133.71" y="285" text-anchor="middle" opacity="0.8">1.87M</text>
+      <text class="tk" x="213.43" y="271" text-anchor="middle">30%</text>
+      <text class="tk" x="213.43" y="285" text-anchor="middle" opacity="0.8">2.80M</text>
+      <text class="tk" x="293.14" y="271" text-anchor="middle">40%</text>
+      <text class="tk" x="293.14" y="285" text-anchor="middle" opacity="0.8">3.74M</text>
+      <text class="tk" x="372.86" y="271" text-anchor="middle">50%</text>
+      <text class="tk" x="372.86" y="285" text-anchor="middle" opacity="0.8">4.67M</text>
+      <text class="tk" x="452.57" y="271" text-anchor="middle">60%</text>
+      <text class="tk" x="452.57" y="285" text-anchor="middle" opacity="0.8">5.61M</text>
+      <text class="tk" x="532.29" y="271" text-anchor="middle">70%</text>
+      <text class="tk" x="532.29" y="285" text-anchor="middle" opacity="0.8">6.54M</text>
+      <text class="tk" x="612.00" y="271" text-anchor="middle">80%</text>
+      <text class="tk" x="612.00" y="285" text-anchor="middle" opacity="0.8">7.48M</text>
+      <text class="tk" x="54" y="304" text-anchor="start">share of the scored population admitted, safest first</text>
+      <polyline fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round" points="54.00,220.15 133.71,205.63 213.43,198.05 293.14,189.74 372.86,180.55 452.57,168.52 532.29,156.42 612.00,141.79"/>
+      <polyline fill="none" stroke="var(--s2)" stroke-width="2" stroke-linejoin="round" points="54.00,220.15 133.71,191.11 213.43,182.90 293.14,164.80 372.86,143.79 452.57,108.36 532.29,83.81 612.00,39.40"/>
+      <circle cx="54.00" cy="220.15" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="54.00" cy="220.15" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="133.71" cy="205.63" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="133.71" cy="191.11" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="213.43" cy="198.05" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="213.43" cy="182.90" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="293.14" cy="189.74" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="293.14" cy="164.80" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="372.86" cy="180.55" r="5.0" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="372.86" cy="143.79" r="5.0" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="452.57" cy="168.52" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="452.57" cy="108.36" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="532.29" cy="156.42" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="532.29" cy="83.81" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="612.00" cy="141.79" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="612.00" cy="39.40" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <text class="dl" x="620" y="145.79" fill="var(--s1)">book 0.3199%</text>
+      <text class="dl" x="620" y="43.40" fill="var(--s2)">marginal 0.6118%</text>
+      <text class="dl" x="372.86" y="199.55" text-anchor="middle" fill="var(--s1)">0.2094%</text>
+      <text class="dl" x="372.86" y="132.79" text-anchor="middle" fill="var(--s2)">0.3142%</text>
+      <line id="xh" x1="0" y1="26" x2="0" y2="254" stroke="var(--axis)" stroke-width="1" opacity="0"/>
+      <rect x="14.14" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="54.00" data-tip="934,472 subscribers &middot; 10 pct|Book PD 0.0965 pct &middot; marginal PD 0.0965 pct<br>Exposure 467 bn &middot; expected loss 0.5 bn"></rect>
+      <rect x="93.86" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="133.71" data-tip="1,868,944 subscribers &middot; 20 pct|Book PD 0.1379 pct &middot; marginal PD 0.1793 pct<br>Exposure 934 bn &middot; expected loss 1.3 bn"></rect>
+      <rect x="173.57" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="213.43" data-tip="2,803,416 subscribers &middot; 30 pct|Book PD 0.1595 pct &middot; marginal PD 0.2027 pct<br>Exposure 1,402 bn &middot; expected loss 2.2 bn"></rect>
+      <rect x="253.29" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="293.14" data-tip="3,737,889 subscribers &middot; 40 pct|Book PD 0.1832 pct &middot; marginal PD 0.2543 pct<br>Exposure 1,869 bn &middot; expected loss 3.4 bn"></rect>
+      <rect x="333.00" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="372.86" data-tip="4,672,361 subscribers &middot; 50 pct|Book PD 0.2094 pct &middot; marginal PD 0.3142 pct<br>Exposure 2,336 bn &middot; expected loss 4.9 bn"></rect>
+      <rect x="412.71" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="452.57" data-tip="5,606,833 subscribers &middot; 60 pct|Book PD 0.2437 pct &middot; marginal PD 0.4152 pct<br>Exposure 2,803 bn &middot; expected loss 6.8 bn"></rect>
+      <rect x="492.43" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="532.29" data-tip="6,541,306 subscribers &middot; 70 pct|Book PD 0.2782 pct &middot; marginal PD 0.4852 pct<br>Exposure 3,271 bn &middot; expected loss 9.1 bn"></rect>
+      <rect x="572.14" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="612.00" data-tip="7,475,778 subscribers &middot; 80 pct|Book PD 0.3199 pct &middot; marginal PD 0.6118 pct<br>Exposure 3,738 bn &middot; expected loss 12.0 bn"></rect>
+    </svg>
+    </div>
+    <div class="tbl-s"><table>
+      <thead><tr><th>Take</th><th>Share</th><th>Book PD</th><th>Marginal PD</th><th>Exposure</th><th>Expected loss</th></tr></thead>
+      <tbody>
+        <tr><td>934,472</td><td>10 pct</td><td>0.0965%</td><td>0.0965%</td><td>467 bn</td><td>0.5 bn</td></tr>
+        <tr><td>1,868,944</td><td>20 pct</td><td>0.1379%</td><td>0.1793%</td><td>934 bn</td><td>1.3 bn</td></tr>
+        <tr><td>2,803,416</td><td>30 pct</td><td>0.1595%</td><td>0.2027%</td><td>1,402 bn</td><td>2.2 bn</td></tr>
+        <tr><td>3,737,889</td><td>40 pct</td><td>0.1832%</td><td>0.2543%</td><td>1,869 bn</td><td>3.4 bn</td></tr>
+        <tr class="mark"><td>4,672,361</td><td>50 pct</td><td>0.2094%</td><td>0.3142%</td><td>2,336 bn</td><td>4.9 bn</td></tr>
+        <tr><td>5,606,833</td><td>60 pct</td><td>0.2437%</td><td>0.4152%</td><td>2,803 bn</td><td>6.8 bn</td></tr>
+        <tr><td>6,541,306</td><td>70 pct</td><td>0.2782%</td><td>0.4852%</td><td>3,271 bn</td><td>9.1 bn</td></tr>
+        <tr><td>7,475,778</td><td>80 pct</td><td>0.3199%</td><td>0.6118%</td><td>3,738 bn</td><td>12.0 bn</td></tr>
+        <tr><td>9,344,723</td><td>100 pct</td><td>0.6046%</td><td>2.5918%</td><td>4,672 bn</td><td>28.2 bn</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="6">The plot stops at the 80 percent mark. The final decile's
+      marginal rate is <b>2.5918 percent</b>, four times the plot's range, and it is the row above &mdash;
+      drawing it would flatten everything the decision depends on. Marginal PD first crosses the
+      0.50 percent ceiling at the <b>80 percent</b> mark, so there is headroom past the chosen cut
+      if volume is wanted later. Exposure and loss are in billions of Toman at 500,000 per subscriber,
+      LGD 100 percent.</td></tr></tfoot>
+    </table></div>
+  </div>
+</section>
+
+<section>
+  <div class="band"><div class="n">06</div><div class="t">
+    <h2>The chosen book</h2>
+    <p>The safest half of the scored population. Both rates clear the appetite ceiling, and
+    the realised rate would have to miss the model by 2.4&times; before the book breaches it.</p>
+  </div></div>
+  <div class="kpi c6">
+    <div class="tile hero"><span class="k">Approved</span><span class="v">4,672,361</span>
+      <span class="s">50 pct of 9,344,723 scored</span></div>
+    <div class="tile"><span class="k">Book PD</span><span class="v">0.2094%</span>
+      <span class="s">against a 0.50 pct ceiling</span></div>
+    <div class="tile"><span class="k">Marginal PD</span><span class="v">0.3142%</span>
+      <span class="s">the last subscriber admitted</span></div>
+    <div class="tile"><span class="k">Exposure</span><span class="v">2,336 bn</span>
+      <span class="s">Toman, at 500,000 each</span></div>
+    <div class="tile"><span class="k">Expected loss</span><span class="v">4.9 bn</span>
+      <span class="s">Toman, LGD 100 pct</span></div>
+    <div class="tile"><span class="k">Miss to breach</span><span class="v">2.4&times;</span>
+      <span class="s">realised vs modelled rate</span></div>
+  </div>
+  <div class="card">
+    <h3>Stress: how far the rate can move before the book breaches</h3>
+    <div class="meter">
+      <div class="mrow" data-tip="As modelled|Loss rate 0.2094 pct &middot; 4.89 bn Toman">
+        <div class="mhead"><span>As modelled</span><span class="state ok">within</span><span class="mv">0.2094 pct &middot; 4.9 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:31.727%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      </div>
+      <div class="mrow" data-tip="Live-set drift, +17pct|Loss rate 0.2450 pct &middot; 5.72 bn Toman">
+        <div class="mhead"><span>Live-set drift, +17pct</span><span class="state ok">within</span><span class="mv">0.2450 pct &middot; 5.7 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:37.121%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      </div>
+      <div class="mrow" data-tip="Lending into Nowruz, 1.68x|Loss rate 0.3518 pct &middot; 8.22 bn Toman">
+        <div class="mhead"><span>Lending into Nowruz, 1.68x</span><span class="state ok">within</span><span class="mv">0.3518 pct &middot; 8.2 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:53.302%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      </div>
+      <div class="mrow" data-tip="Twice the modelled rate|Loss rate 0.4188 pct &middot; 9.78 bn Toman">
+        <div class="mhead"><span>Twice the modelled rate</span><span class="state ok">within</span><span class="mv">0.4188 pct &middot; 9.8 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:63.455%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      </div>
+      <div class="mrow" data-tip="Three times the modelled rate|Loss rate 0.6282 pct &middot; 14.68 bn Toman">
+        <div class="mhead"><span>Three times the modelled rate</span><span class="state no">breaches</span><span class="mv">0.6282 pct &middot; 14.7 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:95.182%;background:var(--crit)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      </div>
+    </div>
+    <p class="cap">The red rule on each track is the 0.50 percent ceiling. The book absorbs the
+    drift measured in the live set, absorbs a Nowruz-season label, and absorbs twice the modelled
+    rate. It breaches only at three times modelled, at <b>14.7 bn</b> Toman of loss.</p>
+  </div>
+</section>
+
+<section>
+  <div class="band"><div class="n">07</div><div class="t">
+    <h2>Against the 15,000 bn ambition</h2>
+    <p>The gap is not a modelling problem and it does not close by loosening the screen.
+    At 500,000 Toman a head the whole scored population reaches 4,672 bn.</p>
+  </div></div>
+  <div class="card">
+    <div class="meter">
+      <div class="mrow" data-tip="The chosen book - 4,672,361|2,336 bn Toman &middot; 15.6 pct of the 15,000 bn target">
+        <div class="mhead"><span>The chosen book &mdash; 4,672,361</span><span class="mv">2,336 bn &middot; 15.6 pct of target</span></div>
+        <div class="mtrack"><div class="mfill" style="width:15.575%;background:var(--o4)"></div></div>
+      </div>
+      <div class="mrow" data-tip="Every scored subscriber - 9,344,723|4,672 bn Toman &middot; 31.1 pct of the 15,000 bn target">
+        <div class="mhead"><span>Every scored subscriber &mdash; 9,344,723</span><span class="mv">4,672 bn &middot; 31.1 pct of target</span></div>
+        <div class="mtrack"><div class="mfill" style="width:31.149%;background:var(--o2)"></div></div>
+      </div>
+      <div class="mrow" data-tip="The 15,000 bn ambition|15,000 bn Toman &middot; 100.0 pct of the 15,000 bn target">
+        <div class="mhead"><span>The 15,000 bn ambition</span><span class="mv">15,000 bn &middot; 100.0 pct of target</span></div>
+        <div class="mtrack"><div class="mfill" style="width:100.000%;background:var(--cut)"></div></div>
+      </div>
+    </div>
+    <div class="tbl-s"><table>
+      <thead><tr><th>If the book is</th><th>Ticket needed for 15,000 bn</th><th>Against the 170,000 bar</th></tr></thead>
+      <tbody>
+        <tr><td>3,000,000 subscribers</td><td>5,000,000 Toman</td><td>29.4&times; the monthly bar</td></tr>
+        <tr class="mark"><td>4,672,361 subscribers</td><td>3,210,368 Toman</td><td>18.9&times; the monthly bar</td></tr>
+        <tr><td>9,344,723 subscribers</td><td>1,605,184 Toman</td><td>9.4&times; the monthly bar</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="3">A 500,000 Toman line is already <b>4.3&times;</b> the entire four-month
+      billing history of the median subscriber in the base. Lowering the screen to add volume means
+      writing 500,000 Toman lines against subscribers who bill 29,000 a month. The gap closes on
+      <b>line size over the subscribers already qualified</b>, not on screen width.</td></tr></tfoot>
+    </table></div>
+  </div>
+</section>
+
+<section>
+  <div class="band"><div class="n">08</div><div class="t">
+    <h2>What is not settled</h2>
+    <p>Six things stand between this page and a lending decision. The first one moves the cut.</p>
+  </div></div>
+  <div class="card">
+    <div class="notes">
+
+      <div class="note"><span class="fl" style="background:var(--crit)"></span><div class="bd">
+        <h3>This book predates the refit, so the cut will move</h3>
+        <p>The audit found a feature the model never saw: a subscriber's bar history in the
+        <i>year before</i> the feature window predicts the label at <b>13.2&times;</b> for a prior
+        two-way bar and <b>4.0&times;</b> for a one-way bar, and it holds at every level of
+        <code>rev_months</code>. Six <code>pre_*</code> columns are now in
+        <code>42_model_datasets.sql</code> and the refit has not run. Expect the ranking to
+        improve on 0.8017 and the safest-4,672,361 to be a <i>different set of subscribers</i>.
+        Re-cut before lending.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
+        <h3>Trust the ranking, not the level</h3>
+        <p>Thirteen features shifted significantly between the training and live windows, led by
+        <code>rev_max</code> at PSI <b>3.0223</b>. The live set scores a mean PD of
+        <b>0.6046 percent</b> against test's observed <b>0.5146</b> &mdash; 17 percent higher. That is
+        inflation showing up in the level, not a worse population. The safest-N ordering survives a
+        monotone level shift; the absolute PD does not.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
+        <h3>Two book rates that should agree, do not</h3>
+        <p>The Trino audit returns a book PD of <b>0.21318 percent</b> where the notebook returns
+        <b>0.2094</b> &mdash; 1.8 percent apart, and not yet explained. Small enough not to change the
+        decision, large enough that it has to be chased before the figure goes in front of anyone.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
+        <h3>The base itself does not reconcile</h3>
+        <p>The window holds <b>41,270,092</b> subscribers at <code>sbrp_typ_id = 1</code>, about
+        39.9M per month, against the <b>26M</b> permanent base the business counts. Average months
+        seen is 5.797 of 6, so it is not churn. <code>49_base_reconciliation.sql</code> tests whether
+        <code>active1_base_flag</code> is the difference &mdash; and whether any scored subscriber was
+        never active in the window, which the screen does not check.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--s1)"></span><div class="bd">
+        <h3>The screen is a capacity rule wearing a risk rule's clothes</h3>
+        <p>Admitting the subscribers a lower bar lets in produced a rate of <b>0.4749 percent</b> &mdash;
+        <b>0.86&times;</b>, safer than those already inside. The bar does not sort by risk. Keeping it
+        fixed in Rial also means it keeps loosening on its own. Both deserve a decision rather than
+        inheritance.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--s1)"></span><div class="bd">
+        <h3>What no query here can answer</h3>
+        <p>Every figure on this page measures who failed to pay <i>their own phone bill</i>. Nobody in
+        this data was ever given a credit line, so the behavioural effect of handing a subscriber
+        500,000 Toman of spendable credit &mdash; much of it at off-net merchants the operator cannot
+        see &mdash; is not in it and cannot be derived from it. A pilot is the only thing that closes
+        this. The 0.2094 percent is the right number for the population; it is not a promise about a
+        product that has never run.</p></div></div>
+
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>Sources: <span class="num">43_cohort_funnel.sql</span> (funnel, drift, seasonality),
+  <span class="num">42_model_datasets.sql</span> (cohorts, screen),
+  <span class="num">train_model.ipynb</span> (metrics, PSI, calibration),
+  <span class="num">select_book.py</span> (ladder, exposure),
+  <span class="num">48_approved_audit.sql</span> (audit, pre-window finding),
+  <span class="num">49_base_reconciliation.sql</span> (base, unrun).</span>
+  <span>All currency in Toman. The database stores Rial; every threshold here is the Rial value
+  divided by ten. Counts are query output, not estimates.</span>
+</footer>
+</div>
+
+<div id="tip" role="status" aria-live="polite"></div>
+<script>
+(function(){
+  var tip = document.getElementById('tip'), xh = document.getElementById('xh');
+  function show(el, ev){
+    var raw = el.getAttribute('data-tip'); if(!raw) return;
+    var i = raw.indexOf('|');
+    var t = i < 0 ? raw : raw.slice(0, i), v = i < 0 ? '' : raw.slice(i + 1);
+    tip.innerHTML = '<div class="tt">' + t + '</div>' + (v ? '<div class="tv">' + v + '</div>' : '');
+    tip.style.opacity = '1';
+    place(ev);
+    var hx = el.getAttribute('data-x');
+    if(hx && xh){ xh.setAttribute('x1', hx); xh.setAttribute('x2', hx); xh.setAttribute('opacity','1'); }
+  }
+  function place(ev){
+    var r = tip.getBoundingClientRect();
+    var x = ev.clientX + 14, y = ev.clientY - r.height - 12;
+    if(x + r.width > window.innerWidth - 8) x = ev.clientX - r.width - 14;
+    if(x < 8) x = 8;
+    if(y < 8) y = ev.clientY + 18;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  function hide(){ tip.style.opacity = '0'; if(xh) xh.setAttribute('opacity','0'); }
+  var marks = document.querySelectorAll('[data-tip]');
+  for(var k = 0; k < marks.length; k++){
+    (function(el){
+      el.addEventListener('mouseenter', function(ev){ show(el, ev); });
+      el.addEventListener('mousemove', function(ev){ if(tip.style.opacity === '1') place(ev); });
+      el.addEventListener('mouseleave', hide);
+    })(marks[k]);
+  }
+  document.addEventListener('scroll', hide, true);
+})();
+</script>
