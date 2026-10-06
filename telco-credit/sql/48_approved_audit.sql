@@ -202,8 +202,26 @@ GROUP BY a.grade
 ORDER BY a.grade;
 
 -- ---------------------------------------------------------------------------
--- A4  PAYMENT DELAY, in days. THE EXPENSIVE ONE - run it last, and narrow the
---     day_key range if it is too slow.
+-- A4  DAYS CARRYING A BILL. NOT payment delay - I labelled it that and was
+--     wrong. THE EXPENSIVE ONE - run it last, and narrow the day_key range
+--     if it is too slow.
+--
+--     MEASURED, and it is why the name changed. On the approved book:
+--         grade A  94.6 debt_days of 186 (50.9 pct),  unbill 98.8 pct of days
+--         grade B  80.9 debt_days of 186 (43.5 pct),  unbill 99.1 pct of days
+--         only 0.3 pct of subscribers were never in debt at all
+--
+--     Grade A - the SAFER grade - carries an outstanding bill on MORE days
+--     than grade B. That settles it: this is the normal postpaid billing
+--     cycle, not delinquency. A bill stands open from issue until payment, so
+--     bill_outstanding_amt > 0 cannot distinguish "has a current bill" from
+--     "is late paying it", and 99 pct of days showing unbilled outstanding is
+--     just accrual between cycles.
+--
+--     REAL delay needs days past the DUE date. This column does not carry a
+--     due date, so it cannot be computed from here. Read these numbers as
+--     billing-cycle shape - whether a subscriber pays early or late IN the
+--     cycle - and not as a risk measure.
 --
 --     The daily table is flattened to one row per subscriber-day BEFORE any
 --     counting, with MAX over the day. That makes the result correct whether
@@ -219,19 +237,19 @@ ORDER BY a.grade;
 SELECT   a.grade,
          COUNT(*)                                       AS n_approved,
          AVG(COALESCE(d.days_seen, 0))                  AS avg_days_seen,
-         AVG(COALESCE(d.debt_days, 0))                  AS avg_debt_days,
-         APPROX_PERCENTILE(CAST(COALESCE(d.debt_days,0) AS DOUBLE), 0.5)
-                                                        AS med_debt_days,
-         APPROX_PERCENTILE(CAST(COALESCE(d.debt_days,0) AS DOUBLE), 0.9)
-                                                        AS p90_debt_days,
-         100.0 * SUM(IF(COALESCE(d.debt_days,0) = 0, 1, 0)) / COUNT(*)
-                                                        AS pct_never_in_debt,
+         AVG(COALESCE(d.days_with_a_bill, 0))           AS avg_days_with_bill,
+         APPROX_PERCENTILE(CAST(COALESCE(d.days_with_a_bill,0) AS DOUBLE), 0.5)
+                                                        AS med_days_with_bill,
+         APPROX_PERCENTILE(CAST(COALESCE(d.days_with_a_bill,0) AS DOUBLE), 0.9)
+                                                        AS p90_days_with_bill,
+         100.0 * SUM(IF(COALESCE(d.days_with_a_bill,0) = 0, 1, 0)) / COUNT(*)
+                                                        AS pct_never_carrying,
          AVG(COALESCE(d.unbill_days, 0))                AS avg_unbill_days
 FROM     dwbi_temp40_db.dcb_approved a
 LEFT JOIN (
     SELECT   sbrp_id,
              COUNT(*)                            AS days_seen,
-             SUM(IF(bill_outst > 0, 1, 0))       AS debt_days,
+             SUM(IF(bill_outst > 0, 1, 0))       AS days_with_a_bill,
              SUM(IF(unbill_outst > 0, 1, 0))     AS unbill_days
     FROM (
         -- one row per subscriber-day, whatever the source grain
@@ -263,6 +281,26 @@ ORDER BY a.grade;
 --
 --     Conditioned on rev_months as well, so the comparison is within
 --     similar-revenue subscribers rather than across them.
+--
+--     THE PRE WINDOW IS 140301..140312 AND MUST NOT BE WIDENED PAST 140406.
+--     It has to end before the LABEL window (140407..140410) begins. Running
+--     it from 140401 onward instead produced this, on a real run:
+--
+--         1_clean_before     n_bad 0        0.0 pct
+--         2_oneway_before    n_bad 0        0.0 pct
+--         3_twoway_before    n_bad 12,078  61.1 pct
+--
+--     Zero bads in two of three buckets and 61 pct in the third is not a
+--     finding, it is the definition collapsing: once the window contains the
+--     label months, "two-way before" MEANS "two-way in the label window",
+--     which is y = 1, and everyone barred in the label window lands in that
+--     bucket so the other two are left with none. If the clean bucket comes
+--     back with zero bads, the window is wrong - stop and fix it.
+--
+--     MEASURED with the correct window: clean 0.3916 pct, one-way before
+--     1.5627 pct (4.0x), two-way before 5.1574 pct (13.2x), holding at every
+--     revenue level. That is what put pre_ow_any and pre_tw_any into
+--     42_model_datasets.sql.
 -- ---------------------------------------------------------------------------
 SELECT   pre_bar,
          rev_months,

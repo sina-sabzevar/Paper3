@@ -48,11 +48,31 @@ def last_day(month_key):
 #  scores. 1,050,000 is interim, from the ratio of upper-tail percentiles
 #  (1.64x); 43 D3 gives the exact figure.
 # ---------------------------------------------------------------------------
+#  The fifth element is the PRE window: the 12 months immediately before the
+#  feature window, used for historical bar counts. MEASURED in
+#  48_approved_audit.sql A5, on dcb_model where the label is known, bar history
+#  from BEFORE the feature window predicts the label hard:
+#
+#      clean before      0.3916 pct
+#      one-way before    1.5627 pct    4.0x clean
+#      two-way before    5.1574 pct   13.2x clean
+#
+#  and it holds at every rev_months level - at rev_months = 6 two-way before
+#  is still 11x clean - so it is not revenue in disguise. Nothing in the
+#  original 34 features carried it: f_twoway and oneway_months are computed
+#  over the FEATURE window only, so a subscriber cut off for non-payment a
+#  year earlier was invisible to the model.
+#
+#  Each PRE window sits entirely before its own cohort's feature window, and
+#  the two are themselves 12 months apart and on the same months-of-year, so
+#  the seasonal alignment the rest of this file maintains is preserved.
 COHORTS = [
     ("MODEL", [140401, 140402, 140403, 140404, 140405, 140406],
-              [140407, 140408, 140409, 140410], "dcb_model", 1_050_000),
+              [140407, 140408, 140409, 140410], "dcb_model", 1_050_000,
+              (140301, 140312)),
     ("SCORE", [140501, 140502, 140503, 140504, 140505, 140506],
-              [],                               "dcb_score", PROD_BAR),
+              [],                               "dcb_score", PROD_BAR,
+              (140401, 140412)),
 ]
 
 # ---------------------------------------------------------------------------
@@ -133,7 +153,7 @@ def rev_expr(m):
             f"                     FILTER (WHERE month_key = {m}), 0)")
 
 
-def block(name, fm, lm, table, bar):
+def block(name, fm, lm, table, bar, pre):
     d0, d1 = day_span(fm)
     L = []
     L.append(f"DROP TABLE IF EXISTS dwbi_temp40_db.{table};")
@@ -183,6 +203,25 @@ def block(name, fm, lm, table, bar):
     L.append("      AND   sbrp_typ_id = 1")
     L.append("    GROUP BY sbrp_id")
     L.append("),")
+    L.append("pre AS (")
+    L.append(f"    -- Bar history in the 12 months BEFORE the feature window")
+    L.append(f"    -- ({pre[0]}..{pre[1]}). Measured at 13.2x the label rate for")
+    L.append("    -- a prior two-way bar and 4.0x for one-way, at every revenue")
+    L.append("    -- level - see 48_approved_audit.sql A5. One row per")
+    L.append("    -- subscriber, so the LEFT JOIN below cannot fan out.")
+    L.append("    SELECT   sbrp_id,")
+    L.append("             COUNT(DISTINCT month_key)                  AS pre_months_seen,")
+    L.append("             MAX(IF(sbrp_stat_id = 3, 1, 0))            AS pre_ow_any,")
+    L.append("             MAX(IF(sbrp_stat_id = 4, 1, 0))            AS pre_tw_any,")
+    L.append("             COUNT(DISTINCT IF(sbrp_stat_id = 3, month_key, NULL))")
+    L.append("                                                        AS pre_ow_months,")
+    L.append("             COUNT(DISTINCT IF(sbrp_stat_id = 4, month_key, NULL))")
+    L.append("                                                        AS pre_tw_months")
+    L.append("    FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip")
+    L.append(f"    WHERE    month_key BETWEEN {pre[0]} AND {pre[1]}")
+    L.append("      AND    sbrp_typ_id = 1")
+    L.append("    GROUP BY sbrp_id")
+    L.append("),")
     if lm:
         L.append("lab AS (")
         L.append("    SELECT   sbrp_id,")
@@ -222,6 +261,12 @@ def block(name, fm, lm, table, bar):
     L.append("            " + "+".join(f"f.o{i}" for i in range(1, 7))
              + "                     AS oneway_months,")
     L.append("            f.n_arpu_null, f.n_active1, f.f_reclaim,")
+    L.append("            COALESCE(pr.pre_months_seen, 0) AS pre_months_seen,")
+    L.append("            COALESCE(pr.pre_ow_any, 0)      AS pre_ow_any,")
+    L.append("            COALESCE(pr.pre_tw_any, 0)      AS pre_tw_any,")
+    L.append("            COALESCE(pr.pre_ow_months, 0)   AS pre_ow_months,")
+    L.append("            COALESCE(pr.pre_tw_months, 0)   AS pre_tw_months,")
+    L.append("            IF(pr.sbrp_id IS NULL, 1, 0)    AS pre_absent,")
     L.append("            f.avail_max, f.avail_avg, f.outst_max, f.outst_avg,")
     L.append("            f.tenure_m,")
     if lm:
@@ -235,6 +280,7 @@ def block(name, fm, lm, table, bar):
     L.append(f"            '{name}' AS cohort")
     L.append("    FROM        feat f")
     L.append("    LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id")
+    L.append("    LEFT JOIN   pre  pr ON pr.sbrp_id = f.sbrp_id")
     if lm:
         L.append("    INNER JOIN  lab  l ON l.sbrp_id = f.sbrp_id")
     # SCORE is ALWAYS the production screen - that is the live rule. Only the
@@ -511,7 +557,7 @@ FROM    dwbi_temp40_db.dcb_score;
 
 def build():
     parts = [HEADER]
-    for i, (name, fm, lm, table, bar) in enumerate(COHORTS, 1):
+    for i, (name, fm, lm, table, bar, pre) in enumerate(COHORTS, 1):
         parts.append(
             "\n-- ---------------------------------------------------------"
             "------------------\n"
@@ -521,7 +567,7 @@ def build():
             + f"\n--          bar {bar:,} Rial"
             + "\n-- -------------------------------------------------------"
               "--------------------\n")
-        parts.append(block(name, fm, lm, table, bar))
+        parts.append(block(name, fm, lm, table, bar, pre))
         parts.append("")
     parts.append(FOOTER)
     return "\n".join(parts)
@@ -535,7 +581,7 @@ def selfcheck(sql):
     if re.search(r"\bCASE\b", c, re.I): bad.append("CASE expression")
     if any(ord(ch) > 127 for ch in c): bad.append("non-ascii")
 
-    for name, fm, lm, _, _ in COHORTS:
+    for name, fm, lm, _, _, _ in COHORTS:
         if set(fm) & set(lm):
             bad.append(f"{name}: feature and label windows overlap")
     for i in range(len(COHORTS) - 1):
@@ -555,6 +601,27 @@ def selfcheck(sql):
     starts = [c[1][0] for c in COHORTS]
     if len({starts[i+1] - starts[i] for i in range(len(starts)-1)}) != 1:
         bad.append(f"cohort feature windows unevenly spaced: {starts}")
+
+    # The PRE window must sit entirely before its own cohort's feature window
+    # AND its own label window. A pre window overlapping the label is the
+    # leakage that made one audit sheet report 61 pct bad for "two-way before"
+    # and 0 pct for everyone else - "before" had come to mean "during".
+    for c in COHORTS:
+        name, fm, lm, _, _, pre = c
+        pre_months = [m for m in range(pre[0], pre[1] + 1)
+                      if 1 <= m % 100 <= 12]
+        if max(pre_months) >= min(fm):
+            bad.append(f"{name}: pre window {pre} is not entirely before its "
+                       f"feature window starting {min(fm)}")
+        if lm and set(pre_months) & set(lm):
+            bad.append(f"{name}: pre window {pre} overlaps its own label "
+                       f"window - that is leakage, not history")
+    psets = {tuple(sorted({m % 100 for m in range(c[5][0], c[5][1] + 1)
+                           if 1 <= m % 100 <= 12})) for c in COHORTS}
+    if len(psets) != 1:
+        bad.append(f"pre windows cover different months-of-year: {psets}")
+    if len({c[5][1] - c[5][0] for c in COHORTS}) != 1:
+        bad.append("pre windows differ in span")
 
     # The label season must match what SCORE's forward exposure will really be.
     lab = [c[2] for c in COHORTS if c[2]][0]
@@ -595,3 +662,5 @@ if __name__ == "__main__":
     print("  both feature windows the same LENGTH (per-month features line up)")
     print("  both feature windows at the same months-of-year")
     print("  label season matches SCORE's real forward exposure")
+    print("  every PRE window is entirely before its own features AND label")
+    print("  PRE windows seasonally aligned and equal in span")

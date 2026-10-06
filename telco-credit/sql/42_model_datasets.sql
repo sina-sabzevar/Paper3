@@ -159,6 +159,25 @@ feat AS (
       AND   sbrp_typ_id = 1
     GROUP BY sbrp_id
 ),
+pre AS (
+    -- Bar history in the 12 months BEFORE the feature window
+    -- (140301..140312). Measured at 13.2x the label rate for
+    -- a prior two-way bar and 4.0x for one-way, at every revenue
+    -- level - see 48_approved_audit.sql A5. One row per
+    -- subscriber, so the LEFT JOIN below cannot fan out.
+    SELECT   sbrp_id,
+             COUNT(DISTINCT month_key)                  AS pre_months_seen,
+             MAX(IF(sbrp_stat_id = 3, 1, 0))            AS pre_ow_any,
+             MAX(IF(sbrp_stat_id = 4, 1, 0))            AS pre_tw_any,
+             COUNT(DISTINCT IF(sbrp_stat_id = 3, month_key, NULL))
+                                                        AS pre_ow_months,
+             COUNT(DISTINCT IF(sbrp_stat_id = 4, month_key, NULL))
+                                                        AS pre_tw_months
+    FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip
+    WHERE    month_key BETWEEN 140301 AND 140312
+      AND    sbrp_typ_id = 1
+    GROUP BY sbrp_id
+),
 lab AS (
     SELECT   sbrp_id,
              MAX(IF(sbrp_stat_id = 4, 1, 0))  AS y,
@@ -188,6 +207,12 @@ proj AS (
                                                           AS pay_months,
             f.o1+f.o2+f.o3+f.o4+f.o5+f.o6                     AS oneway_months,
             f.n_arpu_null, f.n_active1, f.f_reclaim,
+            COALESCE(pr.pre_months_seen, 0) AS pre_months_seen,
+            COALESCE(pr.pre_ow_any, 0)      AS pre_ow_any,
+            COALESCE(pr.pre_tw_any, 0)      AS pre_tw_any,
+            COALESCE(pr.pre_ow_months, 0)   AS pre_ow_months,
+            COALESCE(pr.pre_tw_months, 0)   AS pre_tw_months,
+            IF(pr.sbrp_id IS NULL, 1, 0)    AS pre_absent,
             f.avail_max, f.avail_avg, f.outst_max, f.outst_avg,
             f.tenure_m,
             l.n_label_months, l.y,
@@ -197,6 +222,7 @@ proj AS (
             'MODEL' AS cohort
     FROM        feat f
     LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id
+    LEFT JOIN   pre  pr ON pr.sbrp_id = f.sbrp_id
     INNER JOIN  lab  l ON l.sbrp_id = f.sbrp_id
     -- THE SCREEN: revenue at or above 1,050,000 Rial in 2 or more
     -- of 6 months, never one-way barred, never two-way barred.
@@ -281,6 +307,25 @@ feat AS (
       AND   sbrp_typ_id = 1
     GROUP BY sbrp_id
 ),
+pre AS (
+    -- Bar history in the 12 months BEFORE the feature window
+    -- (140401..140412). Measured at 13.2x the label rate for
+    -- a prior two-way bar and 4.0x for one-way, at every revenue
+    -- level - see 48_approved_audit.sql A5. One row per
+    -- subscriber, so the LEFT JOIN below cannot fan out.
+    SELECT   sbrp_id,
+             COUNT(DISTINCT month_key)                  AS pre_months_seen,
+             MAX(IF(sbrp_stat_id = 3, 1, 0))            AS pre_ow_any,
+             MAX(IF(sbrp_stat_id = 4, 1, 0))            AS pre_tw_any,
+             COUNT(DISTINCT IF(sbrp_stat_id = 3, month_key, NULL))
+                                                        AS pre_ow_months,
+             COUNT(DISTINCT IF(sbrp_stat_id = 4, month_key, NULL))
+                                                        AS pre_tw_months
+    FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip
+    WHERE    month_key BETWEEN 140401 AND 140412
+      AND    sbrp_typ_id = 1
+    GROUP BY sbrp_id
+),
 proj AS (
     SELECT  f.sbrp_id,
             f.r1, f.r2, f.r3, f.r4, f.r5, f.r6,
@@ -301,6 +346,12 @@ proj AS (
                                                           AS pay_months,
             f.o1+f.o2+f.o3+f.o4+f.o5+f.o6                     AS oneway_months,
             f.n_arpu_null, f.n_active1, f.f_reclaim,
+            COALESCE(pr.pre_months_seen, 0) AS pre_months_seen,
+            COALESCE(pr.pre_ow_any, 0)      AS pre_ow_any,
+            COALESCE(pr.pre_tw_any, 0)      AS pre_tw_any,
+            COALESCE(pr.pre_ow_months, 0)   AS pre_ow_months,
+            COALESCE(pr.pre_tw_months, 0)   AS pre_tw_months,
+            IF(pr.sbrp_id IS NULL, 1, 0)    AS pre_absent,
             f.avail_max, f.avail_avg, f.outst_max, f.outst_avg,
             f.tenure_m,
             CAST(NULL AS BIGINT)  AS n_label_months,
@@ -311,6 +362,7 @@ proj AS (
             'SCORE' AS cohort
     FROM        feat f
     LEFT JOIN   pay  p ON p.sbrp_id = f.sbrp_id
+    LEFT JOIN   pre  pr ON pr.sbrp_id = f.sbrp_id
     -- THE SCREEN: revenue at or above 1,700,000 Rial in 2 or more
     -- of 6 months, never one-way barred, never two-way barred.
     WHERE   IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0) >= 2
