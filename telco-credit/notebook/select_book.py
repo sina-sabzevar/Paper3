@@ -98,7 +98,8 @@ def main():
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     cols = [c for c in ("sbrp_id", "pd_4m", "grade") if c in book.columns]
-    book[cols].to_csv(OUT, index=False)
+    # fixed decimals, never scientific notation - see handover_scores.csv
+    book[cols].to_csv(OUT, index=False, float_format="%.12f")
     print(f"\nwritten to {OUT}  ({len(book):,} rows, columns {cols})")
 
     print(f"\nWHAT THIS FILE IS NOT")

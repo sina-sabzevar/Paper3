@@ -637,8 +637,16 @@ def main():
     print("  bar loses the WHOLE balance (LGD 100 pct). Both are deliberately")
     print("  pessimistic. Treat them as a ceiling on the loss, not a forecast.")
 
+    # float_format matters more than it looks. By default pandas writes small
+    # floats in scientific notation - 1.573e-07 - and if that CSV is loaded
+    # into a VARCHAR column, "ORDER BY pd_4m" becomes a TEXT sort in which
+    # '1e-07' sorts after '0.0252', putting the SAFEST subscribers last. On a
+    # simulation of the real value range that turned a 0.082 pct book into a
+    # 1.348 pct one while still returning the right row COUNT. A fixed
+    # 12-decimal format cannot produce scientific notation, so the file is
+    # unambiguous however it is typed on the way in.
     path = os.path.join(OUTDIR, "handover_scores.csv")
-    out.to_csv(path, index=False)
+    out.to_csv(path, index=False, float_format="%.12f")
     print(f"\n  written to {path}  ({len(out):,} rows)")
     metrics = pd.DataFrame(
         RES + [dict(r, model=r["model"] + " [VALID]") for r in RV] + RT)
