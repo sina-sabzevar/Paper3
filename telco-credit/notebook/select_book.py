@@ -47,8 +47,47 @@ def main():
             f"TAKE={TAKE:,} exceeds the {len(df):,} subscribers scored. The "
             f"screen admits that many and no more.")
 
-    df = df.sort_values("pd_4m", kind="mergesort").reset_index(drop=True)
+    # THE CUT, AND THE TIE AT IT.
+    #
+    # Sorting on pd_4m alone is not a cut, it is a cut plus an accident.
+    # Isotonic calibration emits a step function, so a block of subscribers
+    # carry one identical pd_4m; mergesort then settles them by CSV row order,
+    # which traces back to the order the parquet parts happened to concatenate
+    # in, and Trino's ORDER BY makes no stability promise whatsoever. Two
+    # routes to "the safest N" return two different sets of people.
+    #
+    # So the order is made total and explicit. pay_cover is what the subscriber
+    # paid against what they were billed - a real signal among subscribers the
+    # model scores identically, and scale-free, so it does not drift with the
+    # Rial. tenure_m breaks what that ties. sbrp_id makes the result
+    # reproducible and identical in Python and in SQL.
+    keys, asc = ["pd_4m"], [True]
+    for k, up in (("pay_cover", False), ("tenure_m", False), ("sbrp_id", True)):
+        if k in df.columns:
+            keys.append(k); asc.append(up)
+    if "pay_cover" not in df.columns:
+        print("\n  NOTE handover_scores.csv carries no pay_cover column, so the")
+        print("  tie at the cut is broken on sbrp_id alone - reproducible, but")
+        print("  arbitrary. Re-run the training notebook to get the real key.")
+    df = df.sort_values(keys, ascending=asc, kind="mergesort").reset_index(drop=True)
     book = df.iloc[:TAKE].copy()
+
+    # How much of the book did the tie-break decide rather than the model?
+    _cut = float(df.pd_4m.iloc[TAKE - 1])
+    _below = int((df.pd_4m < _cut).sum())
+    _tied = int((df.pd_4m == _cut).sum())
+    _room = TAKE - _below
+    print(f"\n  tie at the cut      {_tied:>12,} share pd_4m = {_cut:.6%}")
+    print(f"  of those, admitted  {_room:>12,}   refused {_tied - _room:,}")
+    if _tied - _room > 0.01 * TAKE:
+        print(f"  -> {100*(_tied-_room)/TAKE:.1f} pct of the book was decided by the "
+              f"tie-break, not by pd_4m.")
+        print("     The order is defensible and reproducible, but say so when the")
+        print("     book is handed over - those subscribers are not ranked by risk.")
+    elif _tied - _room > 0:
+        print("  -> the tie-break decided well under 1 pct of the book")
+    else:
+        print("  -> no tie at the cut; pd_4m alone determines the book")
 
     cut_pd   = float(book.pd_4m.iloc[-1])
     book_pd  = float(book.pd_4m.mean())

@@ -948,6 +948,27 @@ out = pd.DataFrame({"sbrp_id": sc.sbrp_id.values, "pd_4m": psc})
 out["grade"] = pd.cut(out.pd_4m, [-1, 0.002, 0.005, 0.010, 0.020, 1.0],
                       labels=["A", "B", "C", "D", "E"])
 
+# TIE-BREAK KEYS. Isotonic calibration emits a STEP function, so a large block
+# of subscribers share one identical pd_4m. The book is the safest N, so the
+# people sitting on the step AT the cut are admitted or refused by whatever
+# order the sort happens to produce - by nothing. pandas mergesort falls back
+# to CSV row order and Trino guarantees no order at all, so the same scores
+# cut two ways give two different books.
+#
+# pay_cover is what the subscriber actually paid against what they were
+# billed, over the feature window. Among subscribers the model cannot tell
+# apart it is a real signal, and it is scale-free so it does not drift.
+# tenure_m breaks what pay_cover ties, and sbrp_id makes the order total and
+# identical in Python and SQL.
+_rev = sc.rev_6m.to_numpy(dtype=float)
+out["pay_cover"] = np.where(_rev > 0, sc.paid_6m.to_numpy(dtype=float) / _rev, 0.0)
+out["tenure_m"]  = sc.tenure_m.to_numpy()
+
+_n_tied = len(out) - out.pd_4m.nunique()
+print(f"  distinct pd_4m values {out.pd_4m.nunique():,} over {len(out):,} subscribers"
+      f"  ->  {_n_tied:,} sit on a shared value")
+print("  tie-break written to the handover: pd_4m asc, pay_cover desc, tenure_m desc, sbrp_id asc")
+
 print(f"  scored {len(out):,} subscribers")
 print(f"  mean predicted PD {out.pd_4m.mean():.4%}  (TEST observed {yte.mean():.4%})")
 if out.pd_4m.mean() > 1.5 * yte.mean():
@@ -1008,7 +1029,7 @@ md(r"""
 
 | file | what it is |
 |---|---|
-| `outputs/handover_scores.csv` | one row per live subscriber: `sbrp_id`, `pd_4m`, `grade`. This is what implementation consumes. |
+| `outputs/handover_scores.csv` | one row per live subscriber: `sbrp_id`, `pd_4m`, `grade`, plus `pay_cover` and `tenure_m` as **tie-break keys** — isotonic emits a step function, so many subscribers share one `pd_4m` and the cut needs a defensible order among them. This is what implementation consumes. |
 | `outputs/metrics.csv` | the model comparison — in-sample, VALID and TEST — for the model-risk record. |
 """)
 
