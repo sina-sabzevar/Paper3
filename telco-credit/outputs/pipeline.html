@@ -607,11 +607,27 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
 <section>
   <div class="band"><div class="n">08</div><div class="t">
     <h2>What is not settled</h2>
-    <p>The refit is done and the model is better. Six things still stand between this page and a
-    lending decision, and the first one has to be fixed before anything reads the scores.</p>
+    <p>The refit is done, the model is better, and <code>validate_model.ipynb</code> has been run
+    against the data. It cleared the model and the datasets &mdash; and found that the <i>cut</i> was
+    never a definition.</p>
   </div></div>
   <div class="card">
     <div class="notes">
+
+      <div class="note"><span class="fl" style="background:var(--crit)"></span><div class="bd">
+        <h3>579,159 of the book were decided by nothing</h3>
+        <p>Isotonic calibration emits a step function, so a block of subscribers carry one identical
+        <code>pd_4m</code>. The validation measured the step at the cut: <b>579,159</b> subscribers &mdash;
+        <b>12.40 percent of the book, 290 bn Toman of exposure</b> &mdash; were refused while being, in the
+        model's own view, exactly as safe as people who were approved. <code>ORDER BY pd_4m</code>
+        filled the last places in whatever order the engine returned; pandas settled it by CSV row
+        order, itself an accident of how the parquet parts concatenated, and Trino promises nothing.
+        The same scores cut twice gave two different sets of people.</p>
+        <p>Now fixed: one explicit order in both routes &mdash; <code>pd_4m</code> asc, then payment
+        coverage, then tenure, then <code>sbrp_id</code> &mdash; so the cut is reproducible and the keys
+        below the model are stated rather than accidental. <b>The book has to be re-cut</b>, and when it
+        is handed over the number decided by the tie-break goes with it, because those subscribers are
+        not ranked by risk.</p></div></div>
 
       <div class="note"><span class="fl" style="background:var(--crit)"></span><div class="bd">
         <h3>The handover table was loaded twice &mdash; fix it before anything reads it</h3>
@@ -627,9 +643,24 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
         rebuild.</p></div></div>
 
       <div class="note"><span class="fl" style="background:var(--good)"></span><div class="bd">
+        <h3>Dropping every Rial level costs 0.0048 AUC &mdash; take that trade</h3>
+        <p>A model built only from scale-free features &mdash; each month as a share of the subscriber's
+        own six-month total, payment coverage, the counts and the flags &mdash; scores
+        <b>0.8230</b> against the full model's 0.8278. That is <b>0.58 percent of the AUC</b> to remove
+        every Rial amount from the model.</p>
+        <p>Worth far more than it costs. Twelve features in the full model drift significantly, led by
+        <code>rev_max</code> at PSI 3.0223, which is why its 0.8278 is an <i>upper bound</i> on live
+        performance rather than an estimate of it. Scale-free features cannot drift with inflation, so
+        0.8230 is the estimate. Trading a fifth of a percent of a bounded number for an unbounded one
+        is the right way round. It also ends the yearly re-tuning the nominal design would otherwise
+        need.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--good)"></span><div class="bd">
         <h3>The refit worked, and it moved the linear model most</h3>
-        <p>Bar history from the year before the feature window lifted test AUC from
-        <b>0.8017 to 0.8278</b> and cut the book rate at 4,672,361 from <b>0.2094 to 0.1790 percent</b>,
+        <p>Removing the six <code>pre_</code> columns and re-fitting costs <b>0.0239</b> of test AUC,
+        against a total refit gain of 0.0261 &mdash; so they account for <b>92 percent</b> of it and the
+        signal is independent rather than a proxy for revenue. Bar history from the year before the
+        feature window lifted test AUC from <b>0.8017 to 0.8278</b> and cut the book rate at 4,672,361 from <b>0.2094 to 0.1790 percent</b>,
         a 14.5 percent reduction at the same book size. The largest book under a 0.25 percent ceiling
         grew from 5,775,729 to <b>7,122,466</b>. Most of the gain is linear &mdash; logistic valid AUC rose
         +0.0458 against boosting's +0.0239 &mdash; which means a prior bar is close to a straight
@@ -651,7 +682,8 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
         <b>0.5952 percent</b> against test's observed <b>0.5146</b> &mdash; 15.7 percent higher. That is
         inflation showing up in the level, not a worse population. The safest-N ordering survives a
         monotone level shift; the absolute PD does not. The six new <code>pre_*</code> features are the
-        most stable in the set, which is what a count of past bars should be.</p></div></div>
+        most stable in the set, which is what a count of past bars should be. <b>The scale-free model
+        above is the answer to this item</b>, not a mitigation of it.</p></div></div>
 
       <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
         <h3>Two of the new features came back with their drift unmeasured</h3>

@@ -268,3 +268,61 @@ the 13.2× lift lives.
 0.5952% against TEST observed 0.5146% — **+15.7%**, down from +17.5%. The six
 `pre_*` features are the most stable in the set: 0.0000 to 0.0003. A count of
 past bars should be stable, so that is a sanity check passing, not a surprise.
+
+---
+
+# The validation run, measured
+
+`validate_model.ipynb` against the refit data. Seven checks.
+
+| | result | |
+|---|---|---|
+| row counts match the SQL | PASS | asserted at load |
+| `sbrp_id` unique in both tables | PASS | |
+| no subscriber in two splits | PASS | the hash is a pure function of the id |
+| TEST AUC reproduced | PASS | 0.8278 refits from scratch |
+| **tie at the cut under 1 pct of the book** | **LOOK** | **579,159 arbitrary** |
+| `pre_` features carry independent signal | PASS | **+0.0239** TEST |
+| scale-free model within 0.01 AUC | PASS | **−0.0048** TEST |
+
+**The model and the datasets are clean.** No leakage, no split contamination,
+no weighting error, and the headline reproduces from scratch.
+
+## The cut was never a definition
+
+579,159 subscribers — **12.40 percent of the book, 290 bn Toman of exposure** —
+were refused while carrying exactly the same `pd_4m` as subscribers who were
+approved. Isotonic calibration emits a step function; `ORDER BY pd_4m` took
+everyone strictly safer and then filled the last places in whatever order the
+engine returned.
+
+That row is **LOOK, not PASS**: the check is `(n_at_cut - room) <= 0.01 * TAKE`,
+and 1 percent of 4,672,361 is 46,724. 579,159 is 12.4× over it.
+
+Fixed by the explicit order now in both routes — `pd_4m` asc, `pay_cover` desc,
+`tenure_m` desc, `sbrp_id` asc. **The book has to be re-cut**, and the count the
+tie-break decided travels with it when it is handed over.
+
+## The `pre_` features earned their place
+
+Removing them costs **0.0239** of test AUC against a total refit gain of 0.0261,
+so they account for **92 percent** of the refit. The signal is independent, not a
+proxy for revenue — which is what A5's cross-tab implied and this confirms
+against the fitted model.
+
+## Drop every Rial level — it costs 0.0048
+
+A scale-free model scores **0.8230** against 0.8278. That is **0.58 percent of
+the AUC** to remove every Rial amount from the inputs.
+
+Take the trade. Twelve features in the full model drift significantly, led by
+`rev_max` at PSI 3.0223, which is exactly why 0.8278 is an **upper bound** on
+live performance rather than an estimate of it. Scale-free features cannot drift
+with inflation, so 0.8230 **is** the estimate. Swapping a fifth of a percent of a
+bounded number for an unbounded one is the right direction, and it ends the
+yearly re-tuning the nominal design would otherwise need.
+
+This is the answer to the drift item that has been open since the first run — not
+a mitigation of it. The remaining work is to move the construction into
+`42_model_datasets.sql` so the columns arrive scale-free rather than being
+derived in the notebook.
