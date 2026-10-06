@@ -323,6 +323,8 @@ def decile_table(y, p, w, label=""):
     return g
 
 
+VALUE_PSI_MAX_CATS = 40   # at or under this many distinct values, compare on VALUES
+
 def psi(expected, actual, bins=10):
     """Population Stability Index between two samples of one feature.
 
@@ -341,18 +343,33 @@ def psi(expected, actual, bins=10):
         return np.nan
 
     # Low-cardinality features - flags, small counts - cannot be split into
-    # ten quantile bins, and an earlier version returned NaN for them. A
-    # binary flag can drift as easily as anything else, so those are compared
-    # on their VALUES instead of on quantiles. f_reclaim was invisible before.
-    vals = np.unique(e)
-    if len(vals) <= bins:
-        cats = np.unique(np.concatenate([vals, np.unique(a)]))
-        pe = np.array([(e == v).sum() for v in cats], dtype=float)
-        pa = np.array([(a == v).sum() for v in cats], dtype=float)
-    else:
+    # ten quantile bins, and an early version returned NaN for them. A binary
+    # flag can drift as easily as anything else, so those are compared on
+    # their VALUES. f_reclaim was invisible before that.
+    #
+    # The SECOND version of this was still wrong, and the 1405 refit showed
+    # how: "few distinct values" is not the same test as "few quantile bins".
+    # pre_ow_months holds 13 distinct values, so it failed len(vals) <= bins
+    # and went to quantiles - where ~99.9 pct zeros collapsed every edge onto
+    # 0 and the function returned nan. Two of the six new pre_ features came
+    # back unmeasured. Concentration, not cardinality, is what breaks
+    # quantiles, so both are checked now.
+    ve, ce = np.unique(e, return_counts=True)
+    va, ca = np.unique(a, return_counts=True)
+    use_values = len(ve) <= max(bins, VALUE_PSI_MAX_CATS)
+    edges = None
+    if not use_values:
         edges = np.unique(np.quantile(e, np.linspace(0, 1, bins + 1)))
-        if len(edges) < 3:
+        use_values = len(edges) < 3
+    if use_values:
+        de = dict(zip(ve, ce))
+        da = dict(zip(va, ca))
+        cats = sorted(set(de) | set(da))
+        if len(cats) > 4 * VALUE_PSI_MAX_CATS:
             return np.nan
+        pe = np.array([de.get(v, 0) for v in cats], dtype=float)
+        pa = np.array([da.get(v, 0) for v in cats], dtype=float)
+    else:
         edges[0], edges[-1] = -np.inf, np.inf
         pe, _ = np.histogram(e, bins=edges)
         pa, _ = np.histogram(a, bins=edges)

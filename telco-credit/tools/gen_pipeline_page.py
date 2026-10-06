@@ -24,20 +24,23 @@ FUNNEL = [
 TOTAL_CUT = PRESENT - SCORED
 
 # ------------------------------------------------------- the ladder (10..80pct)
+# Book PD is printed by the notebook; marginal PD is DERIVED from it -
+# (n_i * b_i - n_j * b_j) / (n_i - n_j) over consecutive deciles.
 LADDER = [
-    (934_472,  0.000965, 0.000965),
-    (1_868_944,0.001379, 0.001793),
-    (2_803_416,0.001595, 0.002027),
-    (3_737_889,0.001832, 0.002543),
-    (4_672_361,0.002094, 0.003142),
-    (5_606_833,0.002437, 0.004152),
-    (6_541_306,0.002782, 0.004852),
-    (7_475_778,0.003199, 0.006118),
+    (934_472,  0.000941, 0.000941),
+    (1_868_944,0.001234, 0.001527),
+    (2_803_416,0.001384, 0.001684),
+    (3_737_889,0.001564, 0.002104),
+    (4_672_361,0.001790, 0.002694),
+    (5_606_833,0.002016, 0.003146),
+    (6_541_306,0.002308, 0.004060),
+    (7_475_778,0.002667, 0.005180),
 ]
-FULL = (9_344_723, 0.006046, 0.025918)
+EXTRA = [(8_410_250, 0.003323, 0.008571), (9_344_723, 0.005952, 0.029613)]
+FULL = EXTRA[-1]
 CHOSEN = 4_672_361
-CHOSEN_PD = 0.002094
-CHOSEN_MARG = 0.003142
+CHOSEN_PD = 0.001790
+CHOSEN_MARG = 0.002694
 CEIL = 0.005
 
 # --------------------------------------------- revenue distribution, window C
@@ -46,7 +49,7 @@ BAR_T = 170_000
 
 STRESS = [
     ("As modelled", 1.00),
-    ("Live-set drift, +17pct", 1.17),
+    ("Live-set drift, +15.7pct", 1.157),
     ("Lending into Nowruz, 1.68x", 1.68),
     ("Twice the modelled rate", 2.00),
     ("Three times the modelled rate", 3.00),
@@ -256,7 +259,8 @@ W("""<header>
   <h1>From 41.27 million subscribers to a book of 4,672,361</h1>
   <p class="lede">Every filter in the pipeline, with the count it removed and the rule that removed it.
   One screen does 97.67 percent of the work. All figures are query output or notebook output
-  from this repository; nothing here is an estimate.</p>
+  from this repository; nothing here is an estimate. Rebuilt on the 1405-07-14 refit, which added
+  a subscriber's bar history from the year before the feature window.</p>
   <div class="chain">
     <span><i>present</i> <b class="num">41,270,092</b></span>
     <span>&rarr;</span>
@@ -266,7 +270,7 @@ W("""<header>
     <span>&rarr;</span>
     <span><i>exposure</i> <b class="num">2,336 bn Toman</b></span>
     <span>&rarr;</span>
-    <span><i>expected loss</i> <b class="num">4.9 bn</b></span>
+    <span><i>expected loss</i> <b class="num">4.2 bn</b></span>
   </div>
 </header>
 """)
@@ -454,34 +458,35 @@ W("""<section>
     subscriber, calibrated by isotonic regression, read on the in-band rows only.</p>
   </div></div>
   <div class="kpi">
-    <div class="tile hero"><span class="k">AUC, test in band</span><span class="v">0.8017</span>
-      <span class="s">HistGB, calibrated</span></div>
-    <div class="tile"><span class="k">Gini</span><span class="v">0.6034</span>
-      <span class="s">&nbsp;</span></div>
-    <div class="tile"><span class="k">KS</span><span class="v">0.4551</span>
-      <span class="s">&nbsp;</span></div>
-    <div class="tile"><span class="k">Level error</span><span class="v">1.72%</span>
-      <span class="s">0.5234 predicted vs 0.5146 observed</span></div>
+    <div class="tile hero"><span class="k">AUC, test in band</span><span class="v">0.8278</span>
+      <span class="s">HistGB calibrated &middot; +0.0261 on the refit</span></div>
+    <div class="tile"><span class="k">Gini</span><span class="v">0.6557</span>
+      <span class="s">+0.0523</span></div>
+    <div class="tile"><span class="k">KS</span><span class="v">0.5151</span>
+      <span class="s">+0.0600</span></div>
+    <div class="tile"><span class="k">Level error</span><span class="v">1.68%</span>
+      <span class="s">0.5232 predicted vs 0.5146 observed</span></div>
   </div>
   <div class="card">
     <div class="tbl-s"><table>
       <thead><tr><th>Model</th><th>Split</th><th>AUC</th><th>Gini</th><th>KS</th></tr></thead>
       <tbody>
-        <tr><td>Logistic, standardised</td><td>valid</td><td>0.7385</td><td>0.4769</td><td>0.3652</td></tr>
-        <tr><td>HistGB</td><td>valid</td><td>0.7918</td><td>0.5836</td><td>0.4346</td></tr>
-        <tr class="mark"><td>HistGB, calibrated</td><td>test, in band</td><td>0.8017</td><td>0.6034</td><td>0.4551</td></tr>
+        <tr><td>Logistic, standardised</td><td>valid</td><td>0.7843</td><td>0.5685</td><td>0.4545</td></tr>
+        <tr><td>HistGB</td><td>valid</td><td>0.8157</td><td>0.6313</td><td>0.4917</td></tr>
+        <tr class="mark"><td>HistGB, calibrated</td><td>test, in band</td><td>0.8278</td><td>0.6557</td><td>0.5151</td></tr>
       </tbody>
-      <tfoot><tr><td colspan="5">Boosting beat the linear baseline by <b>+0.0533</b> on valid, so the
-      interactions are real. Train-to-valid gap +0.0205. All 10 of 10 deciles expect 10 or more
-      bads, so every decile ratio is readable; worst 0.822, best 1.049.</td></tr></tfoot>
+      <tfoot><tr><td colspan="5">The bar-history features moved the <i>linear</i> model most &mdash;
+      logistic valid AUC rose <b>+0.0458</b> against boosting's +0.0239, so most of what they carry is
+      available without interactions. Boosting still wins by +0.0314 on valid. Train-to-valid gap
+      +0.0196. All 10 of 10 deciles expect 10 or more bads, so every decile ratio is readable.</td></tr></tfoot>
     </table></div>
   </div>
 """)
 
 # ===================================================== 5. the ladder line chart
-LW, LH = 720, 336
+LW, LH = 782, 336   # extra right margin: the direct labels live outside the plot
 PL, PR, PT, PB = 54, 612, 26, 254
-YMAX = 0.0065
+YMAX = 0.0058
 def xi(i): return PL + i * (PR - PL) / (len(LADDER) - 1.0)
 def yv(v): return PB - (v / YMAX) * (PB - PT)
 
@@ -504,7 +509,7 @@ W("""<section>
 W('    <svg viewBox="0 0 %d %d" role="img" aria-label="Book and marginal default rate against the size of the book">\n' % (LW, LH))
 # y grid + ticks
 t = 0
-while t <= 0.006 + 1e-9:
+while t <= 0.005 + 1e-9:
     y = yv(t)
     W('      <line class="gl" x1="%d" y1="%.2f" x2="%d" y2="%.2f"/>\n' % (PL, y, PR, y))
     W('      <text class="tk" x="%d" y="%.2f" text-anchor="end">%s</text>\n'
@@ -540,11 +545,11 @@ for i, (take, b, m) in enumerate(LADDER):
         W('      <circle cx="%.2f" cy="%.2f" r="%.1f" fill="%s" stroke="var(--surface)" stroke-width="2"/>\n'
           % (xi(i), yv(v), r, col))
 # direct labels at the right end
-W('      <text class="dl" x="%d" y="%.2f" fill="var(--s1)">book 0.3199%%</text>\n' % (PR + 8, yv(LADDER[-1][1]) + 4))
-W('      <text class="dl" x="%d" y="%.2f" fill="var(--s2)">marginal 0.6118%%</text>\n' % (PR + 8, yv(LADDER[-1][2]) + 4))
+W('      <text class="dl" x="%d" y="%.2f" fill="var(--s1)">book 0.2667%%</text>\n' % (PR + 8, yv(LADDER[-1][1]) + 4))
+W('      <text class="dl" x="%d" y="%.2f" fill="var(--s2)">marginal 0.5180%%</text>\n' % (PR + 8, yv(LADDER[-1][2]) - 9))
 # the chosen pair, labelled
-W('      <text class="dl" x="%.2f" y="%.2f" text-anchor="middle" fill="var(--s1)">0.2094%%</text>\n' % (chx, yv(CHOSEN_PD) + 19))
-W('      <text class="dl" x="%.2f" y="%.2f" text-anchor="middle" fill="var(--s2)">0.3142%%</text>\n' % (chx, yv(CHOSEN_MARG) - 11))
+W('      <text class="dl" x="%.2f" y="%.2f" text-anchor="middle" fill="var(--s1)">0.1790%%</text>\n' % (chx, yv(CHOSEN_PD) + 19))
+W('      <text class="dl" x="%.2f" y="%.2f" text-anchor="middle" fill="var(--s2)">0.2694%%</text>\n' % (chx, yv(CHOSEN_MARG) - 11))
 # crosshair + hit zones
 W('      <line id="xh" x1="0" y1="%d" x2="0" y2="%d" stroke="var(--axis)" stroke-width="1" opacity="0"/>\n' % (PT, PB))
 hw = (PR - PL) / (len(LADDER) - 1.0)
@@ -560,19 +565,21 @@ W('    </svg>\n    </div>\n')
 W('    <div class="tbl-s"><table>\n'
   '      <thead><tr><th>Take</th><th>Share</th><th>Book PD</th><th>Marginal PD</th>'
   '<th>Exposure</th><th>Expected loss</th></tr></thead>\n      <tbody>\n')
-for take, b, m in LADDER + [FULL]:
+for take, b, m in LADDER + EXTRA:
     cls = ' class="mark"' if take == CHOSEN else ''
     W('        <tr%s><td>%s</td><td>%d pct</td><td>%s%%</td><td>%s%%</td>'
       '<td>%s bn</td><td>%.1f bn</td></tr>\n'
       % (cls, f(take), round(100 * take / SCORED), pc(b), pc(m),
          "{:,.0f}".format(bn(take)), bn(take) * b))
 W("""      </tbody>
-      <tfoot><tr><td colspan="6">The plot stops at the 80 percent mark. The final decile's
-      marginal rate is <b>2.5918 percent</b>, four times the plot's range, and it is the row above &mdash;
-      drawing it would flatten everything the decision depends on. Marginal PD first crosses the
-      0.50 percent ceiling at the <b>80 percent</b> mark, so there is headroom past the chosen cut
-      if volume is wanted later. Exposure and loss are in billions of Toman at 500,000 per subscriber,
-      LGD 100 percent.</td></tr></tfoot>
+      <tfoot><tr><td colspan="6">The plot stops at the 80 percent mark; the last two rows are in
+      the table only. The final decile's marginal rate is <b>2.9613 percent</b>, five times the plot's
+      range, and drawing it would flatten everything the decision depends on. Marginal PD first
+      crosses the 0.50 percent ceiling at the <b>80 percent</b> mark &mdash; 7,475,778 subscribers &mdash;
+      so there is a great deal of headroom past the chosen cut. Under a 0.25 percent book ceiling the
+      model now admits <b>7,122,466</b>, up 1,346,737 on the pre-refit model. Book PD is notebook output;
+      marginal PD is derived from it across consecutive deciles. Exposure and loss are in billions of
+      Toman at 500,000 per subscriber, LGD 100 percent.</td></tr></tfoot>
     </table></div>
   </div>
 """)
@@ -581,21 +588,23 @@ W("""      </tbody>
 W("""<section>
   <div class="band"><div class="n">06</div><div class="t">
     <h2>The chosen book</h2>
-    <p>The safest half of the scored population. Both rates clear the appetite ceiling, and
-    the realised rate would have to miss the model by 2.4&times; before the book breaches it.</p>
+    <p>The safest half of the scored population. Both rates clear the appetite ceiling, and the
+    realised rate would have to miss the model by 2.8&times; before the book breaches it. The refit
+    cut the book rate 14.5 percent without changing its size &mdash; and the same ceiling would now
+    carry a much larger book, which is a decision rather than a result.</p>
   </div></div>
   <div class="kpi c6">
     <div class="tile hero"><span class="k">Approved</span><span class="v">4,672,361</span>
       <span class="s">50 pct of 9,344,723 scored</span></div>
-    <div class="tile"><span class="k">Book PD</span><span class="v">0.2094%</span>
+    <div class="tile"><span class="k">Book PD</span><span class="v">0.1790%</span>
       <span class="s">against a 0.50 pct ceiling</span></div>
-    <div class="tile"><span class="k">Marginal PD</span><span class="v">0.3142%</span>
+    <div class="tile"><span class="k">Marginal PD</span><span class="v">0.2694%</span>
       <span class="s">the last subscriber admitted</span></div>
     <div class="tile"><span class="k">Exposure</span><span class="v">2,336 bn</span>
       <span class="s">Toman, at 500,000 each</span></div>
-    <div class="tile"><span class="k">Expected loss</span><span class="v">4.9 bn</span>
+    <div class="tile"><span class="k">Expected loss</span><span class="v">4.2 bn</span>
       <span class="s">Toman, LGD 100 pct</span></div>
-    <div class="tile"><span class="k">Miss to breach</span><span class="v">2.4&times;</span>
+    <div class="tile"><span class="k">Miss to breach</span><span class="v">2.8&times;</span>
       <span class="s">realised vs modelled rate</span></div>
   </div>
   <div class="card">
@@ -618,7 +627,7 @@ for lab, mult in STRESS:
 W("""    </div>
     <p class="cap">The red rule on each track is the 0.50 percent ceiling. The book absorbs the
     drift measured in the live set, absorbs a Nowruz-season label, and absorbs twice the modelled
-    rate. It breaches only at three times modelled, at <b>14.7 bn</b> Toman of loss.</p>
+    rate with room to spare. It breaches only at three times modelled, at <b>12.5 bn</b> Toman of loss.</p>
   </div>
 """)
 
@@ -666,34 +675,68 @@ W("""      </tbody>
 W("""<section>
   <div class="band"><div class="n">08</div><div class="t">
     <h2>What is not settled</h2>
-    <p>Six things stand between this page and a lending decision. The first one moves the cut.</p>
+    <p>The refit is done and the model is better. Six things still stand between this page and a
+    lending decision, and the first one has to be fixed before anything reads the scores.</p>
   </div></div>
   <div class="card">
     <div class="notes">
 
       <div class="note"><span class="fl" style="background:var(--crit)"></span><div class="bd">
-        <h3>This book predates the refit, so the cut will move</h3>
-        <p>The audit found a feature the model never saw: a subscriber's bar history in the
-        <i>year before</i> the feature window predicts the label at <b>13.2&times;</b> for a prior
-        two-way bar and <b>4.0&times;</b> for a one-way bar, and it holds at every level of
-        <code>rev_months</code>. Six <code>pre_*</code> columns are now in
-        <code>42_model_datasets.sql</code> and the refit has not run. Expect the ranking to
-        improve on 0.8017 and the safest-4,672,361 to be a <i>different set of subscribers</i>.
-        Re-cut before lending.</p></div></div>
+        <h3>The handover table was loaded twice &mdash; fix it before anything reads it</h3>
+        <p>The upload cell reported <code>Table ... exists with 9344723 rows. Appending data.</code>
+        and then inserted a second full set keyed on the same <code>sbrp_id</code>. The table now
+        holds the pre-refit scores <i>and</i> the refit scores mixed together, so
+        <code>ORDER BY pd_4m LIMIT 4672361</code> returns a book from neither model, and any join on
+        <code>sbrp_id</code> fans out 2&times;. <code>COUNT(DISTINCT sbrp_id)</code> still reads
+        9,344,723, so the obvious check passes while the table is wrong. The cell's execution count
+        is null, so it had not finished &mdash; which makes it worse, because an arbitrary subset is
+        double-scored. Old and new rows are indistinguishable, so no dedupe is honest here:
+        <code>50_handover_repair.sql</code> measures the damage, drops the table and verifies the
+        rebuild.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--good)"></span><div class="bd">
+        <h3>The refit worked, and it moved the linear model most</h3>
+        <p>Bar history from the year before the feature window lifted test AUC from
+        <b>0.8017 to 0.8278</b> and cut the book rate at 4,672,361 from <b>0.2094 to 0.1790 percent</b>,
+        a 14.5 percent reduction at the same book size. The largest book under a 0.25 percent ceiling
+        grew from 5,775,729 to <b>7,122,466</b>. Most of the gain is linear &mdash; logistic valid AUC rose
+        +0.0458 against boosting's +0.0239 &mdash; which means a prior bar is close to a straight
+        additive signal and did not need a tree to find it.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
+        <h3>The model over-predicts risk at the safe end, which is where the book is</h3>
+        <p>Across the safest three deciles of test it predicts <b>0.1038 percent</b> against an observed
+        <b>0.0806</b> &mdash; a ratio of <b>0.776</b>, and the worst single decile sits at 0.677 where the
+        pre-refit worst was 0.822. Observed risk is still monotone across all ten deciles, so the
+        <i>ranking</i> is sound and the book is drawn by rank. The direction is conservative: the book
+        should come in at or under 0.1790 percent rather than above it. Worth knowing before the
+        0.1790 figure is quoted as a point estimate.</p></div></div>
 
       <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
         <h3>Trust the ranking, not the level</h3>
-        <p>Thirteen features shifted significantly between the training and live windows, led by
+        <p>Twelve features shifted significantly between the training and live windows, led by
         <code>rev_max</code> at PSI <b>3.0223</b>. The live set scores a mean PD of
-        <b>0.6046 percent</b> against test's observed <b>0.5146</b> &mdash; 17 percent higher. That is
+        <b>0.5952 percent</b> against test's observed <b>0.5146</b> &mdash; 15.7 percent higher. That is
         inflation showing up in the level, not a worse population. The safest-N ordering survives a
-        monotone level shift; the absolute PD does not.</p></div></div>
+        monotone level shift; the absolute PD does not. The six new <code>pre_*</code> features are the
+        most stable in the set, which is what a count of past bars should be.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
+        <h3>Two of the new features came back with their drift unmeasured</h3>
+        <p><code>pre_ow_months</code> and <code>pre_tw_months</code> returned <b>nan</b> for PSI. That was
+        my bug, not the data's: the function sent any column with more than ten distinct values to
+        quantile bins, and these hold thirteen values of which about 99.9 percent are zero, so every
+        quantile edge collapsed onto 0 and it gave up. Cardinality was the wrong test; concentration
+        is what breaks quantiles. Fixed and verified against a synthetic column of the same shape.
+        A caveat survives the fix: PSI weights by prevalence, so tripling the rate of a 0.1 percent
+        feature still reads 0.0023. For these two, watch the rate in the non-zero tail instead &mdash;
+        that tail is where the 13.2&times; lift lives.</p></div></div>
 
       <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
         <h3>Two book rates that should agree, do not</h3>
-        <p>The Trino audit returns a book PD of <b>0.21318 percent</b> where the notebook returns
-        <b>0.2094</b> &mdash; 1.8 percent apart, and not yet explained. Small enough not to change the
-        decision, large enough that it has to be chased before the figure goes in front of anyone.</p></div></div>
+        <p>On the pre-refit scores the Trino audit returned a book PD of <b>0.21318 percent</b> where
+        the notebook returned <b>0.2094</b> &mdash; 1.8 percent apart, and never explained. It cannot be
+        re-tested until the handover table is rebuilt, so it carries forward unresolved.</p></div></div>
 
       <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
         <h3>The base itself does not reconcile</h3>

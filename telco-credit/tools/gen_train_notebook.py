@@ -525,6 +525,8 @@ as easily as anything else.
 """)
 
 code(r'''
+VALUE_PSI_MAX_CATS = 40   # at or under this many distinct values, compare on VALUES
+
 def psi(expected, actual, bins=10):
     """Population Stability Index between two samples of one feature."""
     e = np.asarray(expected, dtype=float)
@@ -534,16 +536,33 @@ def psi(expected, actual, bins=10):
     if len(e) == 0 or len(a) == 0:
         return np.nan
 
-    vals = np.unique(e)
-    if len(vals) <= bins:
-        # flags and small counts: compare on values, not quantiles
-        cats = np.unique(np.concatenate([vals, np.unique(a)]))
-        pe = np.array([(e == v).sum() for v in cats], dtype=float)
-        pa = np.array([(a == v).sum() for v in cats], dtype=float)
-    else:
+    ve, ce = np.unique(e, return_counts=True)
+    va, ca = np.unique(a, return_counts=True)
+
+    # WHICH COMPARISON. Quantiles only suit a genuinely continuous column.
+    # A count column is compared on its VALUES - and "few distinct values" is
+    # not the same test as "few quantile bins", which is what the first
+    # version of this got wrong: pre_ow_months holds 13 distinct values, so it
+    # failed the len(vals) <= bins test and went to quantiles, where ~99.9 pct
+    # zeros collapsed every edge onto 0 and the function returned nan. Two of
+    # the six new pre_ features came back unmeasured because of it.
+    use_values = len(ve) <= max(bins, VALUE_PSI_MAX_CATS)
+    edges = None
+    if not use_values:
         edges = np.unique(np.quantile(e, np.linspace(0, 1, bins + 1)))
-        if len(edges) < 3:
+        # Concentration collapsed the edges. That is a reason to compare on
+        # values, not a reason to give up.
+        use_values = len(edges) < 3
+
+    if use_values:
+        de, da = dict(zip(ve, ce)), dict(zip(va, ca))
+        cats = sorted(set(de) | set(da))
+        if len(cats) > 4 * VALUE_PSI_MAX_CATS:
+            # continuous AND degenerate - no honest binning left
             return np.nan
+        pe = np.array([de.get(v, 0) for v in cats], dtype=float)
+        pa = np.array([da.get(v, 0) for v in cats], dtype=float)
+    else:
         edges[0], edges[-1] = -np.inf, np.inf
         pe, _ = np.histogram(e, bins=edges)
         pa, _ = np.histogram(a, bins=edges)

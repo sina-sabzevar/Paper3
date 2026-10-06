@@ -179,3 +179,92 @@ it ran about 10% conservative in this score region, which is the right
 direction, but the behavioural effect of handing someone spendable credit is
 unmeasured and unmeasurable from this data. A pilot is the only thing that
 closes it.
+
+---
+
+# The refit, measured — run 1405-07-14
+
+`42` re-run with the six `pre_*` columns, both tables re-exported, notebook
+re-run end to end. 8,701,085 rows / 45 columns / 39 features (`oneway_months`
+dropped for no variance, which is correct — the screen forces it to zero).
+
+## It worked, and A5 was right about why
+
+| | before | after | |
+|---|---|---|---|
+| **HistGB calibrated, TEST in band** | 0.8017 | **0.8278** | **+0.0261** |
+| Gini | 0.6034 | **0.6557** | +0.0523 |
+| KS | 0.4551 | **0.5151** | +0.0600 |
+| logistic, VALID | 0.7385 | **0.7843** | **+0.0458** |
+| HistGB, VALID | 0.7918 | **0.8157** | +0.0239 |
+
+**The linear model gained twice what boosting did.** A prior bar is close to a
+straight additive signal — it did not need a tree to find it, which is why W4's
+single-feature probe underestimated the whole set and why A5 found it by a plain
+cross-tab. The challenger still wins by +0.0314 on VALID, so interactions are
+real, just no longer where most of the new information lives.
+
+## The book
+
+| take | before | after | | exposure | loss after |
+|---|---|---|---|---|---|
+| 934,472 | 0.0965% | 0.0941% | −2.5% | 467 bn | 0.4 bn |
+| 3,000,000 | 0.1646% | **0.1412%** | −14.2% | 1,500 bn | 2.1 bn |
+| **4,672,361** | **0.2094%** | **0.1790%** | **−14.5%** | 2,336 bn | **4.2 bn** |
+| 7,475,778 | 0.3199% | 0.2667% | −16.6% | 3,738 bn | 10.0 bn |
+| 9,344,723 | 0.6046% | 0.5952% | −1.6% | 4,672 bn | 27.8 bn |
+
+Marginal PD is not printed by the notebook; derived across consecutive deciles
+it is **0.2694%** at the chosen cut and first crosses 0.50% at the **80%** mark
+(0.5180% at 7,475,778).
+
+**Under a 0.25% ceiling the model now admits 7,122,466, up 1,346,737 (+23.3%).**
+That is the headline for the volume question: the refit bought more book at the
+same risk than any screen change has.
+
+## Calibration moved the wrong way at the end that matters
+
+Level error is fine — 0.5232% predicted against 0.5146% observed, 1.68%. But the
+decile table over-predicts risk where the book is drawn:
+
+| | predicted | observed | ratio |
+|---|---|---|---|
+| safest 3 deciles | 0.1038% | 0.0806% | **0.776** |
+| safest 5 deciles | 0.1305% | 0.1171% | 0.898 |
+| all 10 | 0.5232% | 0.5146% | 0.983 |
+
+Worst single decile **0.677** (was 0.822). Observed risk is still monotone across
+all ten, so the ranking — which is what the book is cut on — is sound. The error
+is conservative in direction: realised should land at or under 0.1790%. State it
+rather than quote 0.1790% as a point estimate.
+
+## Two defects this run exposed
+
+**1. The handover table was double-loaded.** The upload cell printed `Table
+dwbi_temp40_db.DCB_Handover140506 exists with 9344723 rows. Appending data.` and
+inserted a second full set on the same keys. `COUNT(DISTINCT sbrp_id)` still
+reads 9,344,723, so the obvious check passes while `ORDER BY pd_4m` returns a
+book from neither model and every join fans out 2×. Execution count is null, so
+it did not finish — an arbitrary subset is double-scored. Old and new rows are
+indistinguishable, so no dedupe is honest. `50_handover_repair.sql` measures,
+drops and verifies the rebuild.
+
+**2. `pre_ow_months` and `pre_tw_months` returned PSI `nan`.** My bug. The
+function sent anything with more than ten distinct values to quantile bins;
+these carry thirteen values of which ~99.9% are zero, so every quantile edge
+collapsed onto 0 and it returned `nan`. **Cardinality was the wrong test —
+concentration is what breaks quantiles.** Both are checked now, the value path
+uses `np.unique(..., return_counts=True)` instead of a per-category scan, and the
+fix is verified against a synthetic column of the same shape.
+
+A caveat survives the fix: PSI weights by prevalence, so tripling the rate of a
+0.1%-prevalence feature still reads 0.0023. For these two, PSI will almost never
+flag anything. Watch the rate in the non-zero tail instead — that tail is where
+the 13.2× lift lives.
+
+## Drift, restated
+
+12 features significant (was 13), still led by `rev_max` at 3.0223. Live mean PD
+0.5952% against TEST observed 0.5146% — **+15.7%**, down from +17.5%. The six
+`pre_*` features are the most stable in the set: 0.0000 to 0.0003. A count of
+past bars should be stable, so that is a sanity check passing, not a surprise.

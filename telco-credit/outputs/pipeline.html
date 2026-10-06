@@ -184,7 +184,8 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
   <h1>From 41.27 million subscribers to a book of 4,672,361</h1>
   <p class="lede">Every filter in the pipeline, with the count it removed and the rule that removed it.
   One screen does 97.67 percent of the work. All figures are query output or notebook output
-  from this repository; nothing here is an estimate.</p>
+  from this repository; nothing here is an estimate. Rebuilt on the 1405-07-14 refit, which added
+  a subscriber's bar history from the year before the feature window.</p>
   <div class="chain">
     <span><i>present</i> <b class="num">41,270,092</b></span>
     <span>&rarr;</span>
@@ -194,7 +195,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
     <span>&rarr;</span>
     <span><i>exposure</i> <b class="num">2,336 bn Toman</b></span>
     <span>&rarr;</span>
-    <span><i>expected loss</i> <b class="num">4.9 bn</b></span>
+    <span><i>expected loss</i> <b class="num">4.2 bn</b></span>
   </div>
 </header>
 <section>
@@ -381,26 +382,27 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
     subscriber, calibrated by isotonic regression, read on the in-band rows only.</p>
   </div></div>
   <div class="kpi">
-    <div class="tile hero"><span class="k">AUC, test in band</span><span class="v">0.8017</span>
-      <span class="s">HistGB, calibrated</span></div>
-    <div class="tile"><span class="k">Gini</span><span class="v">0.6034</span>
-      <span class="s">&nbsp;</span></div>
-    <div class="tile"><span class="k">KS</span><span class="v">0.4551</span>
-      <span class="s">&nbsp;</span></div>
-    <div class="tile"><span class="k">Level error</span><span class="v">1.72%</span>
-      <span class="s">0.5234 predicted vs 0.5146 observed</span></div>
+    <div class="tile hero"><span class="k">AUC, test in band</span><span class="v">0.8278</span>
+      <span class="s">HistGB calibrated &middot; +0.0261 on the refit</span></div>
+    <div class="tile"><span class="k">Gini</span><span class="v">0.6557</span>
+      <span class="s">+0.0523</span></div>
+    <div class="tile"><span class="k">KS</span><span class="v">0.5151</span>
+      <span class="s">+0.0600</span></div>
+    <div class="tile"><span class="k">Level error</span><span class="v">1.68%</span>
+      <span class="s">0.5232 predicted vs 0.5146 observed</span></div>
   </div>
   <div class="card">
     <div class="tbl-s"><table>
       <thead><tr><th>Model</th><th>Split</th><th>AUC</th><th>Gini</th><th>KS</th></tr></thead>
       <tbody>
-        <tr><td>Logistic, standardised</td><td>valid</td><td>0.7385</td><td>0.4769</td><td>0.3652</td></tr>
-        <tr><td>HistGB</td><td>valid</td><td>0.7918</td><td>0.5836</td><td>0.4346</td></tr>
-        <tr class="mark"><td>HistGB, calibrated</td><td>test, in band</td><td>0.8017</td><td>0.6034</td><td>0.4551</td></tr>
+        <tr><td>Logistic, standardised</td><td>valid</td><td>0.7843</td><td>0.5685</td><td>0.4545</td></tr>
+        <tr><td>HistGB</td><td>valid</td><td>0.8157</td><td>0.6313</td><td>0.4917</td></tr>
+        <tr class="mark"><td>HistGB, calibrated</td><td>test, in band</td><td>0.8278</td><td>0.6557</td><td>0.5151</td></tr>
       </tbody>
-      <tfoot><tr><td colspan="5">Boosting beat the linear baseline by <b>+0.0533</b> on valid, so the
-      interactions are real. Train-to-valid gap +0.0205. All 10 of 10 deciles expect 10 or more
-      bads, so every decile ratio is readable; worst 0.822, best 1.049.</td></tr></tfoot>
+      <tfoot><tr><td colspan="5">The bar-history features moved the <i>linear</i> model most &mdash;
+      logistic valid AUC rose <b>+0.0458</b> against boosting's +0.0239, so most of what they carry is
+      available without interactions. Boosting still wins by +0.0314 on valid. Train-to-valid gap
+      +0.0196. All 10 of 10 deciles expect 10 or more bads, so every decile ratio is readable.</td></tr></tfoot>
     </table></div>
   </div>
 </section>
@@ -420,23 +422,21 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
       <span><i style="background:var(--crit);height:2px"></i>0.50 pct appetite ceiling</span>
     </div>
     <div class="svgbox">
-    <svg viewBox="0 0 720 336" role="img" aria-label="Book and marginal default rate against the size of the book">
+    <svg viewBox="0 0 782 336" role="img" aria-label="Book and marginal default rate against the size of the book">
       <line class="gl" x1="54" y1="254.00" x2="612" y2="254.00"/>
       <text class="tk" x="45" y="257.50" text-anchor="end">0</text>
-      <line class="gl" x1="54" y1="218.92" x2="612" y2="218.92"/>
-      <text class="tk" x="45" y="222.42" text-anchor="end">0.1%</text>
-      <line class="gl" x1="54" y1="183.85" x2="612" y2="183.85"/>
-      <text class="tk" x="45" y="187.35" text-anchor="end">0.2%</text>
-      <line class="gl" x1="54" y1="148.77" x2="612" y2="148.77"/>
-      <text class="tk" x="45" y="152.27" text-anchor="end">0.3%</text>
-      <line class="gl" x1="54" y1="113.69" x2="612" y2="113.69"/>
-      <text class="tk" x="45" y="117.19" text-anchor="end">0.4%</text>
-      <line class="gl" x1="54" y1="78.62" x2="612" y2="78.62"/>
-      <text class="tk" x="45" y="82.12" text-anchor="end">0.5%</text>
-      <line class="gl" x1="54" y1="43.54" x2="612" y2="43.54"/>
-      <text class="tk" x="45" y="47.04" text-anchor="end">0.6%</text>
-      <line x1="54" y1="78.62" x2="612" y2="78.62" stroke="var(--crit)" stroke-width="2"/>
-      <text class="dl" x="60" y="71.62" fill="var(--crit)">0.50% ceiling</text>
+      <line class="gl" x1="54" y1="214.69" x2="612" y2="214.69"/>
+      <text class="tk" x="45" y="218.19" text-anchor="end">0.1%</text>
+      <line class="gl" x1="54" y1="175.38" x2="612" y2="175.38"/>
+      <text class="tk" x="45" y="178.88" text-anchor="end">0.2%</text>
+      <line class="gl" x1="54" y1="136.07" x2="612" y2="136.07"/>
+      <text class="tk" x="45" y="139.57" text-anchor="end">0.3%</text>
+      <line class="gl" x1="54" y1="96.76" x2="612" y2="96.76"/>
+      <text class="tk" x="45" y="100.26" text-anchor="end">0.4%</text>
+      <line class="gl" x1="54" y1="57.45" x2="612" y2="57.45"/>
+      <text class="tk" x="45" y="60.95" text-anchor="end">0.5%</text>
+      <line x1="54" y1="57.45" x2="612" y2="57.45" stroke="var(--crit)" stroke-width="2"/>
+      <text class="dl" x="60" y="50.45" fill="var(--crit)">0.50% ceiling</text>
       <line x1="372.86" y1="26" x2="372.86" y2="254" stroke="var(--axis)" stroke-width="1"/>
       <text class="an" x="372.86" y="18" text-anchor="middle" fill="var(--ink-2)">the chosen cut</text>
       <line class="ax" x1="54" y1="254" x2="612" y2="254"/>
@@ -457,58 +457,61 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
       <text class="tk" x="612.00" y="271" text-anchor="middle">80%</text>
       <text class="tk" x="612.00" y="285" text-anchor="middle" opacity="0.8">7.48M</text>
       <text class="tk" x="54" y="304" text-anchor="start">share of the scored population admitted, safest first</text>
-      <polyline fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round" points="54.00,220.15 133.71,205.63 213.43,198.05 293.14,189.74 372.86,180.55 452.57,168.52 532.29,156.42 612.00,141.79"/>
-      <polyline fill="none" stroke="var(--s2)" stroke-width="2" stroke-linejoin="round" points="54.00,220.15 133.71,191.11 213.43,182.90 293.14,164.80 372.86,143.79 452.57,108.36 532.29,83.81 612.00,39.40"/>
-      <circle cx="54.00" cy="220.15" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="54.00" cy="220.15" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="133.71" cy="205.63" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="133.71" cy="191.11" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="213.43" cy="198.05" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="213.43" cy="182.90" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="293.14" cy="189.74" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="293.14" cy="164.80" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="372.86" cy="180.55" r="5.0" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="372.86" cy="143.79" r="5.0" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="452.57" cy="168.52" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="452.57" cy="108.36" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="532.29" cy="156.42" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="532.29" cy="83.81" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="612.00" cy="141.79" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="612.00" cy="39.40" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
-      <text class="dl" x="620" y="145.79" fill="var(--s1)">book 0.3199%</text>
-      <text class="dl" x="620" y="43.40" fill="var(--s2)">marginal 0.6118%</text>
-      <text class="dl" x="372.86" y="199.55" text-anchor="middle" fill="var(--s1)">0.2094%</text>
-      <text class="dl" x="372.86" y="132.79" text-anchor="middle" fill="var(--s2)">0.3142%</text>
+      <polyline fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round" points="54.00,217.01 133.71,205.49 213.43,199.59 293.14,192.52 372.86,183.63 452.57,174.75 532.29,163.27 612.00,149.16"/>
+      <polyline fill="none" stroke="var(--s2)" stroke-width="2" stroke-linejoin="round" points="54.00,217.01 133.71,193.97 213.43,187.80 293.14,171.29 372.86,148.10 452.57,130.33 532.29,94.40 612.00,50.37"/>
+      <circle cx="54.00" cy="217.01" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="54.00" cy="217.01" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="133.71" cy="205.49" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="133.71" cy="193.97" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="213.43" cy="199.59" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="213.43" cy="187.80" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="293.14" cy="192.52" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="293.14" cy="171.29" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="372.86" cy="183.63" r="5.0" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="372.86" cy="148.10" r="5.0" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="452.57" cy="174.75" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="452.57" cy="130.33" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="532.29" cy="163.27" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="532.29" cy="94.40" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="612.00" cy="149.16" r="3.4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="612.00" cy="50.37" r="3.4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+      <text class="dl" x="620" y="153.16" fill="var(--s1)">book 0.2667%</text>
+      <text class="dl" x="620" y="41.37" fill="var(--s2)">marginal 0.5180%</text>
+      <text class="dl" x="372.86" y="202.63" text-anchor="middle" fill="var(--s1)">0.1790%</text>
+      <text class="dl" x="372.86" y="137.10" text-anchor="middle" fill="var(--s2)">0.2694%</text>
       <line id="xh" x1="0" y1="26" x2="0" y2="254" stroke="var(--axis)" stroke-width="1" opacity="0"/>
-      <rect x="14.14" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="54.00" data-tip="934,472 subscribers &middot; 10 pct|Book PD 0.0965 pct &middot; marginal PD 0.0965 pct<br>Exposure 467 bn &middot; expected loss 0.5 bn"></rect>
-      <rect x="93.86" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="133.71" data-tip="1,868,944 subscribers &middot; 20 pct|Book PD 0.1379 pct &middot; marginal PD 0.1793 pct<br>Exposure 934 bn &middot; expected loss 1.3 bn"></rect>
-      <rect x="173.57" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="213.43" data-tip="2,803,416 subscribers &middot; 30 pct|Book PD 0.1595 pct &middot; marginal PD 0.2027 pct<br>Exposure 1,402 bn &middot; expected loss 2.2 bn"></rect>
-      <rect x="253.29" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="293.14" data-tip="3,737,889 subscribers &middot; 40 pct|Book PD 0.1832 pct &middot; marginal PD 0.2543 pct<br>Exposure 1,869 bn &middot; expected loss 3.4 bn"></rect>
-      <rect x="333.00" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="372.86" data-tip="4,672,361 subscribers &middot; 50 pct|Book PD 0.2094 pct &middot; marginal PD 0.3142 pct<br>Exposure 2,336 bn &middot; expected loss 4.9 bn"></rect>
-      <rect x="412.71" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="452.57" data-tip="5,606,833 subscribers &middot; 60 pct|Book PD 0.2437 pct &middot; marginal PD 0.4152 pct<br>Exposure 2,803 bn &middot; expected loss 6.8 bn"></rect>
-      <rect x="492.43" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="532.29" data-tip="6,541,306 subscribers &middot; 70 pct|Book PD 0.2782 pct &middot; marginal PD 0.4852 pct<br>Exposure 3,271 bn &middot; expected loss 9.1 bn"></rect>
-      <rect x="572.14" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="612.00" data-tip="7,475,778 subscribers &middot; 80 pct|Book PD 0.3199 pct &middot; marginal PD 0.6118 pct<br>Exposure 3,738 bn &middot; expected loss 12.0 bn"></rect>
+      <rect x="14.14" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="54.00" data-tip="934,472 subscribers &middot; 10 pct|Book PD 0.0941 pct &middot; marginal PD 0.0941 pct<br>Exposure 467 bn &middot; expected loss 0.4 bn"></rect>
+      <rect x="93.86" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="133.71" data-tip="1,868,944 subscribers &middot; 20 pct|Book PD 0.1234 pct &middot; marginal PD 0.1527 pct<br>Exposure 934 bn &middot; expected loss 1.2 bn"></rect>
+      <rect x="173.57" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="213.43" data-tip="2,803,416 subscribers &middot; 30 pct|Book PD 0.1384 pct &middot; marginal PD 0.1684 pct<br>Exposure 1,402 bn &middot; expected loss 1.9 bn"></rect>
+      <rect x="253.29" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="293.14" data-tip="3,737,889 subscribers &middot; 40 pct|Book PD 0.1564 pct &middot; marginal PD 0.2104 pct<br>Exposure 1,869 bn &middot; expected loss 2.9 bn"></rect>
+      <rect x="333.00" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="372.86" data-tip="4,672,361 subscribers &middot; 50 pct|Book PD 0.1790 pct &middot; marginal PD 0.2694 pct<br>Exposure 2,336 bn &middot; expected loss 4.2 bn"></rect>
+      <rect x="412.71" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="452.57" data-tip="5,606,833 subscribers &middot; 60 pct|Book PD 0.2016 pct &middot; marginal PD 0.3146 pct<br>Exposure 2,803 bn &middot; expected loss 5.7 bn"></rect>
+      <rect x="492.43" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="532.29" data-tip="6,541,306 subscribers &middot; 70 pct|Book PD 0.2308 pct &middot; marginal PD 0.4060 pct<br>Exposure 3,271 bn &middot; expected loss 7.5 bn"></rect>
+      <rect x="572.14" y="26" width="79.71" height="228" fill="transparent" class="hit" data-x="612.00" data-tip="7,475,778 subscribers &middot; 80 pct|Book PD 0.2667 pct &middot; marginal PD 0.5180 pct<br>Exposure 3,738 bn &middot; expected loss 10.0 bn"></rect>
     </svg>
     </div>
     <div class="tbl-s"><table>
       <thead><tr><th>Take</th><th>Share</th><th>Book PD</th><th>Marginal PD</th><th>Exposure</th><th>Expected loss</th></tr></thead>
       <tbody>
-        <tr><td>934,472</td><td>10 pct</td><td>0.0965%</td><td>0.0965%</td><td>467 bn</td><td>0.5 bn</td></tr>
-        <tr><td>1,868,944</td><td>20 pct</td><td>0.1379%</td><td>0.1793%</td><td>934 bn</td><td>1.3 bn</td></tr>
-        <tr><td>2,803,416</td><td>30 pct</td><td>0.1595%</td><td>0.2027%</td><td>1,402 bn</td><td>2.2 bn</td></tr>
-        <tr><td>3,737,889</td><td>40 pct</td><td>0.1832%</td><td>0.2543%</td><td>1,869 bn</td><td>3.4 bn</td></tr>
-        <tr class="mark"><td>4,672,361</td><td>50 pct</td><td>0.2094%</td><td>0.3142%</td><td>2,336 bn</td><td>4.9 bn</td></tr>
-        <tr><td>5,606,833</td><td>60 pct</td><td>0.2437%</td><td>0.4152%</td><td>2,803 bn</td><td>6.8 bn</td></tr>
-        <tr><td>6,541,306</td><td>70 pct</td><td>0.2782%</td><td>0.4852%</td><td>3,271 bn</td><td>9.1 bn</td></tr>
-        <tr><td>7,475,778</td><td>80 pct</td><td>0.3199%</td><td>0.6118%</td><td>3,738 bn</td><td>12.0 bn</td></tr>
-        <tr><td>9,344,723</td><td>100 pct</td><td>0.6046%</td><td>2.5918%</td><td>4,672 bn</td><td>28.2 bn</td></tr>
+        <tr><td>934,472</td><td>10 pct</td><td>0.0941%</td><td>0.0941%</td><td>467 bn</td><td>0.4 bn</td></tr>
+        <tr><td>1,868,944</td><td>20 pct</td><td>0.1234%</td><td>0.1527%</td><td>934 bn</td><td>1.2 bn</td></tr>
+        <tr><td>2,803,416</td><td>30 pct</td><td>0.1384%</td><td>0.1684%</td><td>1,402 bn</td><td>1.9 bn</td></tr>
+        <tr><td>3,737,889</td><td>40 pct</td><td>0.1564%</td><td>0.2104%</td><td>1,869 bn</td><td>2.9 bn</td></tr>
+        <tr class="mark"><td>4,672,361</td><td>50 pct</td><td>0.1790%</td><td>0.2694%</td><td>2,336 bn</td><td>4.2 bn</td></tr>
+        <tr><td>5,606,833</td><td>60 pct</td><td>0.2016%</td><td>0.3146%</td><td>2,803 bn</td><td>5.7 bn</td></tr>
+        <tr><td>6,541,306</td><td>70 pct</td><td>0.2308%</td><td>0.4060%</td><td>3,271 bn</td><td>7.5 bn</td></tr>
+        <tr><td>7,475,778</td><td>80 pct</td><td>0.2667%</td><td>0.5180%</td><td>3,738 bn</td><td>10.0 bn</td></tr>
+        <tr><td>8,410,250</td><td>90 pct</td><td>0.3323%</td><td>0.8571%</td><td>4,205 bn</td><td>14.0 bn</td></tr>
+        <tr><td>9,344,723</td><td>100 pct</td><td>0.5952%</td><td>2.9613%</td><td>4,672 bn</td><td>27.8 bn</td></tr>
       </tbody>
-      <tfoot><tr><td colspan="6">The plot stops at the 80 percent mark. The final decile's
-      marginal rate is <b>2.5918 percent</b>, four times the plot's range, and it is the row above &mdash;
-      drawing it would flatten everything the decision depends on. Marginal PD first crosses the
-      0.50 percent ceiling at the <b>80 percent</b> mark, so there is headroom past the chosen cut
-      if volume is wanted later. Exposure and loss are in billions of Toman at 500,000 per subscriber,
-      LGD 100 percent.</td></tr></tfoot>
+      <tfoot><tr><td colspan="6">The plot stops at the 80 percent mark; the last two rows are in
+      the table only. The final decile's marginal rate is <b>2.9613 percent</b>, five times the plot's
+      range, and drawing it would flatten everything the decision depends on. Marginal PD first
+      crosses the 0.50 percent ceiling at the <b>80 percent</b> mark &mdash; 7,475,778 subscribers &mdash;
+      so there is a great deal of headroom past the chosen cut. Under a 0.25 percent book ceiling the
+      model now admits <b>7,122,466</b>, up 1,346,737 on the pre-refit model. Book PD is notebook output;
+      marginal PD is derived from it across consecutive deciles. Exposure and loss are in billions of
+      Toman at 500,000 per subscriber, LGD 100 percent.</td></tr></tfoot>
     </table></div>
   </div>
 </section>
@@ -516,50 +519,52 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
 <section>
   <div class="band"><div class="n">06</div><div class="t">
     <h2>The chosen book</h2>
-    <p>The safest half of the scored population. Both rates clear the appetite ceiling, and
-    the realised rate would have to miss the model by 2.4&times; before the book breaches it.</p>
+    <p>The safest half of the scored population. Both rates clear the appetite ceiling, and the
+    realised rate would have to miss the model by 2.8&times; before the book breaches it. The refit
+    cut the book rate 14.5 percent without changing its size &mdash; and the same ceiling would now
+    carry a much larger book, which is a decision rather than a result.</p>
   </div></div>
   <div class="kpi c6">
     <div class="tile hero"><span class="k">Approved</span><span class="v">4,672,361</span>
       <span class="s">50 pct of 9,344,723 scored</span></div>
-    <div class="tile"><span class="k">Book PD</span><span class="v">0.2094%</span>
+    <div class="tile"><span class="k">Book PD</span><span class="v">0.1790%</span>
       <span class="s">against a 0.50 pct ceiling</span></div>
-    <div class="tile"><span class="k">Marginal PD</span><span class="v">0.3142%</span>
+    <div class="tile"><span class="k">Marginal PD</span><span class="v">0.2694%</span>
       <span class="s">the last subscriber admitted</span></div>
     <div class="tile"><span class="k">Exposure</span><span class="v">2,336 bn</span>
       <span class="s">Toman, at 500,000 each</span></div>
-    <div class="tile"><span class="k">Expected loss</span><span class="v">4.9 bn</span>
+    <div class="tile"><span class="k">Expected loss</span><span class="v">4.2 bn</span>
       <span class="s">Toman, LGD 100 pct</span></div>
-    <div class="tile"><span class="k">Miss to breach</span><span class="v">2.4&times;</span>
+    <div class="tile"><span class="k">Miss to breach</span><span class="v">2.8&times;</span>
       <span class="s">realised vs modelled rate</span></div>
   </div>
   <div class="card">
     <h3>Stress: how far the rate can move before the book breaches</h3>
     <div class="meter">
-      <div class="mrow" data-tip="As modelled|Loss rate 0.2094 pct &middot; 4.89 bn Toman">
-        <div class="mhead"><span>As modelled</span><span class="state ok">within</span><span class="mv">0.2094 pct &middot; 4.9 bn</span></div>
-        <div class="mtrack"><div class="mfill" style="width:31.727%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      <div class="mrow" data-tip="As modelled|Loss rate 0.1790 pct &middot; 4.18 bn Toman">
+        <div class="mhead"><span>As modelled</span><span class="state ok">within</span><span class="mv">0.1790 pct &middot; 4.2 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:27.121%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
       </div>
-      <div class="mrow" data-tip="Live-set drift, +17pct|Loss rate 0.2450 pct &middot; 5.72 bn Toman">
-        <div class="mhead"><span>Live-set drift, +17pct</span><span class="state ok">within</span><span class="mv">0.2450 pct &middot; 5.7 bn</span></div>
-        <div class="mtrack"><div class="mfill" style="width:37.121%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      <div class="mrow" data-tip="Live-set drift, +15.7pct|Loss rate 0.2071 pct &middot; 4.84 bn Toman">
+        <div class="mhead"><span>Live-set drift, +15.7pct</span><span class="state ok">within</span><span class="mv">0.2071 pct &middot; 4.8 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:31.379%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
       </div>
-      <div class="mrow" data-tip="Lending into Nowruz, 1.68x|Loss rate 0.3518 pct &middot; 8.22 bn Toman">
-        <div class="mhead"><span>Lending into Nowruz, 1.68x</span><span class="state ok">within</span><span class="mv">0.3518 pct &middot; 8.2 bn</span></div>
-        <div class="mtrack"><div class="mfill" style="width:53.302%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      <div class="mrow" data-tip="Lending into Nowruz, 1.68x|Loss rate 0.3007 pct &middot; 7.03 bn Toman">
+        <div class="mhead"><span>Lending into Nowruz, 1.68x</span><span class="state ok">within</span><span class="mv">0.3007 pct &middot; 7.0 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:45.564%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
       </div>
-      <div class="mrow" data-tip="Twice the modelled rate|Loss rate 0.4188 pct &middot; 9.78 bn Toman">
-        <div class="mhead"><span>Twice the modelled rate</span><span class="state ok">within</span><span class="mv">0.4188 pct &middot; 9.8 bn</span></div>
-        <div class="mtrack"><div class="mfill" style="width:63.455%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      <div class="mrow" data-tip="Twice the modelled rate|Loss rate 0.3580 pct &middot; 8.36 bn Toman">
+        <div class="mhead"><span>Twice the modelled rate</span><span class="state ok">within</span><span class="mv">0.3580 pct &middot; 8.4 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:54.242%;background:var(--s1)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
       </div>
-      <div class="mrow" data-tip="Three times the modelled rate|Loss rate 0.6282 pct &middot; 14.68 bn Toman">
-        <div class="mhead"><span>Three times the modelled rate</span><span class="state no">breaches</span><span class="mv">0.6282 pct &middot; 14.7 bn</span></div>
-        <div class="mtrack"><div class="mfill" style="width:95.182%;background:var(--crit)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
+      <div class="mrow" data-tip="Three times the modelled rate|Loss rate 0.5370 pct &middot; 12.55 bn Toman">
+        <div class="mhead"><span>Three times the modelled rate</span><span class="state no">breaches</span><span class="mv">0.5370 pct &middot; 12.5 bn</span></div>
+        <div class="mtrack"><div class="mfill" style="width:81.364%;background:var(--crit)"></div><div class="mref" style="left:75.758%" title="0.50 pct ceiling"></div></div>
       </div>
     </div>
     <p class="cap">The red rule on each track is the 0.50 percent ceiling. The book absorbs the
     drift measured in the live set, absorbs a Nowruz-season label, and absorbs twice the modelled
-    rate. It breaches only at three times modelled, at <b>14.7 bn</b> Toman of loss.</p>
+    rate with room to spare. It breaches only at three times modelled, at <b>12.5 bn</b> Toman of loss.</p>
   </div>
 </section>
 
@@ -602,34 +607,68 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
 <section>
   <div class="band"><div class="n">08</div><div class="t">
     <h2>What is not settled</h2>
-    <p>Six things stand between this page and a lending decision. The first one moves the cut.</p>
+    <p>The refit is done and the model is better. Six things still stand between this page and a
+    lending decision, and the first one has to be fixed before anything reads the scores.</p>
   </div></div>
   <div class="card">
     <div class="notes">
 
       <div class="note"><span class="fl" style="background:var(--crit)"></span><div class="bd">
-        <h3>This book predates the refit, so the cut will move</h3>
-        <p>The audit found a feature the model never saw: a subscriber's bar history in the
-        <i>year before</i> the feature window predicts the label at <b>13.2&times;</b> for a prior
-        two-way bar and <b>4.0&times;</b> for a one-way bar, and it holds at every level of
-        <code>rev_months</code>. Six <code>pre_*</code> columns are now in
-        <code>42_model_datasets.sql</code> and the refit has not run. Expect the ranking to
-        improve on 0.8017 and the safest-4,672,361 to be a <i>different set of subscribers</i>.
-        Re-cut before lending.</p></div></div>
+        <h3>The handover table was loaded twice &mdash; fix it before anything reads it</h3>
+        <p>The upload cell reported <code>Table ... exists with 9344723 rows. Appending data.</code>
+        and then inserted a second full set keyed on the same <code>sbrp_id</code>. The table now
+        holds the pre-refit scores <i>and</i> the refit scores mixed together, so
+        <code>ORDER BY pd_4m LIMIT 4672361</code> returns a book from neither model, and any join on
+        <code>sbrp_id</code> fans out 2&times;. <code>COUNT(DISTINCT sbrp_id)</code> still reads
+        9,344,723, so the obvious check passes while the table is wrong. The cell's execution count
+        is null, so it had not finished &mdash; which makes it worse, because an arbitrary subset is
+        double-scored. Old and new rows are indistinguishable, so no dedupe is honest here:
+        <code>50_handover_repair.sql</code> measures the damage, drops the table and verifies the
+        rebuild.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--good)"></span><div class="bd">
+        <h3>The refit worked, and it moved the linear model most</h3>
+        <p>Bar history from the year before the feature window lifted test AUC from
+        <b>0.8017 to 0.8278</b> and cut the book rate at 4,672,361 from <b>0.2094 to 0.1790 percent</b>,
+        a 14.5 percent reduction at the same book size. The largest book under a 0.25 percent ceiling
+        grew from 5,775,729 to <b>7,122,466</b>. Most of the gain is linear &mdash; logistic valid AUC rose
+        +0.0458 against boosting's +0.0239 &mdash; which means a prior bar is close to a straight
+        additive signal and did not need a tree to find it.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
+        <h3>The model over-predicts risk at the safe end, which is where the book is</h3>
+        <p>Across the safest three deciles of test it predicts <b>0.1038 percent</b> against an observed
+        <b>0.0806</b> &mdash; a ratio of <b>0.776</b>, and the worst single decile sits at 0.677 where the
+        pre-refit worst was 0.822. Observed risk is still monotone across all ten deciles, so the
+        <i>ranking</i> is sound and the book is drawn by rank. The direction is conservative: the book
+        should come in at or under 0.1790 percent rather than above it. Worth knowing before the
+        0.1790 figure is quoted as a point estimate.</p></div></div>
 
       <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
         <h3>Trust the ranking, not the level</h3>
-        <p>Thirteen features shifted significantly between the training and live windows, led by
+        <p>Twelve features shifted significantly between the training and live windows, led by
         <code>rev_max</code> at PSI <b>3.0223</b>. The live set scores a mean PD of
-        <b>0.6046 percent</b> against test's observed <b>0.5146</b> &mdash; 17 percent higher. That is
+        <b>0.5952 percent</b> against test's observed <b>0.5146</b> &mdash; 15.7 percent higher. That is
         inflation showing up in the level, not a worse population. The safest-N ordering survives a
-        monotone level shift; the absolute PD does not.</p></div></div>
+        monotone level shift; the absolute PD does not. The six new <code>pre_*</code> features are the
+        most stable in the set, which is what a count of past bars should be.</p></div></div>
+
+      <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
+        <h3>Two of the new features came back with their drift unmeasured</h3>
+        <p><code>pre_ow_months</code> and <code>pre_tw_months</code> returned <b>nan</b> for PSI. That was
+        my bug, not the data's: the function sent any column with more than ten distinct values to
+        quantile bins, and these hold thirteen values of which about 99.9 percent are zero, so every
+        quantile edge collapsed onto 0 and it gave up. Cardinality was the wrong test; concentration
+        is what breaks quantiles. Fixed and verified against a synthetic column of the same shape.
+        A caveat survives the fix: PSI weights by prevalence, so tripling the rate of a 0.1 percent
+        feature still reads 0.0023. For these two, watch the rate in the non-zero tail instead &mdash;
+        that tail is where the 13.2&times; lift lives.</p></div></div>
 
       <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
         <h3>Two book rates that should agree, do not</h3>
-        <p>The Trino audit returns a book PD of <b>0.21318 percent</b> where the notebook returns
-        <b>0.2094</b> &mdash; 1.8 percent apart, and not yet explained. Small enough not to change the
-        decision, large enough that it has to be chased before the figure goes in front of anyone.</p></div></div>
+        <p>On the pre-refit scores the Trino audit returned a book PD of <b>0.21318 percent</b> where
+        the notebook returned <b>0.2094</b> &mdash; 1.8 percent apart, and never explained. It cannot be
+        re-tested until the handover table is rebuilt, so it carries forward unresolved.</p></div></div>
 
       <div class="note"><span class="fl" style="background:var(--warn)"></span><div class="bd">
         <h3>The base itself does not reconcile</h3>
