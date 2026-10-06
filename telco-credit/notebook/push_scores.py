@@ -47,8 +47,19 @@ def connect():
 def main():
     if not os.path.exists(SCORES):
         sys.exit(f"{SCORES} not found - run the notebook first.")
-    df = pd.read_csv(SCORES, usecols=["sbrp_id", "pd_4m", "grade"])
+    head = pd.read_csv(SCORES, nrows=0)
+    # pay_cover and tenure_m are the TIE-BREAK keys. Isotonic emits a step
+    # function, so a block of subscribers share one pd_4m and "the safest N"
+    # is not a definition without them - measured at 579,159 subscribers,
+    # 12.4 pct of the book, decided by sort order alone. Carrying them here
+    # means 51_book_cut.sql cuts the same book this file does.
+    extra = [c for c in ("pay_cover", "tenure_m") if c in head.columns]
+    df = pd.read_csv(SCORES, usecols=["sbrp_id", "pd_4m", "grade"] + extra)
     print(f"read {len(df):,} scores from {SCORES}")
+    if len(extra) < 2:
+        print(f"  NOTE no {sorted({'pay_cover','tenure_m'} - set(extra))} column - "
+              f"re-run the training notebook to get the tie-break keys, or the")
+        print(f"  cut falls back to sbrp_id alone: reproducible, but arbitrary.")
 
     # Guard the two things that would make the audit downstream meaningless.
     dup = len(df) - df.sbrp_id.nunique()
@@ -66,19 +77,28 @@ def main():
 
     cur.execute(f"DROP TABLE IF EXISTS {full}")
     cur.fetchall()
-    cur.execute(f"CREATE TABLE {full} ("
-                f"sbrp_id BIGINT, pd_4m DOUBLE, grade VARCHAR)")
+    coldefs = "sbrp_id BIGINT, pd_4m DOUBLE, grade VARCHAR"
+    for c in extra:
+        coldefs += f", {c} DOUBLE"
+    # DROP then CREATE, never INSERT into what is already there. IQ.insert_df
+    # APPENDS: on 1405-07-14 it added a second full set of scores on the same
+    # keys, and COUNT(DISTINCT sbrp_id) still read correct while ORDER BY
+    # returned a book from neither model.
+    cur.execute(f"CREATE TABLE {full} ({coldefs})")
     cur.fetchall()
     print(f"  created {full}")
 
-    rows = list(df.itertuples(index=False, name=None))
+    cols = ["sbrp_id", "pd_4m", "grade"] + extra
+    rows = list(df[cols].itertuples(index=False, name=None))
     sent = 0
     for i in range(0, len(rows), CHUNK):
         batch = rows[i:i + CHUNK]
         vals = ", ".join(
-            "({:d}, {:.10g}, '{}')".format(int(a), float(b), str(c))
-            for a, b, c in batch)
-        cur.execute(f"INSERT INTO {full} (sbrp_id, pd_4m, grade) VALUES {vals}")
+            "({:d}, {:.10g}, '{}'{})".format(
+                int(r[0]), float(r[1]), str(r[2]),
+                "".join(", {:.10g}".format(float(v)) for v in r[3:]))
+            for r in batch)
+        cur.execute(f"INSERT INTO {full} ({', '.join(cols)}) VALUES {vals}")
         cur.fetchall()
         sent += len(batch)
         if (i // CHUNK) % 25 == 0 or sent == len(rows):
