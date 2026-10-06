@@ -122,3 +122,46 @@ WHERE    month_key BETWEEN 140501 AND 140506
   AND    sbrp_typ_id = 1
 GROUP BY month_key
 ORDER BY month_key;
+
+-- ---------------------------------------------------------------------------
+-- B6  HOW THIN IS THE QUALIFICATION? The screen asks for revenue at or above
+--     1,700,000 Rial (170,000 Toman) in 2 OR MORE of 6 months - not every
+--     month. So "cleared the bar" covers a subscriber who cleared it in
+--     exactly 2 months and one who cleared it in all 6, and those are not the
+--     same credit proposition.
+--
+--     dcb_score.rev_months counts months at or above 1,700,000, and the
+--     screen forces it to 2 or more, so this runs 2..6.
+-- ---------------------------------------------------------------------------
+SELECT   rev_months,
+         COUNT(*)                                       AS n_scored,
+         100.0 * COUNT(*) / SUM(COUNT(*)) OVER ()       AS pct_of_scored,
+         APPROX_PERCENTILE(rev_6m, 0.5) / 60            AS med_month_toman,
+         APPROX_PERCENTILE(rev_max, 0.5) / 10           AS med_best_month_toman
+FROM     dwbi_temp40_db.dcb_score
+GROUP BY rev_months
+ORDER BY rev_months;
+
+-- ---------------------------------------------------------------------------
+-- B7  AND DOES CLEARING IT IN MORE MONTHS MAKE A SUBSCRIBER SAFER?
+--
+--     NOTE THE BAR. dcb_model carries the 1,050,000 Rial bar, not 1,700,000 -
+--     that is deliberate, it is the bar that makes the 1404 cohort the same
+--     SIZE as the live 1405 screen. r1..r6 are not persisted, so months above
+--     the production bar cannot be recomputed here. The SHAPE of the question
+--     is the same: does bar-clearing frequency rank risk?
+--
+--     If bad_pct is flat across 2..6, then the number of months a subscriber
+--     clears the bar carries no risk information and the screen is purely a
+--     capacity rule - consistent with the marginal-admit result in 46, where
+--     the subscribers a lower bar lets in came in SAFER at 0.4749 pct.
+-- ---------------------------------------------------------------------------
+SELECT   rev_months,
+         COUNT(*)                                       AS n,
+         SUM(y)                                         AS n_bad,
+         100.0 * SUM(y) / NULLIF(COUNT(*), 0)           AS bad_pct,
+         APPROX_PERCENTILE(rev_6m, 0.5) / 60            AS med_month_toman
+FROM     dwbi_temp40_db.dcb_model
+WHERE    in_band = 1
+GROUP BY rev_months
+ORDER BY rev_months;
