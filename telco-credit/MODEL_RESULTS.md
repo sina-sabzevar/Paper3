@@ -326,3 +326,72 @@ This is the answer to the drift item that has been open since the first run — 
 a mitigation of it. The remaining work is to move the construction into
 `42_model_datasets.sql` so the columns arrive scale-free rather than being
 derived in the notebook.
+
+---
+
+# Bill shock: the effect is selection, not causation
+
+`53_bill_shock.sql` on 140401–140406, outcome a two-way bar in the two months
+after the repayment month.
+
+## Between subscribers it looks real
+
+| shock band | n | bars | rate | vs normal |
+|---|---|---|---|---|
+| bill fell | 4,393,649 | 18,086 | 0.4116% | 1.80× |
+| **normal 0.80–1.25** | 6,428,541 | 14,723 | **0.2290%** | 1.00× |
+| 1.25–1.50 | 2,441,872 | 5,948 | 0.2436% | 1.06× |
+| 1.50–2.00 — a 100k ticket | 2,141,578 | 6,501 | 0.3036% | 1.33× |
+| 2.00–3.00 — a 300k ticket | 1,138,755 | 5,143 | 0.4516% | **1.97×** |
+| over 3.00 | 796,137 | 5,741 | 0.7211% | 3.15× |
+
+## Within the same subscribers it disappears
+
+`obs_ok` leaves two rows per subscriber, so everyone in S6 contributes exactly
+one normal month and one shocked month — which is why `n_months` equals
+`n_subs`. A clean paired design, 1,169,169 subscribers.
+
+| | bars | rate |
+|---|---|---|
+| their normal month | 3,353 | 0.2868% |
+| their shocked month (≥1.5×) | 3,257 | 0.2786% |
+
+**Ratio 0.97, z = −1.18, 95% interval 0.92 to 1.02** on an unpaired standard
+error, so conservative. **A bigger bill does not make a subscriber default.**
+
+The entire S5 gradient is selection: subscribers whose bills jump are riskier
+subscribers, and that is already what the model scores them on.
+
+## It agrees with everything else we measured
+
+- S2, on coverage rather than bars: within-subscriber median cover falls
+  1.684 → 1.063. They pay a big bill **more slowly**.
+- `52` D3, from the other side: coverage between 0.10 and 1.00 carries **no**
+  excess bar risk — only "paid essentially nothing" does, at 8.3×.
+
+Slower, not worse. A bigger bill stretches the payment; it does not break it.
+
+## What that means for the product
+
+The DCB premium over a subscriber's own base risk is **1.00**, not the 1.4×
+I estimated from coverage. So expected loss is the model's PD at a one-month
+horizon, with no shock multiplier — and the one-month base rate is measured:
+**0.2208%**, 19,215 events.
+
+Three caveats, unchanged:
+
+1. A bar may lag more than the two months this window allows.
+2. The substitution share is still unknown. It can only make this safer.
+3. Nobody in this data was ever given spendable credit.
+
+`S8` splits the paired test by shock size, because S6 pools everything at 1.5×
+and over. At these counts it detects a premium above roughly 1.05× in each
+band, so a null there is a real null.
+
+## The 1405 check
+
+`S7` runs the coverage curve on 140501–140506 at the production bar. The curve
+has not flattened — premium normal → 2–3× is 1.41× in 1404 and 1.64× in 1405.
+Median bills are 1.58× to 1.73× higher, which brackets the 1.50–1.69 deflator
+from the two 30% price rises, though part of that gap is S7's richer screen
+rather than inflation alone.

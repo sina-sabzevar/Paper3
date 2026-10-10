@@ -480,3 +480,59 @@ SELECT   IF(shock IS NULL, 'z  no baseline',
 FROM     dwbi_temp40_db.dcb_shock_1405
 GROUP BY 1
 ORDER BY 1;
+
+-- ---------------------------------------------------------------------------
+-- S8  THE PAIRED TEST, SPLIT BY HOW BIG THE SHOCK WAS.
+--
+--     S6 pools every shock at 1.50x and over and finds nothing. That is the
+--     right headline, but it could hide a real effect at the extreme: if most
+--     of the shocked arm sits in the 1.50-2.00 band, a 3x-and-over effect
+--     would be averaged away. This splits the same pairs by the size of the
+--     subscriber's own shocked month.
+--
+--     The design is exactly paired. obs_ok leaves two rows per subscriber, so
+--     a subscriber who appears in both states contributes precisely one normal
+--     month and one shocked month - which is why S6's n_months and n_subs are
+--     identical. Each row below is therefore a within-person comparison, and
+--     the only thing differing between the two months is the bill.
+--
+--     n_only_shocked and n_only_normal are the DISCORDANT pairs - subscribers
+--     barred after one month but not the other. They are the whole of the
+--     evidence: concordant pairs carry none. McNemar's test on those two
+--     counts is the correct paired test, and with roughly 1,000 of them per
+--     band it can detect a premium of about 1.2x. If n_only_shocked and
+--     n_only_normal are close in every band, a bigger bill does not cause a
+--     default at any size, and the between-subscriber gradient in S5 is
+--     selection from top to bottom.
+-- ---------------------------------------------------------------------------
+WITH t AS (
+    SELECT   sbrp_id, tw_later, shock,
+             IF(shock >= 1.50, 1, 0)               AS shocked,
+             IF(shock BETWEEN 0.80 AND 1.25, 1, 0) AS normal
+    FROM     dwbi_temp40_db.dcb_shock
+    WHERE    shock IS NOT NULL AND obs_ok = 1
+),
+pairs AS (
+    SELECT   sbrp_id,
+             MAX(IF(shocked = 1, shock, NULL))     AS shock_level,
+             MAX(IF(shocked = 1, tw_later, 0))     AS tw_shocked,
+             MAX(IF(normal  = 1, tw_later, 0))     AS tw_normal
+    FROM     t
+    GROUP BY sbrp_id
+    HAVING   MAX(shocked) = 1 AND MAX(normal) = 1
+)
+SELECT   IF(shock_level < 2.00, 'a  1.50 - 2.00  a 100k ticket',
+         IF(shock_level < 3.00, 'b  2.00 - 3.00  a 300k ticket',
+                                'c  over 3.00  a light user')) AS shock_band,
+         COUNT(*)                                              AS n_pairs,
+         SUM(tw_normal)                                        AS n_bar_normal,
+         SUM(tw_shocked)                                       AS n_bar_shocked,
+         100.0 * AVG(CAST(tw_normal  AS DOUBLE))               AS pct_normal,
+         100.0 * AVG(CAST(tw_shocked AS DOUBLE))               AS pct_shocked,
+         AVG(CAST(tw_shocked AS DOUBLE))
+           / NULLIF(AVG(CAST(tw_normal AS DOUBLE)), 0)         AS premium,
+         SUM(IF(tw_shocked = 1 AND tw_normal = 0, 1, 0))       AS n_only_shocked,
+         SUM(IF(tw_normal  = 1 AND tw_shocked = 0, 1, 0))      AS n_only_normal
+FROM     pairs
+GROUP BY 1
+ORDER BY 1;
