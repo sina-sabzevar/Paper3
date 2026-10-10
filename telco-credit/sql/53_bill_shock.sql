@@ -375,3 +375,108 @@ INNER JOIN both b ON b.sbrp_id = t.sbrp_id
 WHERE    t.shocked = 1 OR t.normal = 1
 GROUP BY 1
 ORDER BY 1;
+
+-- ============================================================================
+--  S7  DOES THE CURVE STILL HOLD A YEAR LATER?
+--
+--  Everything above runs on 140401..140406. Since then prices rose twice by
+--  about 30 pct each and billing is up more than 50 pct, so the deflator from
+--  that window to today sits somewhere in 1.50x to 1.69x.
+--
+--  WHAT THAT DOES AND DOES NOT TOUCH. shock is billed over base and cover is
+--  paid over billed, both sides from the same window, so inflation cancels and
+--  every ratio above stands unchanged - the premium, the 8.3x lift, the rates.
+--  What does NOT survive is every absolute Toman figure: S3's baseline bands
+--  were cut in 1404 money, so "100k - 300k" there is roughly 150,000 to
+--  450,000 today, and a subscriber billing 170,000 today sits in that band
+--  rather than in the top one. Reading S3's bands as today's Toman would
+--  overstate the risk for exactly the subscribers this product targets.
+--
+--  WHY THIS CANNOT SIMPLY BE RE-RUN ON 1405. The full analysis needs a bill
+--  month, the payment month after it, and two further months for the bar to
+--  land - about nine months of history. The last window with all of that is
+--  1404. On 1405 the coverage curve can still be measured, which is the part
+--  that matters for stability: if it has the same shape at the same shock
+--  ratios, the 1404 premium transfers; if it has flattened or steepened, it
+--  does not and the premium needs re-measuring when 140507 onward lands.
+--
+--  Screen is the PRODUCTION bar here, 1,700,000 Rial, matching dcb_score -
+--  not the 1,050,000 used for the 1404 cohort.
+-- ============================================================================
+
+DROP TABLE IF EXISTS dwbi_temp40_db.dcb_shock_1405;
+CREATE TABLE dwbi_temp40_db.dcb_shock_1405 WITH (format='PARQUET') AS
+WITH bill AS (
+    SELECT  sbrp_id,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140501), 0) AS b1,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140502), 0) AS b2,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140503), 0) AS b3,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140504), 0) AS b4,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140505), 0) AS b5,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140506), 0) AS b6,
+            MAX(IF(sbrp_stat_id = 3, 1, 0))                AS f_oneway,
+            MAX(IF(sbrp_stat_id = 4, 1, 0))                AS f_twoway
+    FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
+    WHERE   month_key BETWEEN 140501 AND 140506
+      AND   sbrp_typ_id = 1
+    GROUP BY sbrp_id
+),
+pay AS (
+    SELECT  sbrp_id,
+            COALESCE(SUM(COALESCE(pmnt_amt,0))
+                     FILTER (WHERE day_key BETWEEN 14050501 AND 14050531), 0) AS p5,
+            COALESCE(SUM(COALESCE(pmnt_amt,0))
+                     FILTER (WHERE day_key BETWEEN 14050601 AND 14050631), 0) AS p6
+    FROM    dwbi_fact_db.v_fact_pmnt_adjmt
+    WHERE   day_key BETWEEN 14050501 AND 14050631
+    GROUP BY sbrp_id
+),
+scr AS (
+    SELECT  b.*, COALESCE(p.p5,0) AS p5, COALESCE(p.p6,0) AS p6
+    FROM    bill b
+    LEFT JOIN pay p ON p.sbrp_id = b.sbrp_id
+    WHERE   IF(b.b1>=1700000,1,0) + IF(b.b2>=1700000,1,0) + IF(b.b3>=1700000,1,0)
+          + IF(b.b4>=1700000,1,0) + IF(b.b5>=1700000,1,0) + IF(b.b6>=1700000,1,0) >= 2
+      AND   b.f_oneway = 0
+      AND   b.f_twoway = 0
+)
+SELECT   sbrp_id, bill_month, billed, base, paid_next,
+         IF(base   > 0, billed    / base,   NULL) AS shock,
+         IF(billed > 0, paid_next / billed, NULL) AS cover
+FROM     (
+    SELECT sbrp_id, 140504 AS bill_month, b4 AS billed, (b1+b2+b3)/3.0 AS base, p5 AS paid_next FROM scr
+    UNION ALL
+    SELECT sbrp_id, 140505, b5, (b2+b3+b4)/3.0, p6 FROM scr
+);
+
+-- ---------------------------------------------------------------------------
+--  Compare band for band against S1. The columns to watch are med_cover and
+--  pct_short_025 - if the fall from the normal band to the 2.00-3.00 band is
+--  about the same size as in 1404, the curve is stable and the premium
+--  transfers. The absolute med_billed_toman SHOULD be 1.5x to 1.7x higher;
+--  that is the inflation, not a change in behaviour.
+-- ---------------------------------------------------------------------------
+SELECT   IF(shock IS NULL, 'z  no baseline',
+         IF(shock < 0.80, 'a  under 0.80  bill fell',
+         IF(shock < 1.25, 'b  0.80 - 1.25  normal',
+         IF(shock < 1.50, 'c  1.25 - 1.50',
+         IF(shock < 2.00, 'd  1.50 - 2.00  a 100k ticket',
+         IF(shock < 3.00, 'e  2.00 - 3.00  a 300k ticket',
+                          'f  over 3.00  a light user')))))) AS shock_band,
+         COUNT(*)                                                AS n,
+         COUNT(cover)                                            AS n_with_bill,
+         APPROX_PERCENTILE(shock, 0.5)                           AS med_shock,
+         APPROX_PERCENTILE(billed, 0.5) / 10                     AS med_billed_toman,
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.25, 1e0, 0e0))) AS pct_short_025,
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.50, 1e0, 0e0))) AS pct_short_050,
+         APPROX_PERCENTILE(cover, 0.25)                          AS p25_cover,
+         APPROX_PERCENTILE(cover, 0.5)                           AS med_cover
+FROM     dwbi_temp40_db.dcb_shock_1405
+GROUP BY 1
+ORDER BY 1;
