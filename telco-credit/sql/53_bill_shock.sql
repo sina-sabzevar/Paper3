@@ -107,16 +107,35 @@ scr AS (
 -- what they paid the month after. Stacking them triples the sample and lets a
 -- subscriber appear in several shock bands, which is what we want - the
 -- comparison is within a person as much as between people.
-SELECT sbrp_id, 140404 AS bill_month, b4 AS billed, (b1+b2+b3)/3.0 AS base, p5 AS paid_next FROM scr
-UNION ALL
-SELECT sbrp_id, 140405, b5, (b2+b3+b4)/3.0, p6 FROM scr
-UNION ALL
-SELECT sbrp_id, 140406, b6, (b3+b4+b5)/3.0, p7 FROM scr;
+--
+-- SHOCK AND COVER ARE COMPUTED HERE, ONCE, AND NOWHERE ELSE.
+--
+-- The first version of this file divided in twenty places across four queries,
+-- each guarded inline, and one of those guards tested the wrong variable:
+--   APPROX_PERCENTILE(IF(billed > 0, billed / base, NULL), ...)
+-- tests billed and divides by base, so any subscriber with no billing in the
+-- three baseline months but a bill in the measured month divided by zero. The
+-- rest leaned on AND short-circuiting and on nested IF laziness, neither of
+-- which SQL guarantees and neither of which an optimizer is obliged to honour.
+--
+-- Two guarded divisions here, none below. A baseline of zero or less gives a
+-- NULL shock - not an error, and not a silent zero - and a month with no bill
+-- gives a NULL cover. Both then propagate as "unknown" instead of as "fine".
+SELECT   sbrp_id, bill_month, billed, base, paid_next,
+         IF(base   > 0, billed    / base,   NULL) AS shock,
+         IF(billed > 0, paid_next / billed, NULL) AS cover
+FROM     (
+    SELECT sbrp_id, 140404 AS bill_month, b4 AS billed, (b1+b2+b3)/3.0 AS base, p5 AS paid_next FROM scr
+    UNION ALL
+    SELECT sbrp_id, 140405, b5, (b2+b3+b4)/3.0, p6 FROM scr
+    UNION ALL
+    SELECT sbrp_id, 140406, b6, (b3+b4+b5)/3.0, p7 FROM scr
+);
 
 -- ---------------------------------------------------------------------------
 -- S1  THE CURVE. This is the whole point of the file.
 --
---     Read pct_short_025 down the bands: it is the share who paid less than a
+--     Read pct_short_025 down the bands: the share who paid less than a
 --     quarter of what they were billed. If it climbs with the shock, the
 --     effect is real and the size of the climb is the DCB risk premium.
 --
@@ -127,22 +146,27 @@ SELECT sbrp_id, 140406, b6, (b3+b4+b5)/3.0, p7 FROM scr;
 --                      argument for sizing the limit from their own bill
 --
 --     If the curve is FLAT, subscribers absorb a larger bill without failing
---     more, and the DCB premium over the base rate is small. That would be a
---     real and reassuring finding, not a null result.
+--     more and the DCB premium over the base rate is small. That is a real and
+--     reassuring finding, not a null result.
+--
+--     n counts every month in the band; n_with_bill counts those that could
+--     default at all. The rates are over n_with_bill - a month with no bill is
+--     dropped rather than scored as good, which would dilute every rate.
 -- ---------------------------------------------------------------------------
-SELECT   IF(base <= 0, 'z  no baseline',
-         IF(billed / base < 0.80, 'a  under 0.80  bill fell',
-         IF(billed / base < 1.25, 'b  0.80 - 1.25  normal',
-         IF(billed / base < 1.50, 'c  1.25 - 1.50',
-         IF(billed / base < 2.00, 'd  1.50 - 2.00  a 100k ticket',
-         IF(billed / base < 3.00, 'e  2.00 - 3.00  a 300k ticket',
-                                  'f  over 3.00  a light user')))))) AS shock_band,
-         COUNT(*)                                                 AS n,
-         APPROX_PERCENTILE(IF(billed > 0, billed / base, NULL), 0.5) AS med_shock,
-         APPROX_PERCENTILE(billed, 0.5) / 10                      AS med_billed_toman,
-         100.0 * AVG(IF(billed > 0 AND paid_next / billed < 0.25, 1.0, 0.0)) AS pct_short_025,
-         100.0 * AVG(IF(billed > 0 AND paid_next / billed < 0.50, 1.0, 0.0)) AS pct_short_050,
-         APPROX_PERCENTILE(IF(billed > 0, paid_next / billed, NULL), 0.5)    AS med_cover
+SELECT   IF(shock IS NULL, 'z  no baseline',
+         IF(shock < 0.80, 'a  under 0.80  bill fell',
+         IF(shock < 1.25, 'b  0.80 - 1.25  normal',
+         IF(shock < 1.50, 'c  1.25 - 1.50',
+         IF(shock < 2.00, 'd  1.50 - 2.00  a 100k ticket',
+         IF(shock < 3.00, 'e  2.00 - 3.00  a 300k ticket',
+                          'f  over 3.00  a light user')))))) AS shock_band,
+         COUNT(*)                                                AS n,
+         COUNT(cover)                                            AS n_with_bill,
+         APPROX_PERCENTILE(shock, 0.5)                           AS med_shock,
+         APPROX_PERCENTILE(billed, 0.5) / 10                     AS med_billed_toman,
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.25, 1.0, 0.0))) AS pct_short_025,
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.50, 1.0, 0.0))) AS pct_short_050,
+         APPROX_PERCENTILE(cover, 0.5)                           AS med_cover
 FROM     dwbi_temp40_db.dcb_shock
 GROUP BY 1
 ORDER BY 1;
@@ -151,9 +175,9 @@ ORDER BY 1;
 -- S2  THE SAME CURVE, BUT WITHIN A SUBSCRIBER.
 --
 --     S1 mixes two things: subscribers whose bill jumped, and subscribers who
---     are just different. A light user whose bill triples is not the same
+--     are simply different. A light user whose bill triples is not the same
 --     person as a heavy user whose bill is steady. This restricts to
---     subscribers who appear in BOTH a normal band and a shocked band, so the
+--     subscribers who appear in BOTH a normal and a shocked month, so the
 --     comparison is the same people in two states.
 --
 --     If S2's gradient is much flatter than S1's, most of S1 was composition -
@@ -161,10 +185,11 @@ ORDER BY 1;
 --     smaller than S1 suggests. Trust S2.
 -- ---------------------------------------------------------------------------
 WITH tagged AS (
-    SELECT   sbrp_id, billed, base, paid_next,
-             IF(base > 0 AND billed / base >= 1.50, 1, 0) AS shocked,
-             IF(base > 0 AND billed / base BETWEEN 0.80 AND 1.25, 1, 0) AS normal
+    SELECT   sbrp_id, billed, shock, cover,
+             IF(shock >= 1.50, 1, 0)                    AS shocked,
+             IF(shock BETWEEN 0.80 AND 1.25, 1, 0)      AS normal
     FROM     dwbi_temp40_db.dcb_shock
+    WHERE    shock IS NOT NULL
 ),
 both AS (
     SELECT   sbrp_id
@@ -173,10 +198,11 @@ both AS (
     HAVING   MAX(shocked) = 1 AND MAX(normal) = 1
 )
 SELECT   IF(t.shocked = 1, 'shocked  1.50x and over', 'normal   0.80 - 1.25x') AS state,
-         COUNT(*)                                                     AS n_months,
-         COUNT(DISTINCT t.sbrp_id)                                    AS n_subs,
-         100.0 * AVG(IF(t.billed > 0 AND t.paid_next / t.billed < 0.25, 1.0, 0.0)) AS pct_short_025,
-         APPROX_PERCENTILE(IF(t.billed > 0, t.paid_next / t.billed, NULL), 0.5)    AS med_cover
+         COUNT(*)                                                 AS n_months,
+         COUNT(DISTINCT t.sbrp_id)                                AS n_subs,
+         COUNT(t.cover)                                           AS n_with_bill,
+         100.0 * AVG(IF(t.cover IS NULL, NULL, IF(t.cover < 0.25, 1.0, 0.0))) AS pct_short_025,
+         APPROX_PERCENTILE(t.cover, 0.5)                          AS med_cover
 FROM     tagged t
 INNER JOIN both b ON b.sbrp_id = t.sbrp_id
 WHERE    t.shocked = 1 OR t.normal = 1
@@ -186,22 +212,23 @@ ORDER BY 1;
 -- ---------------------------------------------------------------------------
 -- S3  DOES A BIGGER BILL HURT A LIGHT USER MORE THAN A HEAVY ONE?
 --
---     This is the test of the whole limit-ladder design. If the shortfall rate
---     at a given SHOCK is similar across bill sizes, then the shock ratio is
---     what matters and limits should be a MULTIPLE of the subscriber's bill.
---     If light users fail more at the same ratio, the absolute amount matters
---     too and the ladder needs a floor on billing, not just a cap on limit.
+--     The test of the whole limit-ladder design. If the shortfall rate at a
+--     given SHOCK is similar across bill sizes, then the ratio is what matters
+--     and limits should be a MULTIPLE of the subscriber's bill. If light users
+--     fail more at the same ratio, the absolute amount matters too and the
+--     ladder needs a floor on billing, not just a cap on limit.
 -- ---------------------------------------------------------------------------
 SELECT   IF(base < 300000,   'a  under 30k Toman',
          IF(base < 1000000,  'b  30k - 100k',
          IF(base < 3000000,  'c  100k - 300k',
                              'd  over 300k'))) AS baseline_bill,
-         IF(base > 0 AND billed / base >= 2.00, 'shock 2x+',
-         IF(base > 0 AND billed / base >= 1.50, 'shock 1.5-2x', 'normal')) AS shock,
-         COUNT(*)                                                     AS n,
-         100.0 * AVG(IF(billed > 0 AND paid_next / billed < 0.25, 1.0, 0.0)) AS pct_short_025
+         IF(shock >= 2.00, 'shock 2x+',
+         IF(shock >= 1.50, 'shock 1.5-2x', 'normal')) AS shock_band,
+         COUNT(*)                                                 AS n,
+         COUNT(cover)                                             AS n_with_bill,
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.25, 1.0, 0.0))) AS pct_short_025
 FROM     dwbi_temp40_db.dcb_shock
-WHERE    base > 0
+WHERE    shock IS NOT NULL
 GROUP BY 1, 2
 ORDER BY 1, 2;
 
@@ -209,21 +236,23 @@ ORDER BY 1, 2;
 -- S4  THE NUMBER TO QUOTE, IF S1 AND S2 AGREE.
 --
 --     base_rate is the shortfall rate at a normal bill. shock_rate is the rate
---     at the band a 300,000 ticket puts a screen-bar subscriber in. premium is
---     the ratio between them - the multiple by which lending raises the chance
---     of a missed bill, measured rather than assumed.
+--     in the band a 300,000 ticket puts a screen-bar subscriber in. premium is
+--     the ratio - the multiple by which a raised bill lifts the chance of a
+--     missed payment, measured rather than assumed.
 --
---     Applied to a book: expected shortfall = base PD from the model x premium.
---     Say so with the proxy caveat attached, every time.
+--     Applied to a book: expected shortfall = the model's PD x premium. Say it
+--     with the substitution caveat attached, every time: if subscribers are
+--     moving spending they already had onto the bill rather than adding to it,
+--     the true premium is lower than this and nothing here says how much.
 -- ---------------------------------------------------------------------------
-SELECT   100.0 * AVG(IF(billed > 0 AND base > 0 AND billed / base BETWEEN 0.80 AND 1.25
-                        AND paid_next / billed < 0.25, 1.0, 0.0))
-         / NULLIF(AVG(IF(base > 0 AND billed / base BETWEEN 0.80 AND 1.25, 1.0, 0.0)), 0)
-                                                                      AS base_rate_pct,
-         100.0 * AVG(IF(billed > 0 AND base > 0 AND billed / base BETWEEN 2.00 AND 3.00
-                        AND paid_next / billed < 0.25, 1.0, 0.0))
-         / NULLIF(AVG(IF(base > 0 AND billed / base BETWEEN 2.00 AND 3.00, 1.0, 0.0)), 0)
-                                                                      AS shock_rate_pct,
-         SUM(IF(base > 0 AND billed / base BETWEEN 0.80 AND 1.25, 1, 0))  AS n_normal,
-         SUM(IF(base > 0 AND billed / base BETWEEN 2.00 AND 3.00, 1, 0))  AS n_shocked
+SELECT   100.0 * AVG(IF(cover < 0.25, 1.0, 0.0))
+             FILTER (WHERE shock BETWEEN 0.80 AND 1.25 AND cover IS NOT NULL) AS base_rate_pct,
+         100.0 * AVG(IF(cover < 0.25, 1.0, 0.0))
+             FILTER (WHERE shock BETWEEN 2.00 AND 3.00 AND cover IS NOT NULL) AS shock_rate_pct,
+         AVG(IF(cover < 0.25, 1.0, 0.0))
+             FILTER (WHERE shock BETWEEN 2.00 AND 3.00 AND cover IS NOT NULL)
+         / NULLIF(AVG(IF(cover < 0.25, 1.0, 0.0))
+             FILTER (WHERE shock BETWEEN 0.80 AND 1.25 AND cover IS NOT NULL), 0) AS premium,
+         COUNT(*) FILTER (WHERE shock BETWEEN 0.80 AND 1.25 AND cover IS NOT NULL) AS n_normal,
+         COUNT(*) FILTER (WHERE shock BETWEEN 2.00 AND 3.00 AND cover IS NOT NULL) AS n_shocked
 FROM     dwbi_temp40_db.dcb_shock;
