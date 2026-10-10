@@ -119,10 +119,30 @@ pay AS (
     WHERE   day_key BETWEEN 14040501 AND 14040730
     GROUP BY sbrp_id
 ),
+bars AS (
+    -- The outcome that actually matters, carried alongside the payment ratio.
+    -- 52 D3 showed why this is needed: among subscribers who underpaid in the
+    -- repayment month, only the bottom band - cover under 0.10 - carried any
+    -- excess risk at all, at 8.3x. The 0.10-1.00 bands sat at 0.16-0.23 pct,
+    -- indistinguishable from subscribers who paid in full. So a cover ratio is
+    -- largely PAYMENT RHYTHM, not credit failure, and a premium measured on it
+    -- measures rhythm too.
+    SELECT   sbrp_id,
+             MAX(IF(month_key = 140407 AND sbrp_stat_id = 4, 1, 0)) AS tw07,
+             MAX(IF(month_key = 140408 AND sbrp_stat_id = 4, 1, 0)) AS tw08,
+             MAX(IF(month_key = 140409 AND sbrp_stat_id = 4, 1, 0)) AS tw09
+    FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip
+    WHERE    month_key BETWEEN 140407 AND 140409
+      AND    sbrp_typ_id = 1
+    GROUP BY sbrp_id
+),
 scr AS (
-    SELECT  b.*, COALESCE(p.p5,0) AS p5, COALESCE(p.p6,0) AS p6, COALESCE(p.p7,0) AS p7
+    SELECT  b.*, COALESCE(p.p5,0) AS p5, COALESCE(p.p6,0) AS p6, COALESCE(p.p7,0) AS p7,
+            COALESCE(bb.tw07,0) AS tw07, COALESCE(bb.tw08,0) AS tw08,
+            COALESCE(bb.tw09,0) AS tw09
     FROM    bill b
     LEFT JOIN pay p ON p.sbrp_id = b.sbrp_id
+    LEFT JOIN bars bb ON bb.sbrp_id = b.sbrp_id
     WHERE   IF(b.b1>=1050000,1,0) + IF(b.b2>=1050000,1,0) + IF(b.b3>=1050000,1,0)
           + IF(b.b4>=1050000,1,0) + IF(b.b5>=1050000,1,0) + IF(b.b6>=1050000,1,0) >= 2
       AND   b.f_oneway = 0
@@ -147,15 +167,23 @@ scr AS (
 -- Two guarded divisions here, none below. A baseline of zero or less gives a
 -- NULL shock - not an error, and not a silent zero - and a month with no bill
 -- gives a NULL cover. Both then propagate as "unknown" instead of as "fine".
-SELECT   sbrp_id, bill_month, billed, base, paid_next,
+--
+-- tw_later is a two-way bar in the TWO MONTHS AFTER the repayment month, and
+-- obs_ok says whether that window is observable. For bill month 140404 the
+-- window is 140406-140407, and 140406 sits inside the screen window where
+-- every barred subscriber was excluded by construction - so its bar rate is
+-- zero by definition and the row is marked unobservable rather than counted
+-- as clean. Only 140405 and 140406 carry a usable outcome.
+SELECT   sbrp_id, bill_month, billed, base, paid_next, tw_later, obs_ok,
          IF(base   > 0, billed    / base,   NULL) AS shock,
          IF(billed > 0, paid_next / billed, NULL) AS cover
 FROM     (
-    SELECT sbrp_id, 140404 AS bill_month, b4 AS billed, (b1+b2+b3)/3.0 AS base, p5 AS paid_next FROM scr
+    SELECT sbrp_id, 140404 AS bill_month, b4 AS billed, (b1+b2+b3)/3.0 AS base,
+           p5 AS paid_next, CAST(NULL AS INTEGER) AS tw_later, 0 AS obs_ok FROM scr
     UNION ALL
-    SELECT sbrp_id, 140405, b5, (b2+b3+b4)/3.0, p6 FROM scr
+    SELECT sbrp_id, 140405, b5, (b2+b3+b4)/3.0, p6, GREATEST(tw07, tw08), 1 FROM scr
     UNION ALL
-    SELECT sbrp_id, 140406, b6, (b3+b4+b5)/3.0, p7 FROM scr
+    SELECT sbrp_id, 140406, b6, (b3+b4+b5)/3.0, p7, GREATEST(tw08, tw09), 1 FROM scr
 );
 
 -- ---------------------------------------------------------------------------
@@ -286,3 +314,64 @@ SELECT   100.0 * AVG(IF(cover < 0.25, 1e0, 0e0))
          COUNT(*) FILTER (WHERE shock BETWEEN 0.80 AND 1.25 AND cover IS NOT NULL) AS n_normal,
          COUNT(*) FILTER (WHERE shock BETWEEN 2.00 AND 3.00 AND cover IS NOT NULL) AS n_shocked
 FROM     dwbi_temp40_db.dcb_shock;
+
+-- ---------------------------------------------------------------------------
+-- S5  THE PREMIUM, MEASURED ON A BAR INSTEAD OF ON A RATIO.
+--
+--     This is the number to quote. S1 to S4 measure payment coverage, and 52
+--     D3 established that coverage between 0.10 and 1.00 carries no excess
+--     risk at all - it is people paying in lumps. A premium read off coverage
+--     is therefore part rhythm. A two-way bar is the operator's own judgement
+--     that a subscriber did not pay, and it does not move with rhythm.
+--
+--     Restricted to obs_ok = 1, where the two-month outcome window sits
+--     entirely outside the screen window. Expect roughly 2 in 3 of the rows in
+--     S1, and a base rate near 0.22 pct rather than near 18.
+--
+--     premium_vs_normal is what a raised bill does to the chance of a bar. It
+--     is the figure to multiply the model's PD by when sizing DCB loss - with
+--     the substitution caveat attached every time.
+-- ---------------------------------------------------------------------------
+SELECT   IF(shock IS NULL, 'z  no baseline',
+         IF(shock < 0.80, 'a  under 0.80  bill fell',
+         IF(shock < 1.25, 'b  0.80 - 1.25  normal',
+         IF(shock < 1.50, 'c  1.25 - 1.50',
+         IF(shock < 2.00, 'd  1.50 - 2.00  a 100k ticket',
+         IF(shock < 3.00, 'e  2.00 - 3.00  a 300k ticket',
+                          'f  over 3.00  a light user')))))) AS shock_band,
+         COUNT(*)                                            AS n,
+         SUM(tw_later)                                       AS n_twoway,
+         100.0 * AVG(CAST(tw_later AS DOUBLE))               AS pct_twoway,
+         APPROX_PERCENTILE(billed, 0.5) / 10                 AS med_billed_toman
+FROM     dwbi_temp40_db.dcb_shock
+WHERE    obs_ok = 1
+GROUP BY 1
+ORDER BY 1;
+
+-- ---------------------------------------------------------------------------
+-- S6  AND WITHIN A SUBSCRIBER, on the same outcome. S2 did this for coverage;
+--     this does it for the bar. If the within-subscriber premium here is close
+--     to S5's between-subscriber one, the effect is causal rather than
+--     composition, and THIS is the multiple to use.
+-- ---------------------------------------------------------------------------
+WITH tagged AS (
+    SELECT   sbrp_id, tw_later,
+             IF(shock >= 1.50, 1, 0)               AS shocked,
+             IF(shock BETWEEN 0.80 AND 1.25, 1, 0) AS normal
+    FROM     dwbi_temp40_db.dcb_shock
+    WHERE    shock IS NOT NULL AND obs_ok = 1
+),
+both AS (
+    SELECT   sbrp_id FROM tagged GROUP BY sbrp_id
+    HAVING   MAX(shocked) = 1 AND MAX(normal) = 1
+)
+SELECT   IF(t.shocked = 1, 'shocked  1.50x and over', 'normal   0.80 - 1.25x') AS state,
+         COUNT(*)                                            AS n_months,
+         COUNT(DISTINCT t.sbrp_id)                           AS n_subs,
+         SUM(t.tw_later)                                     AS n_twoway,
+         100.0 * AVG(CAST(t.tw_later AS DOUBLE))             AS pct_twoway
+FROM     tagged t
+INNER JOIN both b ON b.sbrp_id = t.sbrp_id
+WHERE    t.shocked = 1 OR t.normal = 1
+GROUP BY 1
+ORDER BY 1;
