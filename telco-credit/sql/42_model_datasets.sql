@@ -8,7 +8,7 @@
 --  TARGET
 --      screen  revenue at or above the window's bar in 2 or more of 6 months,
 --              never one-way barred and never two-way barred in that window
---      label   y = 1 if one-way OR two-way barred in the label month(s) below
+--      label   y = 1 if two-way barred in the label month(s) below
 --
 --  TWO TABLES. Data runs 140301..140506; 1403 is deliberately unused.
 --
@@ -81,7 +81,8 @@
 --
 --  GUARDED
 --      age_on_net_months       raw range -232 to 1,285 -> clipped to 0..480
---      available_credit        raw -3.6bn to 40.9tn Rial -> winsorised at
+--      available_credit        SEE THE WARNING BELOW before using it in
+--                              production. Raw -3.6bn to 40.9tn Rial -> winsorised at
 --                              500,000,000
 --      arpu                    23.8 pct NULL, and the tax is zero where arpu
 --                              is NULL, so the KPI expression yields 0 rather
@@ -180,7 +181,7 @@ pre AS (
 ),
 lab AS (
     SELECT   sbrp_id,
-             MAX(IF(sbrp_stat_id IN (3, 4), 1, 0))  AS y,
+             MAX(IF(sbrp_stat_id = 4, 1, 0))  AS y,
              COUNT(DISTINCT month_key)        AS n_label_months
     FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip
     WHERE    month_key IN (140408)

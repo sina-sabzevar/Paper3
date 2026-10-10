@@ -26,12 +26,25 @@ PROD_BAR   = 1_700_000    # 170,000 Toman in Rial - the PRODUCTION bar
 #   "any_bar"  either. "The operator acted on non-payment", which is what
 #              failing to settle a DCB draw actually looks like.
 #
-#  DEFAULT any_bar. The four-month product used twoway because it had four
-#  months for the severe event to land. A one-month product does not, and a
-#  label too rare to train on is worse than one slightly broader than the
-#  contract. 52_one_month_label_choice.sql measures all three before this is
-#  settled - do not change it on argument alone.
-LABEL_EVENT = "any_bar"
+#  DEFAULT twoway, and any_bar was WRONG. DCB credit is a separate pool from
+#  telco credit - DCB credit cannot buy packages, calls or SMS, and telco
+#  credit cannot pay for VOD, bills or other off-net services. A ONE-WAY bar
+#  restricts telco usage, so a DCB default cannot cause one. Labelling on
+#  "either bar" would have trained the model on telco arrears and called it DCB
+#  risk. twoway stays because it is the operator's own severe judgement that a
+#  subscriber did not settle, which is the nearest thing in history to the real
+#  event.
+#
+#  NEITHER IS THE RIGHT LABEL, ONLY THE AVAILABLE ONE. The draw lands on the
+#  bill and the bill must be settled next month, so a DCB default is AN UNPAID
+#  INVOICE, not a service bar. That is measurable from payments against
+#  billings and 52_one_month_label_choice.sql measures it - including D3, which
+#  tests whether a payment shortfall is real arrears or billing-cycle noise.
+#  Once 52 has chosen the cut, add "unpaid" here with its threshold. Do not
+#  guess the threshold: pay_to_rev_ratio on this project measured 1.40 and
+#  1.28, so most subscribers pay MORE than they are billed and a cut at 1.0
+#  would label a large innocent slice.
+LABEL_EVENT = "twoway"
 
 # Months between the end of the feature window and the start of the label: the
 # EXPOSURE window, where the subscriber draws but no repayment is due yet.
@@ -466,7 +479,8 @@ HEADER = f"""-- ================================================================
 --
 --  GUARDED
 --      age_on_net_months       raw range -232 to 1,285 -> clipped to 0..{TENURE_CAP}
---      available_credit        raw -3.6bn to 40.9tn Rial -> winsorised at
+--      available_credit        SEE THE WARNING BELOW before using it in
+--                              production. Raw -3.6bn to 40.9tn Rial -> winsorised at
 --                              {WINSOR:,}
 --      arpu                    23.8 pct NULL, and the tax is zero where arpu
 --                              is NULL, so the KPI expression yields 0 rather

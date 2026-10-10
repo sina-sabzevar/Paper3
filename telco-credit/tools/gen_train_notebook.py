@@ -213,6 +213,25 @@ USE_RELATIVE_ONLY = False
 # "scale_free" to switch.
 FEATURE_SET = "full"
 
+# DROP EVERYTHING DERIVED FROM available_credit.
+#
+# DCB credit is a separate pool, but the moment it is granted the subscriber's
+# available_credit RISES BY THE GRANT AMOUNT. So from the second cycle onward
+# avail_max, avail_avg and avail_max_rel stop describing the subscriber and
+# start describing OUR OWN LENDING DECISION. The model learned their meaning on
+# pre-DCB data where no such grant existed.
+#
+# That is a feedback loop, and the direction does not matter: whatever the
+# model learned about available_credit, granting credit now moves the feature
+# for exactly the subscribers we granted it to, and the next cycle re-scores
+# them on a number we created. Scoring the FIRST cycle is safe because no grant
+# has happened yet; every cycle after it is not.
+#
+# Left False so a re-run reproduces what was run before. Set it True before any
+# second-cycle scoring, and compare the TEST AUC - if the cost is small, drop
+# them permanently rather than carrying a feature that measures us.
+DROP_AVAIL_FEATURES = False
+
 # Not features:
 #   sbrp_id         an identity; a tree would memorise individuals
 #   y, cohort       the label and a constant tag
@@ -530,6 +549,12 @@ if dead:
     for c, nun in dead:
         print(f"  {c:16s} distinct values MODEL/SCORE {nun}")
     FEATURES = [c for c in FEATURES if c not in {d[0] for d in dead}]
+
+if DROP_AVAIL_FEATURES:
+    gone = [c for c in FEATURES if c.startswith("avail_")]
+    FEATURES = [c for c in FEATURES if c not in gone]
+    print(f"\nDROP_AVAIL_FEATURES: removed {len(gone)} columns derived from "
+          f"available_credit, which a DCB grant inflates: {gone}")
 
 if FEATURE_SET == "scale_free":
     keep = set(SCALE_FREE_KEEP) | {c for c in FEATURES if c.endswith("_sh")} | {"pay_cover"}
