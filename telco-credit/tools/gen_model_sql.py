@@ -15,6 +15,43 @@ WINSOR     = 500_000_000  # available_credit reaches 40.9 trillion raw
 TENURE_CAP = 480          # age_on_net_months runs -232 to 1,285 raw
 PROD_BAR   = 1_700_000    # 170,000 Toman in Rial - the PRODUCTION bar
 
+# ---------------------------------------------------------------------------
+#  WHAT COUNTS AS FAILING TO REPAY.
+#
+#   "twoway"   sbrp_stat_id = 4 only. Incoming service cut. Severe and LATE -
+#              it follows months of arrears, so over a one-month horizon it is
+#              both rare and mistimed for this product.
+#   "oneway"   sbrp_stat_id = 3 only. Outgoing service cut: the operator's
+#              FIRST arrears action.
+#   "any_bar"  either. "The operator acted on non-payment", which is what
+#              failing to settle a DCB draw actually looks like.
+#
+#  DEFAULT any_bar. The four-month product used twoway because it had four
+#  months for the severe event to land. A one-month product does not, and a
+#  label too rare to train on is worse than one slightly broader than the
+#  contract. 52_one_month_label_choice.sql measures all three before this is
+#  settled - do not change it on argument alone.
+LABEL_EVENT = "any_bar"
+
+# Months between the end of the feature window and the start of the label: the
+# EXPOSURE window, where the subscriber draws but no repayment is due yet.
+# Zero was right for the four-month line, whose clock started at once. One is
+# right for one-month DCB: draw in 140407, bill issued for 140407, repayment
+# due in 140408. Setting it to zero here would label on the DRAW month and
+# measure arrears that were already running before this product existed.
+DRAW_SKIP = 1
+
+# The repayment term, in months. One-month DCB means one label month. Declared
+# so a label quietly widened back to the old four-month shape is rejected
+# instead of silently changing what the model predicts.
+TERM_MONTHS = 1
+_EVENT_SQL = {"twoway":  "sbrp_stat_id = 4",
+              "oneway":  "sbrp_stat_id = 3",
+              "any_bar": "sbrp_stat_id IN (3, 4)"}[LABEL_EVENT]
+_EVENT_HUMAN = {"twoway":  "two-way barred",
+                "oneway":  "one-way barred",
+                "any_bar": "one-way OR two-way barred"}[LABEL_EVENT]
+
 # Jalali month lengths: months 1-6 have 31 days, 7-11 have 30, month 12 has 29
 # normally and 30 in a leap year. Leap years in the current 33-year cycle fall
 # at offsets {1,5,9,13,17,22,26,30} of year mod 33, making 1403 a leap year
@@ -66,9 +103,26 @@ def last_day(month_key):
 #  Each PRE window sits entirely before its own cohort's feature window, and
 #  the two are themselves 12 months apart and on the same months-of-year, so
 #  the seasonal alignment the rest of this file maintains is preserved.
+#  THE DRAW MONTH IS DELIBERATELY NOT THE LABEL MONTH.
+#
+#  The product is one-month DCB: the subscriber draws during month M, the draw
+#  lands on the bill issued for M, and that bill falls due during M+1. A bar in
+#  month M therefore CANNOT have been caused by the draw - it was caused by
+#  failing to pay the month M-1 bill, before this product existed. Labelling on
+#  M would measure carried-over arrears and call it DCB risk.
+#
+#  So features end 140406, the subscriber draws in 140407, and the label is
+#  140408 - the month the repayment was actually due. One month of exposure,
+#  observed where the failure can first appear. 140407 is neither feature nor
+#  label; it is the exposure window, and leaving it out of both is the point.
+#
+#  A bar can also lag into M+2. 52_one_month_label_choice.sql measures where
+#  the event really lands, including the rate among subscribers still clean at
+#  the end of 140407, which is the only view that separates NEW failures from
+#  arrears that were already running.
 COHORTS = [
     ("MODEL", [140401, 140402, 140403, 140404, 140405, 140406],
-              [140407, 140408, 140409, 140410], "dcb_model", 1_050_000,
+              [140408], "dcb_model", 1_050_000,
               (140301, 140312)),
     ("SCORE", [140501, 140502, 140503, 140504, 140505, 140506],
               [],                               "dcb_score", PROD_BAR,
@@ -111,6 +165,8 @@ COHORTS = [
 #  Comparing a whole-base AUC against a band AUC is comparing two different
 #  test sets and says nothing.
 # ---------------------------------------------------------------------------
+_N_LAB = len([c[2] for c in COHORTS if c[2]][0])   # LABEL MONTHS - c[2], not the whole tuple
+
 MODEL_POP    = "screened"
 SUPERSET_BAR = 520_000     # about half the MODEL bar -> roughly the top 40 pct
 
@@ -225,7 +281,7 @@ def block(name, fm, lm, table, bar, pre):
     if lm:
         L.append("lab AS (")
         L.append("    SELECT   sbrp_id,")
-        L.append("             MAX(IF(sbrp_stat_id = 4, 1, 0))  AS y,")
+        L.append(f"             MAX(IF({_EVENT_SQL}, 1, 0))  AS y,")
         L.append("             COUNT(DISTINCT month_key)        AS n_label_months")
         L.append("    FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip")
         L.append(f"    WHERE    month_key IN ({', '.join(str(m) for m in lm)})")
@@ -337,7 +393,7 @@ HEADER = f"""-- ================================================================
 --  TARGET
 --      screen  revenue at or above the window's bar in {MIN_REV_MONTHS} or more of 6 months,
 --              never one-way barred and never two-way barred in that window
---      label   y = 1 if two-way barred in the 4 months IMMEDIATELY AFTER
+--      label   y = 1 if {_EVENT_HUMAN} in the label month(s) below
 --
 --  TWO TABLES. Data runs 140301..140506; 1403 is deliberately unused.
 --
@@ -431,7 +487,7 @@ HEADER = f"""-- ================================================================
 -- ============================================================================
 """
 
-FOOTER = """
+FOOTER = f"""
 -- ---------------------------------------------------------------------------
 -- T1  CHECK BEFORE EXPORTING ANYTHING.
 --
@@ -457,7 +513,7 @@ SELECT  'MODEL' AS tbl, COUNT(*) AS n, SUM(y) AS n_bad,
         APPROX_PERCENTILE(rev_6m, 0.5) / 60              AS med_month_toman,
         APPROX_PERCENTILE(rev_6m, 0.5)                   AS med_rev_6m_rial,
         APPROX_PERCENTILE(CAST(rev_months AS DOUBLE), 0.5) AS med_rev_months,
-        SUM(IF(n_label_months >= 4, 1, 0))               AS n_fully_observed
+        SUM(IF(n_label_months >= {_N_LAB}, 1, 0))         AS n_fully_observed
 FROM    dwbi_temp40_db.dcb_model
 UNION ALL
 SELECT  'SCORE', COUNT(*), NULL, NULL,
@@ -623,15 +679,34 @@ def selfcheck(sql):
     if len({c[5][1] - c[5][0] for c in COHORTS}) != 1:
         bad.append("pre windows differ in span")
 
-    # The label season must match what SCORE's forward exposure will really be.
+    # The label season must match what SCORE's forward exposure will really be,
+    # counted from the END of the exposure window rather than the end of the
+    # features - DRAW_SKIP months pass before any repayment can be missed.
+    def nxt(m):
+        y, mo = m // 100, m % 100
+        return (y + 1) * 100 + 1 if mo == 12 else y * 100 + mo + 1
+
     lab = [c[2] for c in COHORTS if c[2]][0]
     sc_feat = COHORTS[-1][1]
     exposure = []
     m = sc_feat[-1]
+    for _ in range(DRAW_SKIP):
+        m = nxt(m)
     for _ in range(len(lab)):
-        y, mo = m // 100, m % 100
-        m = (y + 1) * 100 + 1 if mo == 12 else y * 100 + mo + 1
+        m = nxt(m)
         exposure.append(m)
+
+    # And the MODEL label must sit the SAME distance after its own features,
+    # or the two cohorts describe different products.
+    mdl = [c for c in COHORTS if c[2]][0]
+    want = mdl[1][-1]
+    for _ in range(DRAW_SKIP + 1):
+        want = nxt(want)
+    if len(mdl[2]) != TERM_MONTHS:
+        bad.append(f"label is {len(mdl[2])} month(s) but TERM_MONTHS is {TERM_MONTHS}")
+    if mdl[2][0] != want:
+        bad.append(f"MODEL label starts {mdl[2][0]}, but {DRAW_SKIP} draw month(s) "
+                   f"after features ending {mdl[1][-1]} puts it at {want}")
     if sorted({x % 100 for x in lab}) != sorted({x % 100 for x in exposure}):
         bad.append(f"label season {sorted({x%100 for x in lab})} does not match "
                    f"SCORE's real forward exposure "

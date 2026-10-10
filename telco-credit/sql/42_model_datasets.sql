@@ -8,7 +8,7 @@
 --  TARGET
 --      screen  revenue at or above the window's bar in 2 or more of 6 months,
 --              never one-way barred and never two-way barred in that window
---      label   y = 1 if two-way barred in the 4 months IMMEDIATELY AFTER
+--      label   y = 1 if one-way OR two-way barred in the label month(s) below
 --
 --  TWO TABLES. Data runs 140301..140506; 1403 is deliberately unused.
 --
@@ -103,7 +103,7 @@
 
 
 -- ---------------------------------------------------------------------------
--- MODEL   features 140401..140406, label 140407..140410
+-- MODEL   features 140401..140406, label 140408..140408
 --          bar 1,050,000 Rial
 -- ---------------------------------------------------------------------------
 
@@ -180,10 +180,10 @@ pre AS (
 ),
 lab AS (
     SELECT   sbrp_id,
-             MAX(IF(sbrp_stat_id = 4, 1, 0))  AS y,
+             MAX(IF(sbrp_stat_id IN (3, 4), 1, 0))  AS y,
              COUNT(DISTINCT month_key)        AS n_label_months
     FROM     dwbi_fact_db.v_fact_sbrp_mthly_cip
-    WHERE    month_key IN (140407, 140408, 140409, 140410)
+    WHERE    month_key IN (140408)
       AND    sbrp_typ_id = 1
     GROUP BY sbrp_id
 ),
@@ -414,7 +414,7 @@ SELECT  'MODEL' AS tbl, COUNT(*) AS n, SUM(y) AS n_bad,
         APPROX_PERCENTILE(rev_6m, 0.5) / 60              AS med_month_toman,
         APPROX_PERCENTILE(rev_6m, 0.5)                   AS med_rev_6m_rial,
         APPROX_PERCENTILE(CAST(rev_months AS DOUBLE), 0.5) AS med_rev_months,
-        SUM(IF(n_label_months >= 4, 1, 0))               AS n_fully_observed
+        SUM(IF(n_label_months >= 1, 1, 0))         AS n_fully_observed
 FROM    dwbi_temp40_db.dcb_model
 UNION ALL
 SELECT  'SCORE', COUNT(*), NULL, NULL,
