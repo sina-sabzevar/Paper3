@@ -177,22 +177,22 @@ FROM     dwbi_temp40_db.dcb_label_menu;
 --     enough to fit - D4 says what thick enough means.
 -- ---------------------------------------------------------------------------
 SELECT   'cover_strict < 0.10' AS rule, SUM(IF(cover_strict < 0.10, 1, 0)) AS n_bad,
-         100.0 * AVG(IF(cover_strict < 0.10, 1.0, 0.0)) AS pct
+         100.0 * AVG(IF(cover_strict < 0.10, 1e0, 0e0)) AS pct
 FROM dwbi_temp40_db.dcb_label_menu WHERE cover_strict IS NOT NULL
 UNION ALL SELECT 'cover_strict < 0.25', SUM(IF(cover_strict < 0.25, 1, 0)),
-         100.0 * AVG(IF(cover_strict < 0.25, 1.0, 0.0))
+         100.0 * AVG(IF(cover_strict < 0.25, 1e0, 0e0))
 FROM dwbi_temp40_db.dcb_label_menu WHERE cover_strict IS NOT NULL
 UNION ALL SELECT 'cover_strict < 0.50', SUM(IF(cover_strict < 0.50, 1, 0)),
-         100.0 * AVG(IF(cover_strict < 0.50, 1.0, 0.0))
+         100.0 * AVG(IF(cover_strict < 0.50, 1e0, 0e0))
 FROM dwbi_temp40_db.dcb_label_menu WHERE cover_strict IS NOT NULL
 UNION ALL SELECT 'cover_window < 0.25', SUM(IF(cover_window < 0.25, 1, 0)),
-         100.0 * AVG(IF(cover_window < 0.25, 1.0, 0.0))
+         100.0 * AVG(IF(cover_window < 0.25, 1e0, 0e0))
 FROM dwbi_temp40_db.dcb_label_menu WHERE cover_window IS NOT NULL
 UNION ALL SELECT 'cover_window < 0.50', SUM(IF(cover_window < 0.50, 1, 0)),
-         100.0 * AVG(IF(cover_window < 0.50, 1.0, 0.0))
+         100.0 * AVG(IF(cover_window < 0.50, 1e0, 0e0))
 FROM dwbi_temp40_db.dcb_label_menu WHERE cover_window IS NOT NULL
 UNION ALL SELECT 'cover_cum < 0.75', SUM(IF(cover_cum < 0.75, 1, 0)),
-         100.0 * AVG(IF(cover_cum < 0.75, 1.0, 0.0))
+         100.0 * AVG(IF(cover_cum < 0.75, 1e0, 0e0))
 FROM dwbi_temp40_db.dcb_label_menu WHERE cover_cum IS NOT NULL
 UNION ALL SELECT 'two-way bar in 140408 (old style)', SUM(tw_08),
          100.0 * AVG(CAST(tw_08 AS DOUBLE))
@@ -249,7 +249,7 @@ FROM     dwbi_temp40_db.dcb_label_menu;
 -- ---------------------------------------------------------------------------
 SELECT   rev_months,
          COUNT(*)                                             AS n,
-         100.0 * AVG(IF(cover_strict < 0.25, 1.0, 0.0))       AS pct_unpaid_025,
+         100.0 * AVG(IF(cover_strict < 0.25, 1e0, 0e0))       AS pct_unpaid_025,
          100.0 * AVG(CAST(tw_08 AS DOUBLE))                   AS pct_twoway_08,
          100.0 * AVG(CAST(tw_later AS DOUBLE))                AS pct_twoway_later
 FROM     dwbi_temp40_db.dcb_label_menu

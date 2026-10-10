@@ -109,7 +109,7 @@ SELECT   COUNT(*)                                                  AS n_subs,
                                                                    AS med_gap_toman,
          APPROX_PERCENTILE(COALESCE(p.paid_6m,0) - b.billed_6m, 0.9) / 10
                                                                    AS p90_gap_toman,
-         100.0 * AVG(IF(COALESCE(p.paid_6m,0) > b.billed_6m, 1.0, 0.0))
+         100.0 * AVG(IF(COALESCE(p.paid_6m,0) > b.billed_6m, 1e0, 0e0))
                                                                    AS pct_paid_more_than_billed,
          APPROX_PERCENTILE(IF(b.billed_6m > 0,
                               CAST(COALESCE(p.paid_6m,0) AS DOUBLE) / b.billed_6m,

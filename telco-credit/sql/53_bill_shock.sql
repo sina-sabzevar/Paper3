@@ -55,6 +55,32 @@
 --
 --  Jalali day counts: months 1-6 have 31 days, month 7 has 30.
 --
+--  TWO THINGS THE FIRST RUN TAUGHT US. Both are recorded here because both
+--  will bite again otherwise.
+--
+--  1. EVERY RATE CAME BACK ROUNDED TO THE NEAREST TEN POINTS - 20, 30, 40, 50
+--     and nothing between. In Trino the literal 1.0 is DECIMAL(2,1), not
+--     DOUBLE, and avg() over a decimal KEEPS ITS SCALE: avg(DECIMAL(2,1)) is
+--     DECIMAL(38,1), so the mean was rounded to one decimal place before being
+--     multiplied by 100. A true 23.4 pct came back as 20. Every rate aggregate
+--     in this project now uses 1e0 and 0e0, which are DOUBLE literals. The
+--     percentiles were never affected, which is why med_cover carried the
+--     finding while the pct columns were flat.
+--
+--  2. COVER AT A NORMAL BILL IS ABOUT 1.5, NOT 1.0. Subscribers pay half again
+--     what "arpu minus tax" says they were billed, and 54 E5 shows the same
+--     thing as a roughly constant RATIO across billing bands - 1.68, 1.66,
+--     1.61, 1.41 - rather than a constant amount. A deposit or a prepayment
+--     habit would be a constant amount. A constant ratio says arpu minus tax
+--     is probably NOT the whole invoice, more like 60 pct of it.
+--
+--     shock is a ratio, so it is unaffected - both sides scale together. cover
+--     is inflated by that factor, so a 0.25 cut is really about 0.16 of the
+--     true invoice. The thresholds below now run to 1.00 and 1.50 as well, and
+--     p10/p25 are reported, so the shape can be read without committing to one
+--     cut. Until 54 E3 says which column is the real invoice total, read cover
+--     RELATIVE to the normal band rather than against 1.0.
+--
 --  NO percent character anywhere. NO CASE expressions.
 -- ============================================================================
 
@@ -164,8 +190,12 @@ SELECT   IF(shock IS NULL, 'z  no baseline',
          COUNT(cover)                                            AS n_with_bill,
          APPROX_PERCENTILE(shock, 0.5)                           AS med_shock,
          APPROX_PERCENTILE(billed, 0.5) / 10                     AS med_billed_toman,
-         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.25, 1.0, 0.0))) AS pct_short_025,
-         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.50, 1.0, 0.0))) AS pct_short_050,
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.25, 1e0, 0e0))) AS pct_short_025,
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.50, 1e0, 0e0))) AS pct_short_050,
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 1.00, 1e0, 0e0))) AS pct_short_100,
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 1.50, 1e0, 0e0))) AS pct_short_150,
+         APPROX_PERCENTILE(cover, 0.10)                          AS p10_cover,
+         APPROX_PERCENTILE(cover, 0.25)                          AS p25_cover,
          APPROX_PERCENTILE(cover, 0.5)                           AS med_cover
 FROM     dwbi_temp40_db.dcb_shock
 GROUP BY 1
@@ -201,7 +231,7 @@ SELECT   IF(t.shocked = 1, 'shocked  1.50x and over', 'normal   0.80 - 1.25x') A
          COUNT(*)                                                 AS n_months,
          COUNT(DISTINCT t.sbrp_id)                                AS n_subs,
          COUNT(t.cover)                                           AS n_with_bill,
-         100.0 * AVG(IF(t.cover IS NULL, NULL, IF(t.cover < 0.25, 1.0, 0.0))) AS pct_short_025,
+         100.0 * AVG(IF(t.cover IS NULL, NULL, IF(t.cover < 0.25, 1e0, 0e0))) AS pct_short_025,
          APPROX_PERCENTILE(t.cover, 0.5)                          AS med_cover
 FROM     tagged t
 INNER JOIN both b ON b.sbrp_id = t.sbrp_id
@@ -226,7 +256,7 @@ SELECT   IF(base < 300000,   'a  under 30k Toman',
          IF(shock >= 1.50, 'shock 1.5-2x', 'normal')) AS shock_band,
          COUNT(*)                                                 AS n,
          COUNT(cover)                                             AS n_with_bill,
-         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.25, 1.0, 0.0))) AS pct_short_025
+         100.0 * AVG(IF(cover IS NULL, NULL, IF(cover < 0.25, 1e0, 0e0))) AS pct_short_025
 FROM     dwbi_temp40_db.dcb_shock
 WHERE    shock IS NOT NULL
 GROUP BY 1, 2
@@ -245,13 +275,13 @@ ORDER BY 1, 2;
 --     moving spending they already had onto the bill rather than adding to it,
 --     the true premium is lower than this and nothing here says how much.
 -- ---------------------------------------------------------------------------
-SELECT   100.0 * AVG(IF(cover < 0.25, 1.0, 0.0))
+SELECT   100.0 * AVG(IF(cover < 0.25, 1e0, 0e0))
              FILTER (WHERE shock BETWEEN 0.80 AND 1.25 AND cover IS NOT NULL) AS base_rate_pct,
-         100.0 * AVG(IF(cover < 0.25, 1.0, 0.0))
+         100.0 * AVG(IF(cover < 0.25, 1e0, 0e0))
              FILTER (WHERE shock BETWEEN 2.00 AND 3.00 AND cover IS NOT NULL) AS shock_rate_pct,
-         AVG(IF(cover < 0.25, 1.0, 0.0))
+         AVG(IF(cover < 0.25, 1e0, 0e0))
              FILTER (WHERE shock BETWEEN 2.00 AND 3.00 AND cover IS NOT NULL)
-         / NULLIF(AVG(IF(cover < 0.25, 1.0, 0.0))
+         / NULLIF(AVG(IF(cover < 0.25, 1e0, 0e0))
              FILTER (WHERE shock BETWEEN 0.80 AND 1.25 AND cover IS NOT NULL), 0) AS premium,
          COUNT(*) FILTER (WHERE shock BETWEEN 0.80 AND 1.25 AND cover IS NOT NULL) AS n_normal,
          COUNT(*) FILTER (WHERE shock BETWEEN 2.00 AND 3.00 AND cover IS NOT NULL) AS n_shocked
