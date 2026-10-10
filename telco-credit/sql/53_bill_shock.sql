@@ -24,11 +24,30 @@
 --  available of what a DCB draw does, and reading it at shock = 1.6x and 2.8x
 --  gives a defensible first loss rate for the 100,000 and 300,000 tickets.
 --
---  WHAT THIS IS NOT. A bill that rose because the subscriber used more is not
---  identical to one that rose because we lent them money - the first was their
---  own spending decision made with their own money in mind. Both are chosen
---  spending, which is why this is a usable proxy, but it is a proxy. It
---  narrows the unknown; a pilot closes it.
+--  WHAT THIS IS NOT, AND IT MATTERS MORE THAN IT FIRST LOOKS.
+--
+--  Everything above assumes the draw is NEW money on the bill. If a subscriber
+--  already pays 300,000 a month for VOD from a bank card and now routes it
+--  through DCB, their total outgoings do not change at all - the money was
+--  always leaving, only the rail changed:
+--
+--       0 pct substitution  -> real shock 2.76x
+--      50 pct substitution  -> real shock 1.88x
+--     100 pct substitution  -> real shock 1.00x
+--
+--  We do not know the substitution share, because off-net spending is not in
+--  this data. SO READ S1 TO S4 AS AN UPPER BOUND ON THE SHOCK, NOT AN
+--  ESTIMATE OF IT. The true figure sits somewhere below, and nothing here says
+--  where.
+--
+--  54_offnet_discovery.sql goes looking - the payment table may already carry
+--  a type or channel column, and subscribers pay the operator about 40 pct
+--  more than telco revenue explains, which is a gap worth identifying before
+--  anyone concludes off-net life is invisible.
+--
+--  Separately: a bill that rose from the subscriber's own usage is not
+--  identical to one we created. Both are chosen spending, which is why this is
+--  a usable proxy at all. It narrows the unknown; a pilot closes it.
 --
 --  Population: the MODEL cohort - revenue at or above 1,050,000 Rial in 2 or
 --  more of 140401..140406, never one-way and never two-way barred in that
