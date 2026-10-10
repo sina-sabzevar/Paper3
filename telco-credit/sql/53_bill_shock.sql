@@ -1,0 +1,210 @@
+-- ============================================================================
+--  BILL SHOCK: the nearest thing in history to lending someone money.
+--                                                            (Trino/Presto)
+--
+--  DCB sits on the SAME BILL as the telco charges, settled the same month. So
+--  the product does not only extend credit - it RAISES THE BILL the subscriber
+--  must pay, by the amount drawn:
+--
+--      bill before   ticket     bill after    shock
+--        170,000     100,000      270,000     1.59x    at the screen bar
+--        170,000     300,000      470,000     2.76x
+--         28,948     300,000      328,948    11.36x    the median subscriber
+--        500,000     300,000      800,000     1.60x    a heavier user
+--
+--  Every feature in the model describes a subscriber paying their NORMAL bill.
+--  None of them describes one asked to pay 2.76x it. That is a payment-shock
+--  question, not a credit-history question, and the model as built cannot
+--  answer it.
+--
+--  BUT HISTORY CAN. Bills already move month to month - usage changes, bundles
+--  change, roaming happens. So the data already contains the experiment:
+--  subscribers whose bill jumped by some factor, and what they paid next
+--  month. If coverage falls as the jump grows, that curve is the best estimate
+--  available of what a DCB draw does, and reading it at shock = 1.6x and 2.8x
+--  gives a defensible first loss rate for the 100,000 and 300,000 tickets.
+--
+--  WHAT THIS IS NOT. A bill that rose because the subscriber used more is not
+--  identical to one that rose because we lent them money - the first was their
+--  own spending decision made with their own money in mind. Both are chosen
+--  spending, which is why this is a usable proxy, but it is a proxy. It
+--  narrows the unknown; a pilot closes it.
+--
+--  Population: the MODEL cohort - revenue at or above 1,050,000 Rial in 2 or
+--  more of 140401..140406, never one-way and never two-way barred in that
+--  window. Self-contained.
+--
+--  Jalali day counts: months 1-6 have 31 days, month 7 has 30.
+--
+--  NO percent character anywhere. NO CASE expressions.
+-- ============================================================================
+
+DROP TABLE IF EXISTS dwbi_temp40_db.dcb_shock;
+CREATE TABLE dwbi_temp40_db.dcb_shock WITH (format='PARQUET') AS
+WITH bill AS (
+    SELECT  sbrp_id,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140401), 0) AS b1,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140402), 0) AS b2,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140403), 0) AS b3,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140404), 0) AS b4,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140405), 0) AS b5,
+            COALESCE(SUM(COALESCE(arpu,0)-COALESCE(tot_arpu_tax_amt,0))
+                     FILTER (WHERE month_key = 140406), 0) AS b6,
+            MAX(IF(sbrp_stat_id = 3, 1, 0))                AS f_oneway,
+            MAX(IF(sbrp_stat_id = 4, 1, 0))                AS f_twoway
+    FROM    dwbi_fact_db.v_fact_sbrp_mthly_cip
+    WHERE   month_key BETWEEN 140401 AND 140406
+      AND   sbrp_typ_id = 1
+    GROUP BY sbrp_id
+),
+pay AS (
+    SELECT  sbrp_id,
+            COALESCE(SUM(COALESCE(pmnt_amt,0))
+                     FILTER (WHERE day_key BETWEEN 14040501 AND 14040531), 0) AS p5,
+            COALESCE(SUM(COALESCE(pmnt_amt,0))
+                     FILTER (WHERE day_key BETWEEN 14040601 AND 14040631), 0) AS p6,
+            COALESCE(SUM(COALESCE(pmnt_amt,0))
+                     FILTER (WHERE day_key BETWEEN 14040701 AND 14040730), 0) AS p7
+    FROM    dwbi_fact_db.v_fact_pmnt_adjmt
+    WHERE   day_key BETWEEN 14040501 AND 14040730
+    GROUP BY sbrp_id
+),
+scr AS (
+    SELECT  b.*, COALESCE(p.p5,0) AS p5, COALESCE(p.p6,0) AS p6, COALESCE(p.p7,0) AS p7
+    FROM    bill b
+    LEFT JOIN pay p ON p.sbrp_id = b.sbrp_id
+    WHERE   IF(b.b1>=1050000,1,0) + IF(b.b2>=1050000,1,0) + IF(b.b3>=1050000,1,0)
+          + IF(b.b4>=1050000,1,0) + IF(b.b5>=1050000,1,0) + IF(b.b6>=1050000,1,0) >= 2
+      AND   b.f_oneway = 0
+      AND   b.f_twoway = 0
+)
+-- Three observations per subscriber. Each one is: a bill month, the average of
+-- the THREE months before it as the baseline the subscriber is used to, and
+-- what they paid the month after. Stacking them triples the sample and lets a
+-- subscriber appear in several shock bands, which is what we want - the
+-- comparison is within a person as much as between people.
+SELECT sbrp_id, 140404 AS bill_month, b4 AS billed, (b1+b2+b3)/3.0 AS base, p5 AS paid_next FROM scr
+UNION ALL
+SELECT sbrp_id, 140405, b5, (b2+b3+b4)/3.0, p6 FROM scr
+UNION ALL
+SELECT sbrp_id, 140406, b6, (b3+b4+b5)/3.0, p7 FROM scr;
+
+-- ---------------------------------------------------------------------------
+-- S1  THE CURVE. This is the whole point of the file.
+--
+--     Read pct_short_025 down the bands: it is the share who paid less than a
+--     quarter of what they were billed. If it climbs with the shock, the
+--     effect is real and the size of the climb is the DCB risk premium.
+--
+--     The bands to read for this product:
+--        1.50 - 2.00   a 100,000 ticket on a bill near the screen bar
+--        2.00 - 3.00   a 300,000 ticket on a bill near the screen bar
+--        over 3.00     a 300,000 ticket on a light user - which is the
+--                      argument for sizing the limit from their own bill
+--
+--     If the curve is FLAT, subscribers absorb a larger bill without failing
+--     more, and the DCB premium over the base rate is small. That would be a
+--     real and reassuring finding, not a null result.
+-- ---------------------------------------------------------------------------
+SELECT   IF(base <= 0, 'z  no baseline',
+         IF(billed / base < 0.80, 'a  under 0.80  bill fell',
+         IF(billed / base < 1.25, 'b  0.80 - 1.25  normal',
+         IF(billed / base < 1.50, 'c  1.25 - 1.50',
+         IF(billed / base < 2.00, 'd  1.50 - 2.00  a 100k ticket',
+         IF(billed / base < 3.00, 'e  2.00 - 3.00  a 300k ticket',
+                                  'f  over 3.00  a light user')))))) AS shock_band,
+         COUNT(*)                                                 AS n,
+         APPROX_PERCENTILE(IF(billed > 0, billed / base, NULL), 0.5) AS med_shock,
+         APPROX_PERCENTILE(billed, 0.5) / 10                      AS med_billed_toman,
+         100.0 * AVG(IF(billed > 0 AND paid_next / billed < 0.25, 1.0, 0.0)) AS pct_short_025,
+         100.0 * AVG(IF(billed > 0 AND paid_next / billed < 0.50, 1.0, 0.0)) AS pct_short_050,
+         APPROX_PERCENTILE(IF(billed > 0, paid_next / billed, NULL), 0.5)    AS med_cover
+FROM     dwbi_temp40_db.dcb_shock
+GROUP BY 1
+ORDER BY 1;
+
+-- ---------------------------------------------------------------------------
+-- S2  THE SAME CURVE, BUT WITHIN A SUBSCRIBER.
+--
+--     S1 mixes two things: subscribers whose bill jumped, and subscribers who
+--     are just different. A light user whose bill triples is not the same
+--     person as a heavy user whose bill is steady. This restricts to
+--     subscribers who appear in BOTH a normal band and a shocked band, so the
+--     comparison is the same people in two states.
+--
+--     If S2's gradient is much flatter than S1's, most of S1 was composition -
+--     who gets a big bill, not what a big bill does - and the DCB premium is
+--     smaller than S1 suggests. Trust S2.
+-- ---------------------------------------------------------------------------
+WITH tagged AS (
+    SELECT   sbrp_id, billed, base, paid_next,
+             IF(base > 0 AND billed / base >= 1.50, 1, 0) AS shocked,
+             IF(base > 0 AND billed / base BETWEEN 0.80 AND 1.25, 1, 0) AS normal
+    FROM     dwbi_temp40_db.dcb_shock
+),
+both AS (
+    SELECT   sbrp_id
+    FROM     tagged
+    GROUP BY sbrp_id
+    HAVING   MAX(shocked) = 1 AND MAX(normal) = 1
+)
+SELECT   IF(t.shocked = 1, 'shocked  1.50x and over', 'normal   0.80 - 1.25x') AS state,
+         COUNT(*)                                                     AS n_months,
+         COUNT(DISTINCT t.sbrp_id)                                    AS n_subs,
+         100.0 * AVG(IF(t.billed > 0 AND t.paid_next / t.billed < 0.25, 1.0, 0.0)) AS pct_short_025,
+         APPROX_PERCENTILE(IF(t.billed > 0, t.paid_next / t.billed, NULL), 0.5)    AS med_cover
+FROM     tagged t
+INNER JOIN both b ON b.sbrp_id = t.sbrp_id
+WHERE    t.shocked = 1 OR t.normal = 1
+GROUP BY 1
+ORDER BY 1;
+
+-- ---------------------------------------------------------------------------
+-- S3  DOES A BIGGER BILL HURT A LIGHT USER MORE THAN A HEAVY ONE?
+--
+--     This is the test of the whole limit-ladder design. If the shortfall rate
+--     at a given SHOCK is similar across bill sizes, then the shock ratio is
+--     what matters and limits should be a MULTIPLE of the subscriber's bill.
+--     If light users fail more at the same ratio, the absolute amount matters
+--     too and the ladder needs a floor on billing, not just a cap on limit.
+-- ---------------------------------------------------------------------------
+SELECT   IF(base < 300000,   'a  under 30k Toman',
+         IF(base < 1000000,  'b  30k - 100k',
+         IF(base < 3000000,  'c  100k - 300k',
+                             'd  over 300k'))) AS baseline_bill,
+         IF(base > 0 AND billed / base >= 2.00, 'shock 2x+',
+         IF(base > 0 AND billed / base >= 1.50, 'shock 1.5-2x', 'normal')) AS shock,
+         COUNT(*)                                                     AS n,
+         100.0 * AVG(IF(billed > 0 AND paid_next / billed < 0.25, 1.0, 0.0)) AS pct_short_025
+FROM     dwbi_temp40_db.dcb_shock
+WHERE    base > 0
+GROUP BY 1, 2
+ORDER BY 1, 2;
+
+-- ---------------------------------------------------------------------------
+-- S4  THE NUMBER TO QUOTE, IF S1 AND S2 AGREE.
+--
+--     base_rate is the shortfall rate at a normal bill. shock_rate is the rate
+--     at the band a 300,000 ticket puts a screen-bar subscriber in. premium is
+--     the ratio between them - the multiple by which lending raises the chance
+--     of a missed bill, measured rather than assumed.
+--
+--     Applied to a book: expected shortfall = base PD from the model x premium.
+--     Say so with the proxy caveat attached, every time.
+-- ---------------------------------------------------------------------------
+SELECT   100.0 * AVG(IF(billed > 0 AND base > 0 AND billed / base BETWEEN 0.80 AND 1.25
+                        AND paid_next / billed < 0.25, 1.0, 0.0))
+         / NULLIF(AVG(IF(base > 0 AND billed / base BETWEEN 0.80 AND 1.25, 1.0, 0.0)), 0)
+                                                                      AS base_rate_pct,
+         100.0 * AVG(IF(billed > 0 AND base > 0 AND billed / base BETWEEN 2.00 AND 3.00
+                        AND paid_next / billed < 0.25, 1.0, 0.0))
+         / NULLIF(AVG(IF(base > 0 AND billed / base BETWEEN 2.00 AND 3.00, 1.0, 0.0)), 0)
+                                                                      AS shock_rate_pct,
+         SUM(IF(base > 0 AND billed / base BETWEEN 0.80 AND 1.25, 1, 0))  AS n_normal,
+         SUM(IF(base > 0 AND billed / base BETWEEN 2.00 AND 3.00, 1, 0))  AS n_shocked
+FROM     dwbi_temp40_db.dcb_shock;
