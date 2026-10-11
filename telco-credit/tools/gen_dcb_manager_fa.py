@@ -65,6 +65,7 @@ def scen_metrics(lim):
                 band=band, prem=prem, loss=ann*pd1, lossp=ann*pd1*prem)
 
 MET = [scen_metrics(l) for _,_,l in SCEN]
+TAKE = [0.10, 0.20, 0.30, 0.40]      # how many of the approved actually draw
 
 _FA = {"0":"۰","1":"۱","2":"۲","3":"۳","4":"۴","5":"۵","6":"۶","7":"۷","8":"۸","9":"۹",
        ",":"٬", ".":"٫"}
@@ -193,6 +194,42 @@ DATA = {
           + " برابر بیشتر وام می‌دهد ولی "
           + fa("{:.1f}".format(MET[0]["lossp"]/MET[2]["lossp"]))
           + " برابر بیشتر زیان می‌دهد." },
+ "take": {
+   "h2": "نرخ مشارکت",
+   "p": "همه مشترکینی که تأیید می‌شوند از اعتبارشان استفاده نمی‌کنند. ارقام سناریوها "
+        "فرض می‌کنند همه استفاده کنند؛ اینجا همان ارقام در نرخ‌های واقعی‌تر مشارکت "
+        "آورده شده و بقیه مشترکین اصلاً وام نمی‌گیرند.",
+   "lendH3": "اعطایی در یک سال (میلیارد تومان)",
+   "lend": {
+     "head": ["نرخ مشارکت"] + [nm for nm, _, _ in SCEN],
+     "rows": [["{} درصد".format(fa(int(t*100)))]
+              + [f(m["ann"]*t) for m in MET]
+              + ["tot" if t == 0.40 else ""] for t in TAKE],
+     "foot": "تعداد وام‌گیرنده در هر سه سناریو یکی است، چون هر سه به همان "
+             + f(MET[0]["appr"]) + " مشترک وام می‌دهند: "
+             + "، ".join(f(MET[0]["appr"]*t) + " نفر در " + fa(int(t*100)) + " درصد"
+                          for t in TAKE) + "." },
+   "lossH3": "زیان سالانه با احتساب شوک قبض (میلیارد تومان)",
+   "loss": {
+     "head": ["نرخ مشارکت"] + [nm for nm, _, _ in SCEN],
+     "rows": [["{} درصد".format(fa(int(t*100)))]
+              + [one(m["lossp"]*t) for m in MET]
+              + ["tot" if t == 0.40 else ""] for t in TAKE],
+     "foot": "نرخ نکول و ضریب شوک با مشارکت عوض نمی‌شوند؛ فقط حجم کم می‌شود، "
+             "پس زیان دقیقاً به همان نسبت کم می‌شود." },
+   "cap": "<b>در هیچ ترکیبی از این سه سناریو با مشارکت تا ۴۰ درصد، هدف ۱۵٬۰۰۰ میلیارد "
+          "محقق نمی‌شود.</b> نزدیک‌ترین حالت، گسترده با ۴۰ درصد مشارکت است: "
+          + f(MET[0]["ann"]*0.40) + " میلیارد، یعنی "
+          + fa("{:.0f}".format(100*MET[0]["ann"]*0.40/15000)) + " درصد هدف. برای رسیدن "
+          "به هدف، گسترده به <b>" + fa("{:.0f}".format(100*15000/MET[0]["ann"]))
+          + " درصد</b> مشارکت نیاز دارد، محتاطانه به <b>"
+          + fa("{:.0f}".format(100*15000/MET[1]["ann"])) + " درصد</b>، و سخت‌گیرانه "
+          "<b>در هیچ نرخی نمی‌رسد</b> چون حتی با مشارکت کامل "
+          + f(MET[2]["ann"]) + " میلیارد است."
+          "<br><br><b>قید مهم:</b> فرض شده کسانی که وام می‌گیرند نمونه‌ای تصادفی از "
+          "تأییدشده‌ها هستند. اگر وام‌گیرنده‌ها سیستماتیک پرریسک‌تر از بقیه باشند &mdash; "
+          "که در وام‌دهی معمول است &mdash; نرخ نکول بالاتر از جدول سناریوها خواهد بود و "
+          "ارقام زیان این جدول کف هستند، نه سقف." },
  "cost": {
    "h2": "هزینه محتمل طرح",
    "p": "مرحله به مرحله، تا بشود روی هر قدمش بحث کرد.",
@@ -250,6 +287,7 @@ body.editing [data-k]{outline:1px dashed color-mix(in srgb,var(--s1) 55%,transpa
   outline-offset:3px;border-radius:3px}
 body.editing [data-k]:hover{background:color-mix(in srgb,var(--s1) 8%,transparent)}
 body.editing [data-k]:focus{outline:2px solid var(--s1);background:transparent}
+.panel table{min-width:0}
 /* the three scenarios */
 .scards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 @media (max-width:760px){.scards{grid-template-columns:1fr}}
@@ -347,6 +385,15 @@ function render() {
   });
   h.push('</tbody><tfoot><tr><td colspan="4" data-k="scen.ladFoot">' + D.scen.ladFoot
     + "</td></tr></tfoot></table></div></div>" + E("p", "cap", "scen.cap") + "</section>");
+
+  // ---- participation
+  h.push('<section><div class="head">' + E("h2", "", "take.h2") + E("p", "", "take.p")
+    + '</div><div class="split">'
+    + '<div class="panel">' + E("h3", "", "take.lendH3")
+    + table("take.lend", D.take.lend, 3) + "</div>"
+    + '<div class="panel">' + E("h3", "", "take.lossH3")
+    + table("take.loss", D.take.loss, 3) + "</div></div>"
+    + E("p", "cap", "take.cap") + "</section>");
 
   // ---- the cost
   h.push('<section><div class="head">' + E("h2", "", "cost.h2") + E("p", "", "cost.p")
