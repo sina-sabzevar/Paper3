@@ -1,7 +1,11 @@
 <title>اعتبار روی قبض</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<style>
+<span id="dcb-head" hidden><title>اعتبار روی قبض</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+</span>
+<style id="dcb-css">
 /* A Persian presentation surface. Same palette as the Latin pages; the
    typography is rebuilt, because Persian script connects and the Latin
    pages space their labels apart. */
@@ -66,7 +70,8 @@ section{margin-top:40px}
   background:var(--rule);border:1px solid var(--rule);border-radius:8px;overflow:hidden}
 @media (max-width:760px){.kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .tile{background:var(--surface);padding:16px 17px 18px;display:flex;flex-direction:column;gap:6px}
-.tile .k{font-size:12.5px;color:var(--ink-3);line-height:1.5}
+.tile{justify-content:flex-start}
+.tile .k{font-size:12.5px;color:var(--ink-3);line-height:1.5;min-height:2.6em}
 .tile .v{font-size:clamp(20px,3.2vw,26px);font-weight:600;line-height:1.3}
 .tile .v bdi{font-weight:600}
 .tile .s{font-size:12.5px;color:var(--ink-3);line-height:1.6}
@@ -134,176 +139,203 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
 a{color:var(--s1)}
 :focus-visible{outline:2px solid var(--s1);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* the editing layer */
+#bar{position:fixed;inset-block-end:16px;inset-inline-start:16px;z-index:50;
+  display:flex;gap:8px;align-items:center;background:var(--surface);
+  border:1px solid var(--rule);border-radius:999px;padding:7px 9px;
+  box-shadow:0 6px 24px rgba(0,0,0,0.16)}
+#bar button{font-family:var(--fa);font-size:13.5px;border-radius:999px;cursor:pointer;
+  padding:7px 16px;border:1px solid transparent;background:var(--raise);color:var(--ink)}
+#bar button.go{background:var(--s1);color:#fff}
+#bar button:disabled{opacity:0.45;cursor:default}
+#bar .msg{font-size:12.5px;color:var(--ink-3);padding-inline:6px;max-width:30ch}
+body.editing [data-k]{outline:1px dashed color-mix(in srgb,var(--s1) 55%,transparent);
+  outline-offset:3px;border-radius:3px}
+body.editing [data-k]:hover{background:color-mix(in srgb,var(--s1) 8%,transparent)}
+body.editing [data-k]:focus{outline:2px solid var(--s1);background:transparent}
+.hint{font-size:12.5px;color:var(--ink-3);margin-top:10px;line-height:1.85}
 </style>
+<script id="dcb-data" type="application/json">{"eyebrow": "اعتبار روی قبض · آنچه هست و آنچه هزینه دارد", "h1": "وام‌دادن به مشترک روی قبض ماه بعدش", "lede": "مشترک روی قبض تلفن همراهش اعتبار می‌گیرد و در قبض ماه بعد بازپرداخت می‌کند. هر مشترک امتیازدهی می‌شود، سقف اعتبارش متناسب با امتیازش تعیین می‌شود، و پرریسک‌ترین‌ها رد می‌شوند.", "chips": [["دوره بازپرداخت", "یک ماه"], ["سقف اعتبار", "۱۰۰٬۰۰۰ تا ۴۰۰٬۰۰۰ تومان"], ["تأییدشده", "۸٬۸۰۱٬۷۷۲"], ["همه مبالغ", "تومان"]], "kpis": [["مشترکین تأییدشده", "۸٬۸۰۱٬۷۷۲", "۹۴ درصد از کل امتیازدهی‌شده‌ها"], ["میانگین سقف اعتبار (تومان)", "۳۰۲٬۳۰۰", "بر اساس امتیاز خود مشترک"], ["اعطایی در یک سال (میلیارد تومان)", "۳۱٬۹۲۹", "۲۱۳ درصد از هدف ۱۵٬۰۰۰ میلیاردی"], ["زیان مورد انتظار (میلیارد تومان)", "۲۸٫۷ تا ۴۴٫۷", "در سال، با فرض اینکه هیچ وصولی نداشته باشیم"]], "kpiCap": "در هر لحظه فقط ۲٬۶۶۰٫۸ میلیارد تومان نزد مشترکین است؛ همان پول دوازده بار در سال برمی‌گردد و دوباره اعطا می‌شود.", "funnel": {"h2": "چه کسانی واجد شرایط‌اند", "p": "چهار بررسی روی سابقه شش ماه گذشته، و بعد امتیاز مدل.", "steps": [["همه مشترکین دائمی", "نقطه شروع", "۴۱٬۲۷۰٬۰۹۲", ""], ["قبض‌شان آن‌قدر هست که وام را تحمل کند", "حداقل ۱۷۰٬۰۰۰ تومان در ۲ ماه از ۶ ماه", "۱۰٬۰۸۷٬۹۷۵", "keep"], ["هیچ‌وقت قطع یک‌طرفه نشده‌اند", "در تمام شش ماه", "۹٬۴۳۷٬۲۴۰", "keep"], ["هیچ‌وقت قطع دوطرفه نشده‌اند", "در تمام شش ماه", "۹٬۳۴۴٬۷۲۳", "keep"], ["امتیازشان برای وام‌دهی کافی است", "مدل پرریسک‌ترین رتبه را رد می‌کند", "۸٬۸۰۱٬۷۷۲", "last"]], "drops": ["در هیچ دو ماهی ۱۷۰٬۰۰۰ تومان قبض نداشته‌اند|۳۱٬۱۸۲٬۱۱۷", "سرویس خروجی‌شان قطع شده بود|۶۵۰٬۷۳۵", "سرویس ورودی‌شان قطع شده بود|۹۲٬۵۱۷", "در پرریسک‌ترین رتبه امتیاز گرفته‌اند|۵۴۲٬۹۵۱"], "cap": "<b>بررسی اول تقریباً تمام کار را انجام می‌دهد<\/b> و ۳۱٬۱۸۲٬۱۱۷ مشترک را کنار می‌گذارد. امتیاز مدل فقط ۵۴۲٬۹۵۱ نفر دیگر را حذف می‌کند."}, "grades": {"h2": "سقف اعتبار هر مشترک", "p": "رتبه، سقف اعتبار را تعیین می‌کند. کم‌ریسک‌ترین‌ها بیشترین سقف را می‌گیرند.", "head": ["رتبه", "مشترکین", "سقف اعتبار", "احتمال نکول ۴ ماهه", "مانده در هر لحظه", "سهم از زیان"], "rows": [["A — کم‌ریسک‌ترین", "۳٬۰۲۹٬۳۹۷", "۴۰۰٬۰۰۰", "۰٫۱۴ درصد", "۱٬۲۱۱٫۸ میلیارد", "۲۲ درصد", ""], ["B", "۴٬۰۸۷٬۴۴۸", "۳۰۰٬۰۰۰", "۰٫۳۳ درصد", "۱٬۲۲۶٫۲ میلیارد", "۵۲ درصد", ""], ["C", "۱٬۰۸۵٬۷۸۷", "۱۵۰٬۰۰۰", "۰٫۷۴ درصد", "۱۶۲٫۹ میلیارد", "۱۵ درصد", ""], ["D", "۵۹۹٬۱۴۰", "۱۰۰٬۰۰۰", "۱٫۳۵ درصد", "۵۹٫۹ میلیارد", "۱۰ درصد", ""], ["E — رد می‌شود", "۵۴۲٬۹۵۱", "رد می‌شود", "۴٫۰۰ درصد", "—", "—", "off"], ["مجموع تأییدشده", "۸٬۸۰۱٬۷۷۲", "میانگین ۳۰۲٬۳۰۰", "", "۲٬۶۶۰٫۸ میلیارد", "۱۰۰ درصد", "tot"]], "foot": "<b>رتبه B نیمی از کل زیان را به دوش می‌کشد<\/b>، در حالی که دومین گروه کم‌ریسک است: بزرگ‌ترین گروه است و سقف ۳۰۰٬۰۰۰ تومانی می‌گیرد."}, "rule": {"h2": "یک قاعده که سقف‌ها باید رعایتش کنند", "p": "اعتبار روی قبض ماه بعد می‌نشیند. اینکه قبض چقدر بالا بپرد، احتمال نکول را تعیین می‌کند.", "big": "هرگز بیشتر از قبض یک ماه مشترک به او وام ندهید.", "why": "زیر این خط، قبض کمتر از دو برابر بالا می‌رود و مشترک با نرخ عادی پرداخت می‌کند. روی این خط یا بالاتر، قبض دو برابر می‌شود و <b>احتمال نکول ۱٫۷ برابر<\/b> است.", "head": ["چه بر سر قبض مشترک می‌آید", "چقدر بالا می‌رود", "نرخ بازماندن از پرداخت"], "rows": [["قبض تقریباً تکان نمی‌خورد", "کمتر از ۱٫۲۵ برابر", "نرخ عادی", "off"], ["بالا می‌رود، اما به دو برابر نمی‌رسد", "۱٫۲۵ تا ۲٫۰۰ برابر", "۱٫۱۳ برابر", ""], ["دو برابر یا بیشتر می‌شود", "۲٫۰۰ برابر و بالاتر", "۱٫۹۱ برابر", "tot"]], "foot": "اندازه‌گیری‌شده روی ۴٫۰ میلیون مشترک‑ماه. جدول سقف‌ها این قاعده را از قبل رعایت می‌کند."}, "cost": {"h2": "هزینه محتمل طرح", "p": "مرحله به مرحله، تا بشود روی هر قدمش بحث کرد.", "steps": [["۱", "۸٬۸۰۱٬۷۷۲ مشترک به‌طور میانگین ۳۰۲٬۳۰۰ تومان وام می‌گیرند", "در هر لحظه <b>۲٬۶۶۰٫۸ میلیارد تومان<\/b> نزد مشترکین است، و در طول یک سال <b>۳۱٬۹۲۹ میلیارد تومان<\/b> اعطا می‌شود."], ["۲", "نرخ نکول یک‌ماهه بین ۰٫۰۹ تا ۰٫۱۴ درصد است", "این بازه یک انتخاب است، نه عدم‌قطعیت: کف بازه یعنی وام فقط به کم‌ریسک‌ترین‌ها، سقف بازه یعنی وام به همه تأییدشده‌ها."], ["۳", "پس سالانه ۲۸٫۷ تا ۴۴٫۷ میلیارد تومان زیان می‌دهیم", "با فرض <b>هیچ وصولی<\/b> از مشترک نکول‌کرده، که عمداً بدبینانه است. در برابر ۳۱٬۹۲۹ میلیارد تومان اعطایی، نقطه میانی حدود <b>۰٫۱۲ درصد<\/b> است."]], "stressH3": "اگر زیان بدتر از مدل دربیاید", "stressHead": ["سناریو", "ضریب", "زیان سالانه", "نسبت به اعطایی"], "stressRows": [["مطابق مدل", "۱٫۰۰×", "۳۶٫۷ میلیارد", "۰٫۱۱ درصد", "tot"], ["با رانش جمعیت فعلی", "۱٫۱۶×", "۴۲٫۵ میلیارد", "۰٫۱۳ درصد", ""], ["وام‌دهی در آستانه نوروز", "۱٫۶۸×", "۶۱٫۷ میلیارد", "۰٫۱۹ درصد", ""], ["دو برابر نرخ مدل", "۲٫۰۰×", "۷۳٫۴ میلیارد", "۰٫۲۳ درصد", ""]], "stressFoot": "حتی با <b>دو برابر<\/b> نرخ مدل، زیان زیر <b>۷۳٫۴ میلیارد تومان<\/b> روی <b>۳۱٬۹۲۹ میلیارد تومان<\/b> اعطایی می‌ماند."}, "open": {"h2": "آنچه هنوز نمی‌دانیم", "p": "دو مورد که هنوز باز است.", "panels": [["هیچ مشترکی در این داده‌ها تا به حال اعتبار نگرفته است", ["امتیاز مدل رفتار مشترک را وقتی <b>وام نگرفته<\/b> توصیف می‌کند.", "<b>تنها راه پاسخ، یک اجرای آزمایشی محدود است<\/b>؛ با دوره یک‌ماهه جواب ظرف چند هفته می‌رسد."]], ["هدف ۱۵٬۰۰۰ میلیاردی، اعطای سالانه است یا مانده؟", ["با گردش ماهانه این دو عدد دوازده برابر فرق دارند.", "<b>اعطای سالانه:<\/b> ۳۱٬۹۲۹ میلیارد، بیش از دو برابر هدف. <b>مانده در هر لحظه:<\/b> ۲٬۶۶۰٫۸ میلیارد، با فاصله زیاد تا هدف."]]]}, "footer": ["تعداد مشترکین از سوابق صورتحساب ۱۴۰۵۰۱ تا ۱۴۰۵۰۶. رتبه‌ها، سقف‌ها و احتمال نکول از مدل امتیازدهی ۱۴۰۵/۰۷/۱۴ با شاخص دقت ۰٫۸۲۷۸. ارقام شوک قبض روی ۴٫۰ میلیون مشترک‑ماه.", "همه مبالغ به تومان. احتمال نکول ۴ ماهه از افق مدل می‌آید؛ ارقام ریالی بر پایه نرخ یک‌ماهه محاسبه شده‌اند."]}</script>
+<div class="wrap" dir="rtl" lang="fa"><div id="root"></div></div>
+<div id="bar" hidden></div>
+<script id="dcb-app">
+// ---------------------------------------------------------------- state
+const D = JSON.parse(document.getElementById("dcb-data").textContent);
+const root = document.getElementById("root");
+let editing = false, dirty = false, artifact = null;
 
-<div class="wrap" dir="rtl" lang="fa">
-<header>
-  <p class="eyebrow">اعتبار روی قبض &middot; آنچه هست و آنچه هزینه دارد</p>
-  <h1>وام‌دادن به مشترک روی قبض ماه بعدش</h1>
-  <p class="lede">مشترک روی قبض تلفن همراهش اعتبار می‌گیرد و در قبض ماه بعد
-  بازپرداخت می‌کند. هر مشترک امتیازدهی می‌شود، سقف اعتبارش متناسب با امتیازش
-  تعیین می‌شود، و پرریسک‌ترین‌ها رد می‌شوند.</p>
-  <div class="spec">
-    <span class="chip">دوره بازپرداخت <b>یک ماه</b></span>
-    <span class="chip">سقف اعتبار <b><bdi>۱۰۰٬۰۰۰</bdi> تا <bdi>۴۰۰٬۰۰۰</bdi> تومان</b></span>
-    <span class="chip">تأییدشده <b><bdi>۸٬۸۰۱٬۷۷۲</bdi></b></span>
-    <span class="chip">همه مبالغ <b>تومان</b></span>
-  </div>
-</header>
+const get = p => p.split(".").reduce((o, k) => o[/^\d+$/.test(k) ? +k : k], D);
+const set = (p, v) => { const k = p.split("."); const last = k.pop();
+  k.reduce((o, s) => o[/^\d+$/.test(s) ? +s : s], D)[/^\d+$/.test(last) ? +last : last] = v; };
 
-<div class="kpi" style="margin-top:26px">
-  <div class="tile"><span class="k">مشترکین تأییدشده</span><span class="v"><bdi>۸٬۸۰۱٬۷۷۲</bdi></span>
-    <span class="s"><bdi>۹۴</bdi> درصد از کل امتیازدهی‌شده‌ها</span></div>
-  <div class="tile"><span class="k">میانگین سقف اعتبار</span><span class="v"><bdi>۳۰۲٬۳۰۰</bdi></span>
-    <span class="s">بر اساس امتیاز خود مشترک</span></div>
-  <div class="tile"><span class="k">اعطایی در یک سال</span><span class="v"><bdi>۳۱٬۹۲۹</bdi> میلیارد</span>
-    <span class="s"><bdi>۲۱۳</bdi> درصد از هدف ۱۵٬۰۰۰ میلیاردی</span></div>
-  <div class="tile"><span class="k">زیان مورد انتظار</span><span class="v"><bdi>۲۸٫۷</bdi>&ndash;<bdi>۴۴٫۷</bdi> میلیارد</span>
-    <span class="s">در سال، با فرض اینکه هیچ وصولی نداشته باشیم</span></div>
-</div>
-<p class="cap">در هر لحظه فقط <b><bdi>۲٬۶۶۰٫۸</bdi> میلیارد تومان</b> نزد مشترکین است؛
-همان پول دوازده بار در سال برمی‌گردد و دوباره اعطا می‌شود.</p>
-<section>
-  <div class="head">
-    <h2>چه کسانی واجد شرایط‌اند</h2>
-    <p>چهار بررسی روی سابقه شش ماه گذشته، و بعد امتیاز مدل.</p>
-  </div>
-  <div class="card">
-    <div class="fun">
-      <div class="fstep "><div class="t">همه مشترکین دائمی<em>نقطه شروع</em></div><div class="v"><bdi>۴۱٬۲۷۰٬۰۹۲</bdi></div></div>
-      <div class="fdrop"><span>&minus; در هیچ دو ماهی ۱۷۰٬۰۰۰ تومان قبض نداشته‌اند</span><span class="v"><bdi>۳۱٬۱۸۲٬۱۱۷</bdi></span></div>
-      <div class="fstep keep"><div class="t">قبض‌شان آن‌قدر هست که وام را تحمل کند<em>حداقل ۱۷۰٬۰۰۰ تومان در ۲ ماه از ۶ ماه</em></div><div class="v"><bdi>۱۰٬۰۸۷٬۹۷۵</bdi></div></div>
-      <div class="fdrop"><span>&minus; سرویس خروجی‌شان قطع شده بود</span><span class="v"><bdi>۶۵۰٬۷۳۵</bdi></span></div>
-      <div class="fstep keep"><div class="t">هیچ‌وقت قطع یک‌طرفه نشده‌اند<em>در تمام شش ماه</em></div><div class="v"><bdi>۹٬۴۳۷٬۲۴۰</bdi></div></div>
-      <div class="fdrop"><span>&minus; سرویس ورودی‌شان قطع شده بود</span><span class="v"><bdi>۹۲٬۵۱۷</bdi></span></div>
-      <div class="fstep keep"><div class="t">هیچ‌وقت قطع دوطرفه نشده‌اند<em>در تمام شش ماه</em></div><div class="v"><bdi>۹٬۳۴۴٬۷۲۳</bdi></div></div>
-      <div class="fdrop"><span>&minus; در پرریسک‌ترین رتبه امتیاز گرفته‌اند</span><span class="v"><bdi>۵۴۲٬۹۵۱</bdi></span></div>
-      <div class="fstep last"><div class="t">امتیازشان برای وام‌دهی کافی است<em>مدل پرریسک‌ترین رتبه را رد می‌کند</em></div><div class="v"><bdi>۸٬۸۰۱٬۷۷۲</bdi></div></div>
-    </div>
-    <p class="cap"><b>بررسی اول تقریباً تمام کار را انجام می‌دهد</b> و
-    <bdi>۳۱٬۱۸۲٬۱۱۷</bdi> مشترک را کنار می‌گذارد. امتیاز مدل فقط <bdi>۵۴۲٬۹۵۱</bdi> نفر دیگر را حذف می‌کند.</p>
-  </div>
-</section>
-<section>
-  <div class="head">
-    <h2>سقف اعتبار هر مشترک</h2>
-    <p>رتبه، سقف اعتبار را تعیین می‌کند. کم‌ریسک‌ترین‌ها بیشترین سقف را
-    می‌گیرند.</p>
-  </div>
-  <div class="card">
-    <div class="tbl-s"><table>
-      <thead><tr><th>رتبه</th><th>مشترکین</th><th>سقف اعتبار</th><th>احتمال نکول ۴ ماهه</th>
-      <th>مانده در هر لحظه</th><th>سهم از زیان</th></tr></thead>
-      <tbody>
-        <tr><td><span class="gr">A</span> &mdash; کم‌ریسک‌ترین</td><td><bdi>۳٬۰۲۹٬۳۹۷</bdi></td><td><bdi>۴۰۰٬۰۰۰</bdi></td><td><bdi>۰٫۱۴</bdi> درصد</td><td><bdi>۱٬۲۱۱٫۸</bdi> میلیارد</td><td><b><bdi>۲۲</bdi> درصد</b></td></tr>
-        <tr><td><span class="gr">B</span></td><td><bdi>۴٬۰۸۷٬۴۴۸</bdi></td><td><bdi>۳۰۰٬۰۰۰</bdi></td><td><bdi>۰٫۳۳</bdi> درصد</td><td><bdi>۱٬۲۲۶٫۲</bdi> میلیارد</td><td><b><bdi>۵۲</bdi> درصد</b></td></tr>
-        <tr><td><span class="gr">C</span></td><td><bdi>۱٬۰۸۵٬۷۸۷</bdi></td><td><bdi>۱۵۰٬۰۰۰</bdi></td><td><bdi>۰٫۷۴</bdi> درصد</td><td><bdi>۱۶۲٫۹</bdi> میلیارد</td><td><b><bdi>۱۵</bdi> درصد</b></td></tr>
-        <tr><td><span class="gr">D</span></td><td><bdi>۵۹۹٬۱۴۰</bdi></td><td><bdi>۱۰۰٬۰۰۰</bdi></td><td><bdi>۱٫۳۵</bdi> درصد</td><td><bdi>۵۹٫۹</bdi> میلیارد</td><td><b><bdi>۱۰</bdi> درصد</b></td></tr>
-        <tr class="off"><td><span class="gr">E</span> &mdash; رد می‌شود</td><td><bdi>۵۴۲٬۹۵۱</bdi></td><td>رد می‌شود</td><td><bdi>۴٫۰۰</bdi> درصد</td><td>&mdash;</td><td>&mdash;</td></tr>
-        <tr class="tot"><td>مجموع تأییدشده</td><td><b><bdi>۸٬۸۰۱٬۷۷۲</bdi></b></td>
-            <td>میانگین <bdi>۳۰۲٬۳۰۰</bdi></td><td></td><td><b><bdi>۲٬۶۶۰٫۸</bdi> میلیارد</b></td>
-            <td>۱۰۰ درصد</td></tr>
-      </tbody>
-      <tfoot><tr><td colspan="6"><b>رتبه B نیمی از کل زیان را به دوش می‌کشد</b>،
-      در حالی که دومین گروه کم‌ریسک است: بزرگ‌ترین گروه است و سقف ۳۰۰٬۰۰۰ تومانی
-      می‌گیرد.</td></tr></tfoot>
-    </table></div>
-  </div>
-</section>
-<section>
-  <div class="head">
-    <h2>یک قاعده که سقف‌ها باید رعایتش کنند</h2>
-    <p>اعتبار روی قبض ماه بعد می‌نشیند. اینکه قبض چقدر بالا بپرد، احتمال
-    نکول را تعیین می‌کند.</p>
-  </div>
-  <div class="rule">
-    <div class="big">هرگز بیشتر از قبض یک ماه مشترک به او وام ندهید.</div>
-    <div class="why">زیر این خط، قبض کمتر از دو برابر بالا می‌رود و مشترک با
-    نرخ عادی پرداخت می‌کند. روی این خط یا بالاتر، قبض دو برابر می‌شود و
-    <b>احتمال نکول <bdi>۱٫۷</bdi> برابر</b> است.</div>
-  </div>
-  <div class="card" style="margin-top:14px">
-    <div class="tbl-s"><table>
-      <thead><tr><th>چه بر سر قبض مشترک می‌آید</th><th>چقدر بالا می‌رود</th>
-      <th>نرخ بازماندن از پرداخت</th></tr></thead>
-      <tbody>
-        <tr class="off"><td>قبض تقریباً تکان نمی‌خورد</td><td>کمتر از ۱٫۲۵ برابر</td><td><b>نرخ عادی</b></td></tr>
-        <tr><td>بالا می‌رود، اما به دو برابر نمی‌رسد</td><td>۱٫۲۵ تا ۲٫۰۰ برابر</td><td><b><bdi>۱٫۱۳</bdi> برابر</b></td></tr>
-        <tr class="tot"><td>دو برابر یا بیشتر می‌شود</td><td>۲٫۰۰ برابر و بالاتر</td><td><b><bdi>۱٫۹۱</bdi> برابر</b></td></tr>
-      </tbody>
-      <tfoot><tr><td colspan="3">اندازه‌گیری‌شده روی <bdi>۴٫۰</bdi> میلیون مشترک‑ماه.
-      جدول سقف‌ها این قاعده را از قبل رعایت می‌کند.</td></tr></tfoot>
-    </table></div>
-  </div>
-</section>
-<section>
-  <div class="head">
-    <h2>هزینه محتمل طرح</h2>
-    <p>مرحله به مرحله، تا بشود روی هر قدمش بحث کرد.</p>
-  </div>
-  <div class="card">
-    <div class="steps">
-      <div class="stp"><span class="n">۱</span><div>
-        <h3><bdi>۸٬۸۰۱٬۷۷۲</bdi> مشترک به‌طور میانگین <bdi>۳۰۲٬۳۰۰</bdi> تومان وام می‌گیرند</h3>
-        <p>در هر لحظه <b><bdi>۲٬۶۶۰٫۸</bdi> میلیارد تومان</b> نزد مشترکین است، و در طول یک
-        سال <b><bdi>۳۱٬۹۲۹</bdi> میلیارد تومان</b> اعطا می‌شود.</p></div></div>
-      <div class="stp"><span class="n">۲</span><div>
-        <h3>نرخ نکول یک‌ماهه بین ۰٫۰۹ تا ۰٫۱۴ درصد است</h3>
-        <p>این بازه یک انتخاب است، نه عدم‌قطعیت: کف بازه یعنی وام فقط به
-        کم‌ریسک‌ترین‌ها، سقف بازه یعنی وام به همه تأییدشده‌ها.</p></div></div>
-      <div class="stp"><span class="n">۳</span><div>
-        <h3>پس سالانه <bdi>۲۸٫۷</bdi> تا <bdi>۴۴٫۷</bdi> میلیارد تومان زیان می‌دهیم</h3>
-        <p>با فرض <b>هیچ وصولی</b> از مشترک نکول‌کرده، که عمداً بدبینانه است.
-        در برابر <bdi>۳۱٬۹۲۹</bdi> میلیارد تومان اعطایی، نقطه میانی حدود <b>۰٫۱۲ درصد</b>
-        است.</p></div></div>
-    </div>
-  </div>
-  <div class="card">
-    <h3>اگر زیان بدتر از مدل دربیاید</h3>
-    <div class="tbl-s"><table>
-      <thead><tr><th>سناریو</th><th>ضریب</th><th>زیان سالانه</th>
-      <th>نسبت به <bdi>۳۱٬۹۲۹</bdi> میلیارد اعطایی</th></tr></thead>
-      <tbody>
-        <tr class="tot"><td>مطابق مدل</td><td><bdi>۱٫۰۰</bdi>&times;</td><td><bdi>۳۶٫۷</bdi> میلیارد</td><td><bdi>۰٫۱۱</bdi> درصد</td></tr>
-        <tr><td>با رانش جمعیت فعلی</td><td><bdi>۱٫۱۶</bdi>&times;</td><td><bdi>۴۲٫۵</bdi> میلیارد</td><td><bdi>۰٫۱۳</bdi> درصد</td></tr>
-        <tr><td>وام‌دهی در آستانه نوروز</td><td><bdi>۱٫۶۸</bdi>&times;</td><td><bdi>۶۱٫۷</bdi> میلیارد</td><td><bdi>۰٫۱۹</bdi> درصد</td></tr>
-        <tr><td>دو برابر نرخ مدل</td><td><bdi>۲٫۰۰</bdi>&times;</td><td><bdi>۷۳٫۴</bdi> میلیارد</td><td><bdi>۰٫۲۳</bdi> درصد</td></tr>
-      </tbody>
-      <tfoot><tr><td colspan="4">حتی با <b>دو برابر</b> نرخ مدل، زیان زیر
-      <b><bdi>۷۳٫۴</bdi> میلیارد تومان</b> روی <b><bdi>۳۱٬۹۲۹</bdi> میلیارد تومان</b> اعطایی می‌ماند.</td></tr></tfoot>
-    </table></div>
-  </div>
-</section>
-<section>
-  <div class="head">
-    <h2>آنچه هنوز نمی‌دانیم</h2>
-    <p>دو مورد که هنوز باز است.</p>
-  </div>
-  <div class="split">
-    <div class="panel unknown">
-      <h3><span class="dot"></span>هیچ مشترکی در این داده‌ها تا به حال اعتبار نگرفته است</h3>
-      <ul>
-        <li>امتیاز مدل رفتار مشترک را وقتی <b>وام نگرفته</b> توصیف می‌کند.</li>
-        <li><b>تنها راه پاسخ، یک اجرای آزمایشی محدود است</b>؛ با دوره یک‌ماهه
-        جواب ظرف چند هفته می‌رسد.</li>
-      </ul>
-    </div>
-    <div class="panel unknown">
-      <h3><span class="dot"></span>هدف ۱۵٬۰۰۰ میلیاردی، اعطای سالانه است یا مانده؟</h3>
-      <ul>
-        <li>با گردش ماهانه این دو عدد دوازده برابر فرق دارند.</li>
-        <li><b>اعطای سالانه:</b> <bdi>۳۱٬۹۲۹</bdi> میلیارد، بیش از دو برابر هدف.
-        <b>مانده در هر لحظه:</b> <bdi>۲٬۶۶۰٫۸</bdi> میلیارد، با فاصله زیاد تا هدف.</li>
-      </ul>
-    </div>
-  </div>
-</section>
+// `k` marks a field as editable; its value is written straight back into D
+const E = (tag, cls, path, extra) =>
+  "<" + tag + (cls ? ' class="' + cls + '"' : "") + ' data-k="' + path + '"'
+  + (extra || "") + ">" + get(path) + "</" + tag + ">";
 
-<footer>
-  <span>تعداد مشترکین از سوابق صورتحساب ۱۴۰۵۰۱ تا ۱۴۰۵۰۶. رتبه‌ها، سقف‌ها و
-  احتمال نکول از مدل امتیازدهی ۱۴۰۵/۰۷/۱۴ با شاخص دقت <bdi>۰٫۸۲۷۸</bdi>. ارقام شوک قبض روی
-  <bdi>۴٫۰</bdi> میلیون مشترک‑ماه.</span>
-  <span>همه مبالغ به تومان. احتمال نکول ۴ ماهه از افق مدل می‌آید؛ ارقام ریالی
-  بر پایه نرخ یک‌ماهه محاسبه شده‌اند.</span>
-</footer>
-</div>
+function render() {
+  const h = [];
+  h.push('<header>');
+  h.push(E("p", "eyebrow", "eyebrow"));
+  h.push(E("h1", "", "h1"));
+  h.push(E("p", "lede", "lede"));
+  h.push('<div class="spec">');
+  D.chips.forEach((c, i) => h.push('<span class="chip">' + E("span", "", "chips." + i + ".0")
+    + " <b" + ' data-k="chips.' + i + '.1">' + c[1] + "</b></span>"));
+  h.push('</div></header>');
+
+  h.push('<div class="kpi" style="margin-top:26px">');
+  D.kpis.forEach((t, i) => h.push('<div class="tile">'
+    + E("span", "k", "kpis." + i + ".0") + E("span", "v", "kpis." + i + ".1")
+    + E("span", "s", "kpis." + i + ".2") + "</div>"));
+  h.push("</div>");
+  h.push(E("p", "cap", "kpiCap"));
+
+  // ---- the funnel
+  h.push('<section><div class="head">' + E("h2", "", "funnel.h2")
+    + E("p", "", "funnel.p") + '</div><div class="card"><div class="fun">');
+  D.funnel.steps.forEach((s, i) => {
+    if (i > 0) { const d = D.funnel.drops[i - 1].split("|");
+      h.push('<div class="fdrop"><span data-k="funnel.drops.' + (i - 1) + '">&minus; '
+        + d[0] + '</span><span class="v">' + d[1] + "</span></div>"); }
+    h.push('<div class="fstep ' + s[3] + '"><div class="t">'
+      + E("span", "", "funnel.steps." + i + ".0") + E("em", "", "funnel.steps." + i + ".1")
+      + "</div>" + E("div", "v", "funnel.steps." + i + ".2") + "</div>");
+  });
+  h.push("</div>" + E("p", "cap", "funnel.cap") + "</div></section>");
+
+  h.push(section("grades", D.grades, 6));
+  // ---- the rule
+  h.push('<section><div class="head">' + E("h2", "", "rule.h2") + E("p", "", "rule.p")
+    + '</div><div class="rule">' + E("div", "big", "rule.big")
+    + E("div", "why", "rule.why") + '</div><div class="card" style="margin-top:14px">'
+    + table("rule", D.rule, 3) + "</div></section>");
+
+  // ---- the cost
+  h.push('<section><div class="head">' + E("h2", "", "cost.h2") + E("p", "", "cost.p")
+    + '</div><div class="card"><div class="steps">');
+  D.cost.steps.forEach((s, i) => h.push('<div class="stp">'
+    + E("span", "n", "cost.steps." + i + ".0") + "<div>"
+    + E("h3", "", "cost.steps." + i + ".1") + E("p", "", "cost.steps." + i + ".2")
+    + "</div></div>"));
+  h.push('</div></div><div class="card">' + E("h3", "", "cost.stressH3")
+    + '<div class="tbl-s"><table><thead><tr>');
+  D.cost.stressHead.forEach((c, i) => h.push('<th data-k="cost.stressHead.' + i + '">' + c + "</th>"));
+  h.push("</tr></thead><tbody>");
+  D.cost.stressRows.forEach((r, i) => {
+    h.push('<tr class="' + r[4] + '">');
+    for (let j = 0; j < 4; j++) h.push('<td data-k="cost.stressRows.' + i + "." + j + '">' + r[j] + "</td>");
+    h.push("</tr>");
+  });
+  h.push('</tbody><tfoot><tr><td colspan="4" data-k="cost.stressFoot">' + D.cost.stressFoot
+    + "</td></tr></tfoot></table></div></div></section>");
+
+  // ---- what is open
+  h.push('<section><div class="head">' + E("h2", "", "open.h2") + E("p", "", "open.p")
+    + '</div><div class="split">');
+  D.open.panels.forEach((p, i) => {
+    h.push('<div class="panel unknown"><h3><span class="dot"></span>'
+      + '<span data-k="open.panels.' + i + '.0">' + p[0] + "</span></h3><ul>");
+    p[1].forEach((li, j) => h.push('<li data-k="open.panels.' + i + ".1." + j + '">' + li + "</li>"));
+    h.push("</ul></div>");
+  });
+  h.push("</div></section>");
+
+  h.push("<footer>" + E("span", "", "footer.0") + E("span", "", "footer.1") + "</footer>");
+  root.innerHTML = h.join("");
+  if (editing) arm();
+}
+
+function table(key, o, cols) {
+  const h = ['<div class="tbl-s"><table><thead><tr>'];
+  o.head.forEach((c, i) => h.push('<th data-k="' + key + '.head.' + i + '">' + c + "</th>"));
+  h.push("</tr></thead><tbody>");
+  o.rows.forEach((r, i) => {
+    h.push('<tr class="' + (r[cols] || "") + '">');
+    for (let j = 0; j < cols; j++)
+      h.push('<td data-k="' + key + ".rows." + i + "." + j + '">' + r[j] + "</td>");
+    h.push("</tr>");
+  });
+  h.push('</tbody><tfoot><tr><td colspan="' + cols + '" data-k="' + key + '.foot">'
+    + o.foot + "</td></tr></tfoot></table></div>");
+  return h.join("");
+}
+function section(key, o, cols) {
+  return '<section><div class="head">' + E("h2", "", key + ".h2") + E("p", "", key + ".p")
+    + '</div><div class="card">' + table(key, o, cols) + "</div></section>";
+}
+
+// ---------------------------------------------------------------- editing
+function arm() {
+  root.querySelectorAll("[data-k]").forEach(el => {
+    el.setAttribute("contenteditable", "true");
+    el.addEventListener("input", () => {
+      const p = el.dataset.k, v = el.innerHTML.trim();
+      if (p.indexOf("funnel.drops.") === 0) {
+        const cur = get(p).split("|");
+        set(p, v.replace(/^&minus;\s*/, "").replace(/^−\s*/, "") + "|" + cur[1]);
+      } else set(p, v);
+      dirty = true; paint();
+    }, { passive: true });
+  });
+}
+function paint() {
+  document.body.classList.toggle("editing", editing);
+  btnEdit.textContent = editing ? "پایان ویرایش" : "ویرایش متن و اعداد";
+  btnSave.hidden = !editing;
+  btnSave.disabled = !dirty || !artifact;
+  msg.textContent = !artifact ? "ذخیره در دسترس نیست — فقط خواندن"
+    : (dirty ? "تغییر ذخیره‌نشده دارید" : "");
+}
+
+// Rebuild the WHOLE document from D. The style and the app are read from their
+// own tags, so only the data changes; the live DOM is never serialised.
+function buildDoc() {
+  const css = document.getElementById("dcb-css").outerHTML;
+  const app = document.getElementById("dcb-app").outerHTML;
+  const head = document.getElementById("dcb-head").innerHTML;
+  const RESET = ':root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);'
+    + 'padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui;'
+    + 'background:#fafaf9}img{max-width:100%}[hidden]{display:none!important}';
+  return '<!doctype html><html><head><meta charset=utf8>'
+    + '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">'
+    + "<style>" + RESET + "</style></head><body>"
+    + '<span id="dcb-head" hidden>' + head + "</span>"
+    + css
+    + '<script id="dcb-data" type="application/json">'
+    + JSON.stringify(D).replace(/<\//g, "<\\/") + "<\/script>"
+    + '<div class="wrap" dir="rtl" lang="fa"><div id="root"></div></div>'
+    + '<div id="bar" hidden></div>'
+    + app + "</body></html>";
+}
+
+const bar = document.getElementById("bar");
+bar.innerHTML = '<button id="btnEdit"></button>'
+  + '<button id="btnSave" class="go">ذخیره</button><span class="msg" id="msg"></span>';
+const btnEdit = document.getElementById("btnEdit"),
+      btnSave = document.getElementById("btnSave"),
+      msg     = document.getElementById("msg");
+bar.hidden = false;
+
+btnEdit.onclick = () => { editing = !editing;
+  if (editing) arm(); else root.querySelectorAll("[data-k]")
+    .forEach(el => el.removeAttribute("contenteditable"));
+  paint(); };
+btnSave.onclick = async () => {
+  if (!artifact) return;
+  btnSave.disabled = true; msg.textContent = "در حال ذخیره…";
+  try { await artifact.publish(buildDoc()); dirty = false; msg.textContent = "ذخیره شد"; }
+  catch (e) { msg.textContent = (e && e.code === "conflict")
+      ? "نسخه تازه‌تری ذخیره شده بود؛ صفحه به‌روز می‌شود"
+      : "ذخیره نشد — دسترسی ویرایش ندارید"; }
+  paint();
+};
+
+render(); paint();
+// window.claude exists only inside the viewer; the page must render without it
+(window.claude && window.claude.use ? window.claude.use("artifact")
+                                    : Promise.resolve(null))
+  .then(a => { artifact = a; paint(); })
+  .catch(() => { artifact = null; paint(); });
+</script>
