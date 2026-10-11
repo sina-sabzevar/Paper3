@@ -118,6 +118,7 @@ code(r'''
 import gc
 import os
 import glob
+import re
 import time
 import hashlib        # the split and the down-sampling draw; section 3 says why
 
@@ -177,13 +178,15 @@ SPLIT_VALID = 90              # under this -> valid; at or over -> test
 # subscribers who appear in the window but not in that month. The parts check
 # is the one that catches a half-finished export; compare the printed row
 # count against T1 in 42 by eye.
-# parts is per EXTENSION, because the two routes give different file counts.
-# The export writes TWO parquet parts; the usual next step is to concatenate
-# them into ONE csv and train from that. Both are correct, and a single flat
-# number would reject whichever one was not used.
+# n_parts is how many files the SPLIT EXPORT writes - the files named
+# <table>_p1, <table>_p2 and so on. It is not a count of every file found,
+# because the routes differ: the export leaves two parquet parts, and
+# concatenating them leaves one file with no part suffix at all. Checking the
+# NAMES rather than the number keeps both routes working while still catching
+# the case that matters, which is two parts exported and one of them lost.
 EXPECT = {
-    "dcb_model": dict(rows=None, parquet_parts=2, csv_parts=1),
-    "dcb_score": dict(rows=None, parquet_parts=2, csv_parts=1),
+    "dcb_model": dict(rows=None, n_parts=2),
+    "dcb_score": dict(rows=None, n_parts=2),
 }
 
 # The DCB ticket. The product is one-month credit, 100,000 minimum, 300,000
@@ -314,15 +317,23 @@ def load(stem):
             print(f"    {', '.join(os.path.basename(f) for f in files)}")
 
         exp = EXPECT.get(stem, {})
-        key = "parquet_parts" if ext == ".parquet" else "csv_parts"
-        want = exp.get(key)
-        if want is not None and len(files) != want:
+        want = exp.get("n_parts")
+        part_like = [f for f in files
+                     if re.search(r"_p\d+" + re.escape(ext) + "$",
+                                  os.path.basename(f))]
+        if want is not None and part_like and len(part_like) != want:
             raise ValueError(
-                f"{stem}: found {len(files)} {ext} file(s), expected {want}. "
-                f"A missing part looks exactly like a smaller export from the "
-                f"outside, so this is the only thing that catches it. Check "
-                f"the export, or set '{key}' for {stem} in EXPECT to None if "
-                f"it really is in {len(files)} piece(s).")
+                f"{stem}: found {len(part_like)} part file(s) "
+                f"({', '.join(os.path.basename(f) for f in part_like)}), "
+                f"expected {want}. A missing part looks exactly like a smaller "
+                f"export from the outside, so this is the only thing that "
+                f"catches it. Check the export, or set 'n_parts' for {stem} in "
+                f"EXPECT to None if it really is in {len(part_like)} piece(s).")
+        if want is not None and not part_like and len(files) != 1:
+            raise ValueError(
+                f"{stem}: found {len(files)} {ext} files and none of them is "
+                f"named like a part. A concatenated table should be one file; "
+                f"a split one should be named <table>_p1{ext} and so on.")
         if exp.get("rows") is not None and len(df) != exp["rows"]:
             raise ValueError(
                 f"{stem}: loaded {len(df):,} rows, expected {exp['rows']:,} "
