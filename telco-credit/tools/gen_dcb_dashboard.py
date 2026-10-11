@@ -87,7 +87,9 @@ section{margin-top:40px}
 .hero .big .k{font-size:14px;color:var(--ink-2)}
 .hero .sub{color:var(--ink-2);font-size:15px;max-width:38ch;flex:1 1 280px}
 
-.kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--rule);
+.kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--rule);}
+.kpi.k6{grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpi{
   border:1px solid var(--rule);border-radius:8px;overflow:hidden}
 @media (max-width:760px){.kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .tile{background:var(--surface);padding:16px 17px 18px;display:flex;flex-direction:column;gap:6px}
@@ -176,7 +178,7 @@ W("""<section>
     not reach. The balance sheet at risk at any one time is only
     <b class="num">%s bn</b>.</p>
   </div>
-  <div class="kpi" style="margin-top:14px">
+  <div class="kpi k6" style="margin-top:14px">
     <div class="tile"><span class="k">Approved</span><span class="v">%s</span>
       <span class="s">grades A&ndash;D of %s scored</span></div>
     <div class="tile"><span class="k">Average limit</span><span class="v">%s</span>
@@ -185,6 +187,10 @@ W("""<section>
       <span class="s">Toman, at any one time</span></div>
     <div class="tile"><span class="k">Cycles per year</span><span class="v">12</span>
       <span class="s">the four-month product managed 3</span></div>
+    <div class="tile"><span class="k">Expected loss rate</span><span class="v">0.076 pct</span>
+      <span class="s">measured base rate, model selection applied</span></div>
+    <div class="tile"><span class="k">Annual loss</span><span class="v">24 bn</span>
+      <span class="s">Toman, against 31,929 bn lent</span></div>
   </div>
 </section>
 """ % (f(ann12), f(OUTSTANDING/1e9), f(APPROVED), f(SCORED), f(AVG_LIMIT), f(OUTSTANDING/1e9)))
@@ -298,9 +304,39 @@ W("""<section>
 # ------------------------------------------------- known / not known
 W("""<section>
   <div class="head">
+    <h2>What a bigger bill does &mdash; measured, not assumed</h2>
+    <p>DCB lands on the same invoice, so the product does not only lend: it raises the bill the
+    subscriber has to pay. The obvious worry is that a bill well above normal gets paid worse. It
+    does not.</p>
+  </div>
+  <div class="card">
+    <div class="tbl-s"><table>
+      <thead><tr><th>Comparison</th><th>Normal bill</th><th>Raised bill</th><th>Premium</th><th>Reading</th></tr></thead>
+      <tbody>
+        <tr><td>Across subscribers</td><td>0.2290 pct</td><td>0.4516 pct</td><td>1.97&times;</td><td>looks alarming</td></tr>
+        <tr class="tot"><td>The same 1,169,169 subscribers</td><td>0.2868 pct</td><td>0.2786 pct</td><td>0.97&times;</td><td>no effect</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="5">Each of those subscribers contributes exactly one normal month and
+      one raised month, so the only thing differing is the bill. The premium is <b>0.97, with a 95 pct
+      interval of 0.92 to 1.02</b>. Split by how large the rise was, every band comes back at or below
+      1.00 &mdash; 0.985 at a 100,000 ticket, 0.996 at 300,000, and 0.888 past three times, that last one
+      significant in the <i>safe</i> direction. <b>The whole of the across-subscriber gradient is
+      selection</b>: people whose bills jump are riskier people, which is what the model already scores
+      them on.</td></tr></tfoot>
+    </table></div>
+    <p class="cap"><b>The arrow runs the other way.</b> The highest default rate of any group belongs
+    to subscribers whose bill <i>fell</i> &mdash; 0.4116 pct, 1.80&times; normal. A collapsing bill is what
+    precedes a service bar, because the subscriber has already stopped using the service. A bill that
+    jumps is a month of health. Subscribers do pay a large bill more slowly &mdash; median coverage falls
+    from 1.68 to 1.06 &mdash; but they pay it.</p>
+  </div>
+</section>
+
+<section>
+  <div class="head">
     <h2>What is measured, and what is not</h2>
-    <p>The programme inherits a tested model and an untested loss rate. The distinction matters more
-    than any single number on this page.</p>
+    <p>The loss rate is no longer the blank it was. What remains unknown is narrower, and worth
+    stating as precisely as what is known.</p>
   </div>
   <div class="split">
     <div class="panel known">
@@ -315,17 +351,21 @@ W("""<section>
         <li>A model built with <b>no Rial amounts at all</b> scores 0.8230 &mdash; within half a percent,
         and immune to inflation, which otherwise forces a re-tune every year.</li>
         <li>Risk is <b>seasonal</b>: the same exposure across Nowruz ran <b>1.68&times;</b> higher.</li>
+        <li>The <b>one-month default rate</b>: <b>0.2208 pct</b>, 19,215 events across 8,701,085
+        subscribers. Thick enough to fit a model on, and it sorts cleanly by billing consistency.</li>
+        <li>A raised bill carries <b>no extra default risk</b> for the same subscriber &mdash; premium
+        1.00, measured on 1,169,169 paired comparisons.</li>
       </ul>
     </div>
     <div class="panel unknown">
       <h3><span class="dot" style="background:var(--crit)"></span>Not yet measured</h3>
       <ul>
-        <li><b>The one-month loss rate.</b> Every risk figure on record was measured over a
-        <b>four-month</b> exposure on a 500,000 Toman line. The new product is one month and
-        100,000&ndash;300,000. <b>None of those loss numbers carry over</b> and none are quoted here.</li>
-        <li>Flat arithmetic puts the one-month rate near <b>0.13 pct</b>, but a service bar follows
-        months of arrears, so the true early-month figure is almost certainly thinner. That is a
-        guess until the label is rebuilt.</li>
+        <li><b>The model has not yet been refitted on the one-month label.</b> The
+        <b>0.076 pct</b> above is the measured one-month base rate of <b>0.2208 pct</b> scaled by the
+        selection the model already achieves at this cut. It is an estimate built from two measured
+        numbers, not a guess &mdash; but it is not a fitted result, and the refit may move it.</li>
+        <li>Whether a service bar can <b>lag beyond the two months</b> this window allows. A longer
+        lag would push the true rate up.</li>
         <li><b>Behaviour under credit.</b> Nobody in this data was ever given spendable credit. The
         model measures who fails to pay their own phone bill, which is not the same thing.</li>
         <li>Whether a <b>100,000 floor</b> is affordable for subscribers the current bar excludes.</li>
@@ -333,7 +373,7 @@ W("""<section>
     </div>
   </div>
   <div class="card" style="margin-top:14px">
-    <p class="cap" style="margin-top:0"><b>The fix is two days of work, not a redesign.</b> The label
+    <p class="cap" style="margin-top:0"><b>What is left is a refit, not a redesign.</b> The label
     window shortens from four months to one, the cohort is rebuilt, and the model is re-fitted on the
     same features. Everything else &mdash; the population, the features, the ranking, the drift work &mdash;
     carries over unchanged. A one-month horizon also means every month becomes its own cohort, so

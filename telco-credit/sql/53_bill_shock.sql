@@ -536,3 +536,61 @@ SELECT   IF(shock_level < 2.00, 'a  1.50 - 2.00  a 100k ticket',
 FROM     pairs
 GROUP BY 1
 ORDER BY 1;
+
+-- ---------------------------------------------------------------------------
+-- S9  THE ONE CONFOUND S8 CANNOT RULE OUT BY ITSELF.
+--
+--     The two months in a pair do NOT share an outcome window. Bill month
+--     140405 is judged on bars in 140407-140408; bill month 140406 on
+--     140408-140409. They overlap in one month only.
+--
+--     So if bar rates drift over those months - and if a subscriber's SHOCKED
+--     month is systematically the earlier or the later of the two, which it
+--     easily could be, since bills tend to move in one direction across a
+--     season - then part of S8's result is a calendar effect rather than a
+--     bill effect. S8 found the shocked month SAFER at over 3x; a falling bar
+--     rate across 140407 to 140409 would manufacture exactly that.
+--
+--     Part one reads the bar rate by bill month, so any drift is visible.
+--     Part two repeats S8's paired test stratified by WHICH month was the
+--     shocked one. If the premium is near 1.00 in both strata, the calendar is
+--     not driving it and S8 stands. If the two strata disagree sharply, it is,
+--     and the comparison needs months with a common outcome window.
+-- ---------------------------------------------------------------------------
+SELECT   bill_month,
+         COUNT(*)                                    AS n,
+         SUM(tw_later)                               AS n_twoway,
+         100.0 * AVG(CAST(tw_later AS DOUBLE))       AS pct_twoway,
+         APPROX_PERCENTILE(shock, 0.5)               AS med_shock
+FROM     dwbi_temp40_db.dcb_shock
+WHERE    obs_ok = 1
+GROUP BY bill_month
+ORDER BY bill_month;
+
+WITH t AS (
+    SELECT   sbrp_id, bill_month, tw_later, shock,
+             IF(shock >= 1.50, 1, 0)               AS shocked,
+             IF(shock BETWEEN 0.80 AND 1.25, 1, 0) AS normal
+    FROM     dwbi_temp40_db.dcb_shock
+    WHERE    shock IS NOT NULL AND obs_ok = 1
+),
+pairs AS (
+    SELECT   sbrp_id,
+             MAX(IF(shocked = 1, bill_month, NULL)) AS shocked_month,
+             MAX(IF(shocked = 1, tw_later, 0))      AS tw_shocked,
+             MAX(IF(normal  = 1, tw_later, 0))      AS tw_normal
+    FROM     t
+    GROUP BY sbrp_id
+    HAVING   MAX(shocked) = 1 AND MAX(normal) = 1
+)
+SELECT   shocked_month,
+         COUNT(*)                                              AS n_pairs,
+         100.0 * AVG(CAST(tw_normal  AS DOUBLE))               AS pct_normal,
+         100.0 * AVG(CAST(tw_shocked AS DOUBLE))               AS pct_shocked,
+         AVG(CAST(tw_shocked AS DOUBLE))
+           / NULLIF(AVG(CAST(tw_normal AS DOUBLE)), 0)         AS premium,
+         SUM(IF(tw_shocked = 1 AND tw_normal = 0, 1, 0))       AS n_only_shocked,
+         SUM(IF(tw_normal  = 1 AND tw_shocked = 0, 1, 0))      AS n_only_normal
+FROM     pairs
+GROUP BY shocked_month
+ORDER BY shocked_month;

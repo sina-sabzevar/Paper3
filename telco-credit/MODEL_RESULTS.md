@@ -395,3 +395,44 @@ has not flattened — premium normal → 2–3× is 1.41× in 1404 and 1.64× in
 Median bills are 1.58× to 1.73× higher, which brackets the 1.50–1.69 deflator
 from the two 30% price rises, though part of that gap is S7's richer screen
 rather than inflation alone.
+
+## S8: the paired test, split by size — all three bands flat or safer
+
+| shock | pairs | normal | shocked | premium | discordant | McNemar |
+|---|---|---|---|---|---|---|
+| 1.50–2.00 (100k) | 767,568 | 0.2366% | 0.2331% | 0.985 | 628 vs 655 | p = 0.47 |
+| 2.00–3.00 (300k) | 286,658 | 0.3342% | 0.3328% | 0.996 | 330 vs 334 | p = 0.91 |
+| over 3.00 | 114,943 | 0.5037% | 0.4472% | **0.888** | 168 vs 233 | **p = 0.0014** |
+
+Totals reconcile exactly with S6 — 3,353 normal, 3,257 shocked, 1,169,169 pairs.
+
+Bands a and b are indistinguishable from no effect. Band c is significant **in
+the safe direction**: past three times normal, a subscriber is *less* likely to
+be barred than in their own ordinary month.
+
+That is the mirror of S5's first row, which I almost skipped past: the highest
+default rate of any band belongs to subscribers whose bill **fell** — 0.4116%,
+1.80× normal. A collapsing bill is what precedes a bar, because the subscriber
+has already stopped using the service. A bill that jumps is a month of health.
+`rev_trend` is already in the feature set, which is the right place for it.
+
+`S9` tests the one confound left: the two months in a pair do not share an
+outcome window (140405 is judged on 140407–08, 140406 on 140408–09), so a drift
+in bar rates across those months could manufacture the band-c result. It reads
+the rate by bill month and repeats the paired test stratified by which month was
+the shocked one.
+
+## The loss number this supports
+
+| | |
+|---|---|
+| one-month cohort rate, measured | **0.2208%** |
+| shock premium to apply | **1.00** (0.92–1.02) |
+| model selection at the 50% cut | 0.343 (0.1790 / 0.5213 on the 4-month label) |
+| implied one-month book PD | **0.0758%** — an estimate, pending the refit |
+
+At 8,801,772 approved and an average 302,300 Toman: 2,661 bn outstanding per
+cycle, **2.0 bn lost per cycle, about 24 bn a year against 31,929 bn lent.**
+
+It is built from two measured numbers rather than guessed, but it is not a
+fitted result. The refit on the one-month label may move it.
