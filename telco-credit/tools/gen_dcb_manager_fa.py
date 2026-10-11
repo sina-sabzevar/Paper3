@@ -39,32 +39,53 @@ D7 = {100_000:(729_051,5_709_462,2_906_210), 200_000:(68_125,2_944_902,6_331_696
       300_000:(13_829,1_441_474,7_889_420), 500_000:(2_712,366_965,8_975_046)}
 SHOCK_P = (1.000, 1.133, 1.907)          # 53: normal / under 2x / 2x or more
 
-# limit per decile, deciles ordered safest first. Decile 10 is declined in all
-# three, so the three differ ONLY in how much the same people are given.
-SCEN = [("گسترده", "وضع فعلی",
-         [500_000,500_000,300_000,300_000,300_000,300_000,300_000,300_000,100_000,0]),
-        ("محتاطانه", "نیمی از حجم",
-         [300_000,300_000,300_000,200_000,200_000,200_000,100_000,100_000,100_000,0]),
-        ("سخت‌گیرانه", "تجمع روی ۱۰۰ هزار",
-         [300_000,200_000,200_000,100_000,100_000,100_000,100_000,100_000,100_000,0])]
+# Today's grade cut approves 8,801,772 and declines grade E. The decile ladder
+# cannot reproduce that, so the riskiest decile is SPLIT: the part today
+# approves becomes its own band, and grade E stays declined.
+GRADE_APPROVED, GRADE_E = 8_801_772, 542_951
+RISKY_N  = GRADE_APPROVED - 8_410_250                    # 391,522
+# Their rate is not measured directly. Decile 10 carries n x marginal bads and
+# grade E carries its own; what is left over belongs to this band. It assumes
+# grade E sits inside decile 10, which is close but not exact - decile 9's
+# marginal rate is 0.857 pct against a grade E boundary of 0.8 pct - so the
+# figure is an estimate and the page says so.
+RISKY_PD = (DECILE[9][0]*DECILE[9][1] - GRADE_E*0.040) / RISKY_N
+DECILE10_PD = DECILE[9][1]                               # the pessimistic read
 
-def scen_metrics(lim):
-    out  = sum(DECILE[i][0]*lim[i] for i in range(10))
-    appr = sum(DECILE[i][0] for i in range(10) if lim[i])
+# nine deciles, then the risky band. Grade E is declined throughout.
+BANDS = DECILE[:9] + [(RISKY_N, RISKY_PD)]
+
+# The risky band always takes the smallest limit; the three scenarios differ
+# only in what the nine clean deciles get.
+SCEN = [("گسترده", "وضع فعلی",
+         [500_000,500_000,300_000,300_000,300_000,300_000,300_000,300_000,100_000,100_000]),
+        ("محتاطانه", "نیمی از حجم",
+         [300_000,300_000,300_000,200_000,200_000,200_000,100_000,100_000,100_000,100_000]),
+        ("سخت‌گیرانه", "تجمع روی ۱۰۰ هزار",
+         [300_000,200_000,200_000,100_000,100_000,100_000,100_000,100_000,100_000,100_000])]
+
+def scen_metrics(lim, bands=None):
+    bands = bands if bands is not None else BANDS
+    k = len(bands)
+    out  = sum(bands[i][0]*lim[i] for i in range(k))
+    appr = sum(bands[i][0] for i in range(k) if lim[i])
     ann  = out*12/1e9
-    pd1  = sum(DECILE[i][0]*lim[i]*DECILE[i][1] for i in range(10))/out/3.0
+    pd1  = sum(bands[i][0]*lim[i]*bands[i][1] for i in range(k))/out/3.0
     band = [0.0,0.0,0.0]
-    for i in range(10):
+    for i in range(k):
         if not lim[i]: continue
         t = D7[lim[i]]; tot = float(sum(t))
-        for k in range(3): band[k] += DECILE[i][0]*t[k]/tot
+        for j in range(3): band[j] += bands[i][0]*t[j]/tot
     prem = sum(x*q for x,q in zip(band, SHOCK_P))/sum(band)
-    return dict(ge300=sum(DECILE[i][0] for i in range(10) if lim[i]>=300_000),
-                at100=sum(DECILE[i][0] for i in range(10) if lim[i]==100_000),
+    return dict(ge300=sum(bands[i][0] for i in range(k) if lim[i]>=300_000),
+                at100=sum(bands[i][0] for i in range(k) if lim[i]==100_000),
                 appr=appr, avg=out/appr, out=out/1e9, ann=ann, pd1=pd1,
                 band=band, prem=prem, loss=ann*pd1, lossp=ann*pd1*prem)
 
 MET = [scen_metrics(l) for _,_,l in SCEN]
+# the same three with the risky band dropped, which is the comparison that
+# answers "how much safer does the programme get if we decline them"
+MET_NR = [scen_metrics(l[:9], BANDS[:9]) for _,_,l in SCEN]
 TAKE = [0.10, 0.20, 0.30, 0.40]      # how many of the approved actually draw
 
 _FA = {"0":"۰","1":"۱","2":"۲","3":"۳","4":"۴","5":"۵","6":"۶","7":"۷","8":"۸","9":"۹",
@@ -181,26 +202,44 @@ DATA = {
            "قابل اتکاتر از خود سطح اعداد است.",
    "ladH3": "چه کسی چقدر می‌گیرد",
    "ladHead": ["گروه مشترکین", SCEN[0][0], SCEN[1][0], SCEN[2][0]],
-   "ladRows": [["۱۰ درصد کم‌ریسک‌ترین" if i == 0 else
-                ("۱۰ درصد پرریسک‌ترین" if i == 9 else "دهک " + fa(i+1))]
-               + [("رد می‌شود" if l[i] == 0 else f(l[i])) for _, _, l in SCEN]
-               + ["off" if SCEN[0][2][i] == 0 else ""] for i in range(10)],
+   "ladRows": [["۱۰ درصد کم‌ریسک‌ترین" if i == 0 else "دهک " + fa(i+1)]
+               + [f(l[i]) for _, _, l in SCEN] + [""] for i in range(9)]
+              + [["گروه پرریسک · " + f(RISKY_N) + " نفر"]
+                 + [f(l[9]) for _, _, l in SCEN] + ["tot"],
+                 ["رتبه E · " + f(GRADE_E) + " نفر"] + ["رد می‌شود"]*3 + ["off"]],
    "ladFoot": "مشترکین بر اساس امتیاز مدل از کم‌ریسک به پرریسک مرتب شده‌اند. "
-              "ارقام به تومان.",
-   "whyH3": "چرا " + f(MET[0]["appr"]) + " و نه " + f(8_801_772) + "؟",
-   "why": "بالای این صفحه نوشته " + f(8_801_772) + " مشترک تأییدشده، ولی سناریوها "
-          "روی " + f(MET[0]["appr"]) + " نفر بسته شده‌اند. دلیلش این است که دو "
-          "<b>برش تأیید</b> متفاوت است:<br><br>"
-          "&mdash; <b>امروز</b> رتبه E رد می‌شود، یعنی " + f(542_951) + " نفر.<br>"
-          "&mdash; <b>سناریوها</b> پرریسک‌ترین دهک را رد می‌کنند، یعنی "
-          + f(934_472) + " نفر.<br><br>"
-          "پس سناریوها " + f(8_801_772 - MET[0]["appr"]) + " نفر بیشتر از امروز رد "
-          "می‌کنند. این از روی ناچاری است، نه انتخاب: نردبان دهکی ریزترین برشی است "
-          "که مدل می‌دهد و نمی‌شود وسط یک دهک برش زد. "
-          "<b>آن " + f(8_801_772 - MET[0]["appr"]) + " نفر گروه کم‌خطری نیستند</b> "
-          "&mdash; تقریباً " + fa("{:.1f}".format(((934_472*0.029613 - 542_951*0.04)
-          / (8_801_772 - MET[0]["appr"]) / 3) / 0.00089)) + " برابر میانگین کتاب نکول "
-          "می‌کنند. این رقم تقریبی است، چون رتبه E و دهک ۱۰ دقیقاً بر هم منطبق نیستند.",
+              "ارقام به تومان. گروه پرریسک در هر سه سناریو کمترین سقف را می‌گیرد.",
+   "whyH3": "گروه پرریسک: " + f(RISKY_N) + " نفر",
+   "why": "برای رسیدن به همان " + f(GRADE_APPROVED) + " مشترکی که امروز تأیید "
+          "می‌شوند، پرریسک‌ترین دهک دو تکه شده است: <b>" + f(GRADE_E) + " نفر</b> که "
+          "رتبه E هستند و امروز هم رد می‌شوند، و <b>" + f(RISKY_N) + " نفر</b> که امروز "
+          "تأیید می‌شوند. این گروه دوم در هر سه سناریو کمترین سقف، یعنی ۱۰۰ هزار تومان، "
+          "را می‌گیرد.<br><br>"
+          "<b>نرخ نکول این گروه حدود " + fa("{:.2f}".format(100*RISKY_PD)) + " درصد "
+          "چهارماهه است</b> &mdash; تقریباً "
+          + fa("{:.0f}".format(RISKY_PD/0.0026)) + " برابر میانگین نه دهک بالاتر. این "
+          "رقم تقریبی است: از کسر بدهای رتبه E از کل بدهای دهک آخر به دست آمده و فرض "
+          "می‌کند رتبه E کاملاً داخل آن دهک است، که دقیق نیست. اگر این گروه به اندازه "
+          "بقیه دهک خودشان پرریسک باشند (" + fa("{:.2f}".format(100*DECILE10_PD))
+          + " درصد)، صرفه حذف‌شان از جدول زیر هم بیشتر است.",
+   "dropH3": "اگر این گروه حذف شود",
+   "drop": {
+     "head": ["سناریو", "اعطایی از دست می‌رود", "کاهش نرخ نکول", "کاهش زیان سالانه"],
+     "rows": [[SCEN[i][0],
+                 f(MET[i]["ann"]-MET_NR[i]["ann"]) + " میلیارد ("
+                   + fa("{:.1f}".format(100*(MET[i]["ann"]-MET_NR[i]["ann"])/MET[i]["ann"]))
+                   + " درصد)",
+                 fa("{:.0f}".format(100*(MET[i]["pd1"]-MET_NR[i]["pd1"])/MET[i]["pd1"]))
+                   + " درصد",
+                 one(MET[i]["lossp"]-MET_NR[i]["lossp"]) + " میلیارد ("
+                   + fa("{:.0f}".format(100*(MET[i]["lossp"]-MET_NR[i]["lossp"])/MET[i]["lossp"]))
+                   + " درصد)",
+                 "tot" if i == 2 else ""] for i in range(3)],
+     "foot": "<b>در هر سه سناریو، حذف این " + f(RISKY_N) + " نفر فقط "
+               + f(MET[0]["ann"]-MET_NR[0]["ann"]) + " میلیارد از اعطای سالانه کم "
+               "می‌کند ولی " + fa("{:.0f}".format(100*(MET[2]["lossp"]-MET_NR[2]["lossp"])/MET[2]["lossp"]))
+               + " تا " + fa("{:.0f}".format(100*(MET[0]["lossp"]-MET_NR[0]["lossp"])/MET[0]["lossp"]))
+               + " درصد از زیان.</b> ارزان‌ترین کاهش ریسکی است که روی این صفحه وجود دارد." },
    "cap": "<b>حالت سخت‌گیرانه هنوز " + fa("{:.0f}".format(100*MET[2]["ann"]/15000))
           + " درصد هدف ۱۵٬۰۰۰ میلیاردی را پوشش می‌دهد</b>، با "
           + fa("{:.1f}".format(MET[0]["lossp"]/MET[2]["lossp"]))
@@ -402,7 +441,9 @@ function render() {
     + "</td></tr></tfoot></table></div></div>"
     + '<div class="panel unknown" style="margin-top:14px"><h3><span class="dot"></span>'
     + '<span data-k="scen.whyH3">' + D.scen.whyH3 + "</span></h3>"
-    + E("p", "", "scen.why") + "</div>"
+    + E("p", "", "scen.why")
+    + '<h3 style="margin-top:16px">' + '<span data-k="scen.dropH3">' + D.scen.dropH3
+    + "</span></h3>" + table("scen.drop", D.scen.drop, 3) + "</div>"
     + E("p", "cap", "scen.cap") + "</section>");
 
   // ---- participation
