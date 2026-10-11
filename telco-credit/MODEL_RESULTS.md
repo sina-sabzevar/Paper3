@@ -759,7 +759,7 @@ not the screened set, so the trend transfers but the level does not.
   nothing about whether a customer's bill can carry the limit. Both constraints
   have to bind.
 
-## The ladder segments REVENUE, not the invoice — and that makes it a floor
+## The ladder segments REVENUE, not the invoice — and that makes it a CEILING
 
 Sina asked which one it was. It is revenue: `r1..r6` are
 `arpu - tot_arpu_tax_amt` in both `42` and `56`, so `bill_low` is the
@@ -772,30 +772,49 @@ billing bands (1.68, 1.66, 1.61, 1.41) rather than a constant amount. A
 constant ratio means `arpu - tax` is a systematic fraction of the true invoice
 — around **60%** of it.
 
-**What survives.** The shock rule. Shock is a ratio and both sides scale
-together, so 1.133 / 1.907 and the band edge at "draw equals bill" are
-unaffected by the units.
+**Corrected, and the correction reverses it.** I first read 53's note — that
+subscribers pay about 1.5× what `arpu - tax` says they were billed — as evidence
+that the invoice must be *larger* than revenue, and concluded the counts were a
+floor. **That was wrong and wrong in the generous direction.** Sina supplied the
+actual explanation: roughly **48% of revenue is packages bought with cash**,
+which never reach the postpaid account. Revenue is *higher* than the bill, not
+lower. The payments gap is cash buying packages, not evidence of a bigger
+invoice.
 
-**What does not.** The whole D3 ladder compares a draw in absolute Toman
-against a revenue figure standing in for an invoice that is larger. Every
-count is therefore a **floor**:
+**What survives.** The shock rule's internal logic. Shock is a ratio and 53 took
+both sides from the same column, so 1.133 and 1.907 are consistent estimates
+*in revenue terms*.
 
-| | needs revenue above | if the invoice is 1.67× revenue |
-|---|---|---|
-| 100,000 draw | 100,000 | 60,000 |
-| 300,000 draw | 300,000 | 180,000 |
+**What does not.** The ladder, and now in the opposite direction from what I
+published. A draw is repaid on the bill; money that never reaches the bill
+cannot repay it. So:
 
-Against D2's percentiles (p25 84,748; median 144,031; p75 233,798) that moves
-the 300,000-capable group from below the median to above it — **plausibly more
-than double the 1,455,303 reported**, and most of the 2,906,210 excluded for
-spending too little are probably lendable.
+```
+    draw  <  0.52 x revenue      ->      revenue  >  1.92 x draw
+```
 
-**`D11` runs the ladder under all three assumptions** (revenue as-is, plus tax
-only, over 0.60) so the band is visible, and **`E1` lists the monthly table's
-columns** to find the real invoice total. `54` E3 asked that question and the
-answer was never written down, which is why this survived into a published
-page. Once E1 names the column, `D0` should use it and the ladder rebuilt on
-it rather than on a scaling factor.
+| draw | needs revenue above | D3 said | bill-based estimate |
+|---|---|---|---|
+| 100,000 | ~192,000 | 6,438,513 | **~3,416,000** |
+| 200,000 | ~385,000 | 3,013,027 | above p90, unresolvable from percentiles |
+| 300,000 | ~577,000 | 1,455,303 | above p90, unresolvable from percentiles |
 
-The dashboard now says "service revenue" rather than "bill" throughout and
-carries the caveat as its own panel.
+A book that is mostly 100,000 tickets runs about **342 bn outstanding and
+4,099 bn a year — 27% of the 15,000 bn ambition, not 93%.** Roughly a third of
+the published figure.
+
+**The one argument for the revenue basis**, stated so it is not lost: 53 fitted
+its premiums against a revenue ratio, so applying the rule in revenue terms is
+consistent with how 1.133 and 1.907 were measured, while applying it against the
+bill is consistent with the mechanism. The two disagree by about 1.9× and which
+is right is not yet established.
+
+**The 48% is not measured on this population.** It is network-wide, and these
+are postpaid subscribers billing over 170,000 in two of six months, who may
+carry a different cash share. `D11` brackets it at 0.45 / 0.52 / 0.60 and
+returns exact counts; `E1` looks for either a real invoice total or a revenue
+breakdown that would settle it outright. Both read the table D0 already built.
+
+The dashboard now carries this as a band above the headline figures, stating
+that its loan sizes are an upper bound and the programme is likely about a
+third of what it shows.

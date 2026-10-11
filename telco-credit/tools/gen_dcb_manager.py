@@ -18,10 +18,11 @@ D1 = dict(base=41_270_092, after_bar=10_087_975, after_ow=9_437_240, qualify=9_3
 QUALIFY = D1["qualify"]
 
 # ---- D2  what a qualifying customer SPENDS WITH US each month.
-#      This is service revenue net of tax (arpu - tot_arpu_tax_amt), NOT the
-#      invoice. 54 E5 measured the gap as a roughly constant ratio across
-#      billing bands, so the real invoice is around 1.67x these figures and
-#      every count built on them is a floor. D11 runs the sensitivity.
+#      This is total service revenue net of tax (arpu - tot_arpu_tax_amt),
+#      NOT the postpaid invoice. About 48 pct of revenue is packages bought
+#      with cash, which never reach the bill, so the bill a customer must
+#      actually pay is roughly 0.52 of this. Every count below is therefore a
+#      CEILING, not a floor. D11 returns the exact counts on that basis.
 #      bill_low is the SECOND LOWEST of their six months - an amount they
 #      reliably reach. bill_avg is the plain average of the six.
 D2 = dict(p10=38_323, p25=84_748, median=144_031, p75=233_798, p90=363_544,
@@ -179,7 +180,25 @@ W("""<header>
 </header>
 """)
 
-W("""<div class="kpi" style="margin-top:26px">
+W("""<div class="warnbox" style="margin-top:22px">
+    <h3>Read the loan sizes on this page as an upper bound</h3>
+    Every figure here is sized against <b>what a customer spends with us</b> each
+    month. That is not what they are invoiced: roughly <b>48 pct of revenue is
+    packages bought with cash</b>, which never appear on the postpaid bill. A
+    draw is repaid <i>on the bill</i>, so money that never reaches the bill
+    cannot help repay it.
+    <br><br>
+    Sized against the bill instead, a 100,000 Toman loan needs about
+    <b>192,000</b> of monthly spend rather than 100,000 &mdash; and the number of
+    customers who can take one falls from <b>6,438,513</b> to roughly
+    <b>3.4 million</b>, with the 200,000 and 300,000 groups falling into the top
+    tenth of customers. <b>The programme would be about a third of the size
+    shown below.</b> <code>D11</code> returns the exact counts and takes one
+    query. Until it runs, treat the figures on this page as the generous end of
+    a range.
+  </div>
+
+  <div class="kpi" style="margin-top:14px">
   <div class="tile"><span class="k">customers who qualify</span><span class="v">%s</span>
     <span class="s">out of %s on the network</span></div>
   <div class="tile"><span class="k">we can actually lend to</span><span class="v">%s</span>
@@ -464,20 +483,23 @@ W("""<section>
     <div class="panel unknown">
       <h3><span class="dot" style="background:var(--crit)"></span>We are measuring what they spend, not what they are invoiced</h3>
       <ul>
-        <li>Every figure here uses <b>service revenue</b> &mdash; what a customer
-        spends with us in a month, before tax. That is not the same as the
-        invoice they receive, and we have never confirmed which column holds
-        the invoice total.</li>
-        <li>What we do know: customers pay back about <b>one and a half times</b>
-        what this figure says they were charged, and that gap is a steady
-        proportion rather than a fixed amount. So <b>the real invoice is larger
-        &mdash; perhaps 1.67 times larger</b>.</li>
-        <li><b>That makes the customer counts a floor, not a ceiling.</b> If the
-        invoice is really 1.67 times this, a 100,000 loan on someone spending
-        100,000 raises their bill by 1.6 times, not double, and they should have
-        counted as lendable. <b>Many of the %s we excluded probably are.</b></li>
-        <li>The rule itself is unaffected, because it compares a loan to a bill
-        and both move together. Only the headcounts move.</li>
+        <li>Every figure here uses <b>total service revenue</b>. About
+        <b>48 pct of that is packages bought with cash</b> and never reaches the
+        postpaid bill, so the bill is roughly <b>half</b> what these numbers
+        say.</li>
+        <li>A draw is repaid on the bill. <b>Money that never reaches the bill
+        cannot repay it</b>, so the loan sizes here are too generous &mdash;
+        every customer count is a ceiling, and the %s we excluded for spending
+        too little is an undercount.</li>
+        <li>There is one argument the other way and it should not be lost: the
+        risk figures were measured against revenue too, both sides from the same
+        column, so applying the rule in revenue terms is at least consistent
+        with how they were fitted. The two readings disagree by about 1.9 times
+        and we do not yet know which is right.</li>
+        <li><b>The 48 pct is a network-wide figure, not measured on these
+        customers</b>, who bill more than most. <code>D11</code> brackets it at
+        0.45, 0.52 and 0.60, and <code>E1</code> looks for the column that would
+        settle it outright.</li>
       </ul>
     </div>
   </div>

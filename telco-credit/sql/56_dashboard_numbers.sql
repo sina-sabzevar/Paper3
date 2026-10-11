@@ -405,34 +405,42 @@ FROM    dwbi_temp40_db.dcb_dash_now;
 
 
 -- ---------------------------------------------------------------------------
--- D11  REVENUE IS NOT THE INVOICE, AND THE LADDER IS SENSITIVE TO IT
+-- D11  THE DRAW IS REPAID ON THE BILL, AND THE BILL IS NOT THE REVENUE
 --
---      D0 builds r1..r6 from arpu minus tot_arpu_tax_amt. That is SERVICE
---      REVENUE net of tax, not what the customer is invoiced. 53's header
---      already recorded the evidence: subscribers pay about 1.5x what "arpu
---      minus tax" says they were billed, and 54 E5 showed that gap is a roughly
---      CONSTANT RATIO across billing bands (1.68, 1.66, 1.61, 1.41) rather than
---      a constant amount. A constant ratio means arpu minus tax is a systematic
---      fraction of the true invoice - around 60 pct of it.
+--      D0 builds r1..r6 from arpu minus tot_arpu_tax_amt. That is total
+--      SERVICE REVENUE, and roughly 48 pct of it is packages bought with cash
+--      rather than charged to the postpaid account. Money that never reaches
+--      the bill cannot help repay a draw that lands on the bill.
 --
---      WHAT THAT DOES AND DOES NOT BREAK
+--      So the postpaid invoice is about 0.52 of revenue, and the limit rule
+--      has to be applied against that, not against revenue:
 --
---        The shock rule is SAFE. Shock is a ratio and both sides scale
---        together, so the 1.133 and 1.907 premiums and the band edge at
---        "draw equals bill" are unaffected.
+--          draw  <  0.52 x revenue      ->   revenue  >  1.92 x draw
 --
---        The LADDER IS NOT. D3 compares a draw in absolute Toman against a
---        revenue figure that is smaller than the invoice it stands in for, so
---        every count is a FLOOR. If the invoice is really 1.67x revenue, a
---        100,000 draw on a customer with 100,000 of revenue is a rise of 1.60x,
---        not 2.00x, and they should have been counted as lendable.
+--      A 100,000 draw therefore needs about 192,000 of revenue, not 100,000.
 --
---      This runs the ladder under three assumptions so the band is visible.
---      It reads the table D0 already built; nothing needs re-running.
---      E1 below finds the column that would settle it properly.
+--      WHICH DIRECTION THIS MOVES THINGS. Against D3, every count falls. D3's
+--      6,438,513 who can take a 100,000 draw becomes roughly 3.4 million read
+--      off D2's percentiles, and the 200,000 and 300,000 groups fall above
+--      p90 where percentiles cannot resolve them. That is why this query
+--      exists: it returns the exact counts.
+--
+--      THE ONE ARGUMENT FOR THE REVENUE BASIS, stated so it is not lost. 53
+--      measured its premiums against a ratio of REVENUE, both sides from the
+--      same column. Applying the rule in revenue terms is therefore consistent
+--      with how 1.133 and 1.907 were fitted. Applying it against the bill is
+--      consistent with the mechanism - the bill is what the customer has to
+--      pay. The two disagree by about 1.9x and the first row below is the
+--      former, the rest the latter.
+--
+--      THE 0.52 IS NOT MEASURED ON THIS POPULATION. It is a network-wide
+--      figure, and these are postpaid subscribers billing over 170,000 in two
+--      of six months, who may well carry a different cash share. The 0.45 and
+--      0.60 rows bracket it. E1 looks for the column that would settle it.
+--
+--      Reads the table D0 already built; nothing needs re-running.
 -- ---------------------------------------------------------------------------
-SELECT  'invoice = revenue (what the dashboard shows)'     AS assumption,
-        1.00                                                AS factor,
+SELECT  'bill = revenue (how 53 fitted its premiums)'      AS basis,
         SUM(IF(bill_low * 100 > 1000000 * 100, 1, 0))       AS can_take_100k,
         SUM(IF(bill_low * 100 > 2000000 * 100, 1, 0))       AS can_take_200k,
         SUM(IF(bill_low * 100 > 3000000 * 100, 1, 0))       AS can_take_300k,
@@ -440,20 +448,28 @@ SELECT  'invoice = revenue (what the dashboard shows)'     AS assumption,
         SUM(IF(bill_low * 100 <= 1000000 * 100, 1, 0))      AS cannot_take_minimum
 FROM    dwbi_temp40_db.dcb_dash_now
 UNION ALL
-SELECT  'invoice = revenue plus tax only', 1.09,
-        SUM(IF(bill_low * 109 > 1000000 * 100, 1, 0)),
-        SUM(IF(bill_low * 109 > 2000000 * 100, 1, 0)),
-        SUM(IF(bill_low * 109 > 3000000 * 100, 1, 0)),
-        SUM(IF(bill_low * 109 > 5000000 * 100, 1, 0)),
-        SUM(IF(bill_low * 109 <= 1000000 * 100, 1, 0))
+SELECT  'bill = 0.60 of revenue', 
+        SUM(IF(bill_low * 60 > 1000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 60 > 2000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 60 > 3000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 60 > 5000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 60 <= 1000000 * 100, 1, 0))
 FROM    dwbi_temp40_db.dcb_dash_now
 UNION ALL
-SELECT  'invoice = revenue over 0.60, the measured ratio', 1.67,
-        SUM(IF(bill_low * 167 > 1000000 * 100, 1, 0)),
-        SUM(IF(bill_low * 167 > 2000000 * 100, 1, 0)),
-        SUM(IF(bill_low * 167 > 3000000 * 100, 1, 0)),
-        SUM(IF(bill_low * 167 > 5000000 * 100, 1, 0)),
-        SUM(IF(bill_low * 167 <= 1000000 * 100, 1, 0))
+SELECT  'bill = 0.52 of revenue (48 pct cash packages)',
+        SUM(IF(bill_low * 52 > 1000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 52 > 2000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 52 > 3000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 52 > 5000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 52 <= 1000000 * 100, 1, 0))
+FROM    dwbi_temp40_db.dcb_dash_now
+UNION ALL
+SELECT  'bill = 0.45 of revenue',
+        SUM(IF(bill_low * 45 > 1000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 45 > 2000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 45 > 3000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 45 > 5000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 45 <= 1000000 * 100, 1, 0))
 FROM    dwbi_temp40_db.dcb_dash_now;
 
 
@@ -462,9 +478,16 @@ FROM    dwbi_temp40_db.dcb_dash_now;
 --
 --      54 E3 asked this and the answer was never written down, so every figure
 --      that mixes an absolute Toman amount with a revenue figure is still
---      resting on a proxy. Look for anything named like a bill, charge,
---      invoice or payable total. If one exists, D0 should use it and the whole
---      ladder should be rebuilt on it rather than on a scaling factor.
+--      resting on a proxy. Two things to look for:
+--
+--        1. a bill, charge, invoice or payable TOTAL - what the postpaid
+--           account was actually invoiced for the month
+--        2. a revenue BREAKDOWN - voice, data, package, VAS, content - which
+--           would let the cash-package share be measured on this population
+--           rather than assumed at 48 pct network-wide
+--
+--      Either one removes the scaling factor. D0 should then use the real
+--      column and the ladder be rebuilt on it.
 -- ---------------------------------------------------------------------------
 SELECT   column_name, data_type
 FROM     information_schema.columns
