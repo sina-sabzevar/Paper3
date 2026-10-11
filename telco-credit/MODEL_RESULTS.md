@@ -484,3 +484,58 @@ Still climbing → the premium is real and the planning bound is the right numbe
 
 This is a between-subscriber comparison inside narrow strata. It trades the
 paired design, which cannot work with two months, for stratification that can.
+
+## S10/S11: with the calendar held fixed, there IS an effect — and it depends on direction
+
+Bill month 140406 only, so no month effect. Mantel-Haenszel pooled across
+baseline size, excluding the new-subscriber group below:
+
+| prior direction | 1.25–2.00× shock | 2.00×+ shock |
+|---|---|---|
+| bill was falling | 0.707 | **1.001** |
+| bill was flat | 0.825 | **1.447** |
+| bill was rising | 0.924 | **1.668** |
+| **pooled** | 0.832 | **1.396** |
+
+**A large rise matters, and it matters most to subscribers whose bill was
+already climbing.** For someone whose bill had been falling, a 2× month is a
+return to normal and carries no excess risk at all. For someone already on the
+way up, it is genuinely new spending and runs 1.67×.
+
+That is a usable rule: the risk is in *sustained* escalation, not in a single
+large bill. `rev_trend` is already a feature; this says it interacts with the
+draw size and the limit engine should read both.
+
+### Two defects in my own query, both biasing the numbers DOWN
+
+**The reference band was contaminated.** `shock_band A` was `shock < 1.25`,
+which swallowed the months where the bill *fell* — the riskiest months in the
+data at 0.4116% against a normal 0.2290%. The control group contained the
+worst cases. Fixed to `0.80–1.25`, with a separate `Z` band so the fell months
+stay visible. **Every premium above is understated; the corrected run will put
+them higher.**
+
+**`prior_trend IS NULL` is a different population, not a stratum.** It means
+the first baseline month billed zero — a subscriber who started or restarted
+inside the window.
+
+| | n | bars | rate |
+|---|---|---|---|
+| prior_trend unknown | 109,360 | 2,959 | **2.706%** |
+| everyone else | 8,585,353 | 30,050 | 0.350% |
+
+**7.7×**, and 73,789 of them sit in the high-shock band, because a bill
+appearing out of nothing reads as an enormous rise. They inflated S5's extreme
+band and they are now flagged separately as `new_sub`.
+
+**This is actionable beyond the analysis:** a subscriber with a zero-billing
+month in the qualifying window is 7.7× riskier and the current screen does not
+look for it. It asks for revenue above the bar in 2 of 6 months, which a
+subscriber who appeared in month 4 can satisfy.
+
+### Where that leaves the planning number
+
+The across-subscriber 1.97× stands as the bound. The identified estimate is
+**1.40 pooled, rising to 1.67** for subscribers already escalating — and both
+will rise further once the reference band is fixed. The dashboard's 0.08–0.15%
+range still covers it.

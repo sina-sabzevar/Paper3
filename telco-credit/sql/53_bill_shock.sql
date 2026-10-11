@@ -642,9 +642,15 @@ SELECT   IF(base <  1500000, 'a  under 150k Toman',
          IF(prior_trend < 0.90, '1  was falling',
          IF(prior_trend < 1.15, '2  was flat',
                                 '3  was rising')))      AS prior_direction,
-         IF(shock < 1.25, 'A  normal',
+         -- The reference is 0.80 to 1.25, NOT everything under 1.25. The first
+         -- version lumped the months where the bill FELL into the reference,
+         -- and S5 measured those at 0.4116 pct against a normal 0.2290 - the
+         -- riskiest months in the data were sitting in the control group,
+         -- which made every premium read smaller than it is.
+         IF(shock < 0.80, 'Z  bill fell  (not the reference)',
+         IF(shock < 1.25, 'A  normal  0.80 - 1.25',
          IF(shock < 2.00, 'B  1.25 - 2.00',
-                          'C  2.00 and over'))          AS shock_band,
+                          'C  2.00 and over')))         AS shock_band,
          COUNT(*)                                       AS n,
          SUM(tw_later)                                  AS n_twoway,
          100.0 * AVG(CAST(tw_later AS DOUBLE))          AS pct_twoway,
@@ -672,12 +678,21 @@ WITH c AS (
              IF(prior_trend < 0.90, '1  was falling',
              IF(prior_trend < 1.15, '2  was flat',
                                     '3  was rising')))  AS prior_direction,
-             IF(shock < 1.25, 'A', IF(shock < 2.00, 'B', 'C')) AS sb,
+             IF(shock < 0.80, 'Z', IF(shock < 1.25, 'A', IF(shock < 2.00, 'B', 'C'))) AS sb,
+             -- prior_trend is NULL when the FIRST baseline month billed zero:
+             -- a subscriber who started or restarted inside the window. They
+             -- run 2.706 pct against 0.350 for everyone else - 7.7x - and
+             -- 73,789 of them land in the high-shock band, because a bill
+             -- appearing out of nothing reads as an enormous rise. They are a
+             -- different population, not a stratum of this one.
+             IF(prior_trend IS NULL, 1, 0) AS new_sub,
              tw_later
     FROM     dwbi_temp40_db.dcb_shock
     WHERE    bill_month = 140406 AND obs_ok = 1 AND shock IS NOT NULL
 )
 SELECT   baseline_band, prior_direction,
+         COUNT(*) FILTER (WHERE sb = 'Z')                       AS n_fell,
+         100.0 * AVG(CAST(tw_later AS DOUBLE)) FILTER (WHERE sb = 'Z') AS pct_fell,
          COUNT(*) FILTER (WHERE sb = 'A')                       AS n_normal,
          COUNT(*) FILTER (WHERE sb = 'B')                       AS n_mid,
          COUNT(*) FILTER (WHERE sb = 'C')                       AS n_high,
