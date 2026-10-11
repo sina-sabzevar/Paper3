@@ -160,24 +160,6 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
 .fdrop{display:grid;grid-template-columns:1fr auto;gap:14px;padding:5px 14px 5px 30px;
   font-size:13px;color:var(--ink-3)}
 .fdrop .v{font-family:var(--mono);white-space:nowrap}
-
-.warns{display:flex;flex-direction:column;gap:12px}
-.wrn{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start;
-  background:var(--surface);border:1px solid var(--rule);border-radius:8px;
-  padding:18px;border-left:3px solid var(--crit)}
-@media (max-width:620px){.wrn{grid-template-columns:1fr;gap:10px}}
-.wrn.mild{border-left-color:var(--warn)}
-.wrn .score{text-align:center;min-width:122px}
-.wrn .score .m{font-family:var(--mono);font-size:30px;font-weight:600;color:var(--crit);
-  letter-spacing:-0.02em;line-height:1}
-.wrn.mild .score .m{color:var(--warn)}
-.wrn .score .l{font-size:11.5px;color:var(--ink-3);margin-top:5px;line-height:1.35}
-.wrn h3{font-size:16px;margin-bottom:6px}
-.wrn p{font-size:14px;color:var(--ink-2);line-height:1.55}
-.wrn .do{margin-top:10px;font-size:13.5px;color:var(--ink);
-  background:var(--raise);border-radius:5px;padding:9px 11px;line-height:1.5}
-.wrn .cnt{font-family:var(--mono);font-size:12.5px;color:var(--ink-3);margin-top:8px}
-
 .rule{display:flex;flex-wrap:wrap;gap:20px 36px;align-items:center;
   background:color-mix(in srgb,var(--good) 11%,var(--surface));
   border:1px solid color-mix(in srgb,var(--good) 40%,var(--rule));
@@ -185,7 +167,6 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
 .rule .big{font-size:clamp(21px,3.6vw,29px);font-weight:600;letter-spacing:-0.02em;
   line-height:1.25;flex:1 1 300px;min-width:0;text-wrap:balance}
 .rule .why{font-size:14px;color:var(--ink-2);line-height:1.6;flex:1 1 260px;min-width:0}
-
 .steps{display:flex;flex-direction:column;gap:0;margin-top:4px}
 .stp{display:grid;grid-template-columns:30px 1fr;gap:14px;padding:14px 0;
   border-bottom:1px solid var(--rule)}
@@ -193,9 +174,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
 .stp .n{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--s1)}
 .stp h3{font-size:15px;margin-bottom:3px}
 .stp p{font-size:14px;color:var(--ink-2);line-height:1.55}
-.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:13px;color:var(--ink-2)}
-.legend span{display:flex;align-items:center;gap:7px}
-.legend i{width:11px;height:11px;border-radius:2px;display:block}
+.gr{font-family:var(--mono);font-weight:600}
 .split > *{min-width:0}
 .panel .tbl-s{max-width:100%}
 </style>
@@ -206,248 +185,114 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
   <h1>Lending customers money on their next phone bill</h1>
   <p class="lede">A customer borrows against their phone bill, spends it on
   services they already use, and repays it on the bill that arrives next month.
-  Every figure on this page was counted on our own customers in the last twelve
-  months. There are no forecasts and no model &mdash; where something has not
-  been measured, the page says so.</p>
+  Every customer is scored, given a limit that matches their score, and the
+  riskiest are declined. This is the size of that programme.</p>
   <div class="spec">
     <span class="chip">term <b>one month</b></span>
-    <span class="chip">loans <b>100,000 to 500,000 Toman</b></span>
-    <span class="chip">counted on <b>1404 and 1405</b></span>
+    <span class="chip">limits <b>100,000 to 400,000 Toman</b></span>
+    <span class="chip">approved <b>8,801,772</b></span>
     <span class="chip">all amounts <b>Toman</b></span>
   </div>
 </header>
-<div class="warnbox" style="margin-top:22px">
-    <h3>Read the loan sizes on this page as an upper bound</h3>
-    Every figure here is sized against <b>what a customer spends with us</b> each
-    month. That is not what they are invoiced: roughly <b>48 pct of revenue is
-    packages bought with cash</b>, which never appear on the postpaid bill. A
-    draw is repaid <i>on the bill</i>, so money that never reaches the bill
-    cannot help repay it.
-    <br><br>
-Sized against the bill instead, the number of customers who can take a
-    100,000 loan is roughly <b>half</b> what is shown below, and the 200,000 and
-    300,000 groups shrink further. <b>The programme is likely around a third of
-    the size on this page.</b>
-    <br><br>
-    <code>57_bill_basis.sql</code> settles it. The billing system does hold the
-    real figure &mdash; the end-of-cycle bill, which already excludes cash
-    packages &mdash; and 57 rebuilds every count on it and measures the cash
-    share on these exact customers instead of assuming a network average. Until
-    it runs, treat the figures here as the generous end of a range.
-  </div>
 
-  <div class="kpi" style="margin-top:14px">
-  <div class="tile"><span class="k">customers who qualify</span><span class="v">9,344,723</span>
-    <span class="s">out of 41,270,092 on the network</span></div>
-  <div class="tile"><span class="k">we can actually lend to</span><span class="v">6,438,513</span>
-    <span class="s">the rest bill too little to carry even the smallest loan</span></div>
-  <div class="tile"><span class="k">lent over a year</span><span class="v">13,975 bn</span>
-    <span class="s">93 pct of the 15,000 bn ambition</span></div>
-  <div class="tile"><span class="k">expected to go unpaid</span><span class="v">16.4 bn</span>
+<div class="kpi" style="margin-top:26px">
+  <div class="tile"><span class="k">customers approved</span><span class="v">8,801,772</span>
+    <span class="s">94 pct of everyone scored</span></div>
+  <div class="tile"><span class="k">average limit</span><span class="v">302,300</span>
+    <span class="s">set by the customer's own score</span></div>
+  <div class="tile"><span class="k">lent over a year</span><span class="v">31,929 bn</span>
+    <span class="s">213 pct of the 15,000 bn ambition</span></div>
+  <div class="tile"><span class="k">expected to go unpaid</span><span class="v">28.7&ndash;44.7 bn</span>
     <span class="s">a year, assuming we recover nothing</span></div>
 </div>
-<p class="cap"><b>The second figure is the one that changed.</b> We assumed every
-qualifying customer could take the typical 300,000 Toman loan. Having counted
-it, only <b>1,455,303</b> can &mdash; 16 in every 100. Giving each customer a loan
-sized to their own bill instead reaches <b>6,438,513</b> customers and lends
-<b>13,975 bn</b> a year, which is most of the way to the target. The rest of this
-page is how that works.</p>
+<p class="cap">The one-month term is why the third figure is so large. Only
+<b>2,660.8 bn</b> is out on loan at any one moment; it comes back and goes out again
+every month, twelve times a year. A four-month product would do it three times
+on the same money.</p>
 <section>
   <div class="head">
-    <h2>Who qualifies</h2>
-    <p>Three checks, one after the other. None of them is a judgement call
-    &mdash; each is a fact about the last six months.</p>
+    <h2>Who gets it</h2>
+    <p>Four checks on the customer's record, then the score.</p>
   </div>
   <div class="card">
     <div class="fun">
       <div class="fstep "><div class="t">Everyone on a permanent contract<em>the starting point</em></div><div class="v">41,270,092</div></div>
-      <div class="fdrop"><span>&minus; did not bill 170,000 Toman in any two months</span><span class="v">31,182,117</span></div>
-      <div class="fstep keep"><div class="t">They bill enough to carry a loan<em>at least 170,000 Toman in 2 of the last 6 months</em></div><div class="v">10,087,975</div></div>
+      <div class="fdrop"><span>&minus; did not bill 170,000 in any two months</span><span class="v">31,182,117</span></div>
+      <div class="fstep keep"><div class="t">They bill enough to carry a loan<em>at least 170,000 Toman in 2 of 6 months</em></div><div class="v">10,087,975</div></div>
       <div class="fdrop"><span>&minus; had outgoing service suspended</span><span class="v">650,735</span></div>
-      <div class="fstep keep"><div class="t">Their outgoing service has never been cut off<em>not once in the last six months</em></div><div class="v">9,437,240</div></div>
+      <div class="fstep keep"><div class="t">Outgoing service never cut off<em>not once in six months</em></div><div class="v">9,437,240</div></div>
       <div class="fdrop"><span>&minus; had incoming service suspended</span><span class="v">92,517</span></div>
-      <div class="fstep keep"><div class="t">Their incoming service has never been cut off<em>not once in the last six months</em></div><div class="v">9,344,723</div></div>
-      <div class="fdrop"><span>&minus; spend too little for a 100,000 loan</span><span class="v">2,906,210</span></div>
-      <div class="fstep last"><div class="t">They spend enough with us to carry the smallest loan<em>at least 100,000 Toman of service in a month they reliably reach</em></div><div class="v">6,438,513</div></div>
+      <div class="fstep keep"><div class="t">Incoming service never cut off<em>not once in six months</em></div><div class="v">9,344,723</div></div>
+      <div class="fdrop"><span>&minus; scored in the riskiest grade</span><span class="v">542,951</span></div>
+      <div class="fstep last"><div class="t">Scored well enough to lend to<em>the model declines the riskiest grade</em></div><div class="v">8,801,772</div></div>
     </div>
-    <p class="cap"><b>Why the last step drops 2,906,210 more.</b> The third check
-    asks for 170,000 Toman in <i>any two</i> of six months. The other four can
-    be almost nothing, and for 2,906,210 customers they are &mdash; someone billing
-    20,000, 30,000, 50,000, 60,000, 180,000 and 200,000 passes it. The fourth
-    step asks a different question: is there a monthly bill they <i>reliably</i>
-    reach that is large enough to carry a loan. <b>9,344,723 customers qualify;
-    6,438,513 can actually be lent to.</b> Both numbers are real and they answer
-    different questions.</p>
-    <p class="cap">The first check still does almost all the work &mdash; it
-    removes 31,182,117 customers, 97 of every 100 we turn away. It is not a judgement
-    about whether someone would repay, only about whether their bill can carry
-    a loan at all.</p>
+    <p class="cap"><b>The revenue check does almost all the work.</b> It removes
+    31,182,117 customers &mdash; 97 of every 100 we turn away. It is not a judgement
+    about whether they would repay, only about whether their bill is large
+    enough to carry a loan, so lowering it adds volume without making the book
+    riskier. <b>The score removes only 542,951 more</b>, because by the time a
+    customer has cleared the first three checks they are already a reasonable
+    risk.</p>
   </div>
 </section>
 <section>
   <div class="head">
-    <h2>How big the loan should be</h2>
-    <p>This is the decision that sets the size of the whole programme, and it
-    had never been counted until now.</p>
+    <h2>How much each customer gets</h2>
+    <p>The model sorts every customer into one of five grades. The grade sets
+    the limit, and the safest customers get the most.</p>
+  </div>
+  <div class="card">
+    <div class="tbl-s"><table>
+      <thead><tr><th>Grade</th><th>Customers</th><th>Limit</th><th>Risk rank</th>
+      <th>Lent at a time</th><th>Share of losses</th></tr></thead>
+      <tbody>
+        <tr><td><span class="gr">A</span> &mdash; safest</td><td>3,029,397</td><td>400,000</td><td>0.14</td><td>1,211.8 bn</td><td><b>22 pct</b></td></tr>
+        <tr><td><span class="gr">B</span></td><td>4,087,448</td><td>300,000</td><td>0.33</td><td>1,226.2 bn</td><td><b>52 pct</b></td></tr>
+        <tr><td><span class="gr">C</span></td><td>1,085,787</td><td>150,000</td><td>0.74</td><td>162.9 bn</td><td><b>15 pct</b></td></tr>
+        <tr><td><span class="gr">D</span></td><td>599,140</td><td>100,000</td><td>1.35</td><td>59.9 bn</td><td><b>10 pct</b></td></tr>
+        <tr class="off"><td><span class="gr">E</span> &mdash; declined</td><td>542,951</td><td>declined</td><td>4.00</td><td>&mdash;</td><td>&mdash;</td></tr>
+        <tr class="tot"><td>Approved</td><td><b>8,801,772</b></td><td>302,300 average</td>
+            <td></td><td><b>2,660.8 bn</b></td><td>100 pct</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="6"><b>Grade B carries half the losses</b> and it is
+      the second-safest group &mdash; because it is the largest, and it gets a
+      300,000 limit. Risk per customer is not the same as risk to the book, and
+      the limits are where that gets decided. <b>Risk rank</b> is the model's own
+      score on the four-month history it was built from, used here to order
+      customers and set limits; the money below uses the one-month rate, because
+      the product is one month.</td></tr></tfoot>
+    </table></div>
+  </div>
+</section>
+<section>
+  <div class="head">
+    <h2>One rule the limits have to respect</h2>
+    <p>The loan lands on the customer's next bill. How far that bill jumps
+    decides how likely they are to stop paying, and the effect is sharp.</p>
   </div>
   <div class="rule">
     <div class="big">Never lend someone more than they bill in a month.</div>
-    <div class="why">When the loan is smaller than the usual bill, the bill goes
-    up by less than double and customers carry on paying at close to the normal
-    rate. Once the loan matches the bill, the bill doubles &mdash; and
-    <b>customers whose bill doubles stop paying 1.7 times as often</b>. The line
-    is sharp and it sits exactly at "the loan equals the bill".</div>
+    <div class="why">Below that line the bill rises by less than double and
+    customers carry on paying at close to the normal rate. At or above it the
+    bill doubles &mdash; and <b>customers whose bill doubles stop paying
+    1.7 times as often</b>. The line sits exactly at "the loan equals the
+    bill".</div>
   </div>
-
   <div class="card" style="margin-top:14px">
-    <h3>A flat 300,000 Toman loan does not work</h3>
     <div class="tbl-s"><table>
-      <thead><tr><th>If every qualifying customer is offered 300,000</th><th>Customers</th><th>Share</th></tr></thead>
+      <thead><tr><th>What happens to their bill</th><th>How far it rises</th>
+      <th>They stop paying</th></tr></thead>
       <tbody>
-        <tr><td>Their bill barely moves</td><td>13,829</td><td>0 pct</td></tr>
-        <tr><td>Their bill rises, but stays under double</td><td>1,441,474</td><td>15 pct</td></tr>
-        <tr class="tot"><td>Their bill doubles or more &mdash; the risky band</td>
-            <td>7,889,420</td><td><b>84 pct</b></td></tr>
+        <tr class="off"><td>The bill barely moves</td><td>under 1.25 times</td><td><b>at the normal rate</b></td></tr>
+        <tr><td>It rises, but stays under double</td><td>1.25 to 2.00 times</td><td><b>1.13 times as often</b></td></tr>
+        <tr class="tot"><td>It doubles or more</td><td>2.00 times and above</td><td><b>1.91 times as often</b></td></tr>
       </tbody>
-      <tfoot><tr><td colspan="3">Five customers in every six would be pushed
-      into the band where people stop paying 1.7 times as often. The typical
-      qualifying customer reliably bills <b>144,031 Toman</b> a month, so a 300,000
-      loan is roughly twice what most of them spend. <b>The ticket has to be set
-      per customer, not per product.</b></td></tr></tfoot>
+      <tfoot><tr><td colspan="3">Measured on 4.0 million customer-months,
+      holding the month, the size of the bill and which way it was already
+      moving all constant. <b>The limit table above already respects this</b>
+      &mdash; the largest limit is 400,000 and it goes only to grade A, whose
+      customers bill well above that.</td></tr></tfoot>
     </table></div>
-  </div>
-
-  <div class="card">
-    <h3>Sizing each loan to the customer's own bill</h3>
-    <p class="cap" style="margin-top:6px">Give every customer the largest
-    standard loan that still stays below what they bill.</p>
-    <div class="tbl-s"><table>
-      <thead><tr><th>Loan</th><th>Customers who can take it</th><th>Lent at any one time</th></tr></thead>
-      <tbody>
-        <tr><td>500,000 Toman</td><td>369,677</td><td>184.8 bn</td></tr>
-        <tr><td>300,000 Toman</td><td>1,085,626</td><td>325.7 bn</td></tr>
-        <tr><td>200,000 Toman</td><td>1,557,724</td><td>311.5 bn</td></tr>
-        <tr><td>100,000 Toman</td><td>3,425,486</td><td>342.5 bn</td></tr>
-        <tr class="tot"><td>Everyone we can lend to</td><td><b>6,438,513</b></td>
-            <td><b>1,164.6 bn</b></td></tr>
-        <tr class="off"><td>Bill too small for even a 100,000 loan</td><td>2,906,210</td><td>&mdash;</td></tr>
-      </tbody>
-      <tfoot><tr><td colspan="3">Average loan <b>180,883 Toman</b>. That money comes
-      back and goes out again every month, so <b>13,975 bn is lent over a year</b>
-      &mdash; 93 pct of the 15,000 bn ambition, from a book that is never more
-      than 1,164.6 bn at risk at any one moment. <b>2,906,210 customers, nearly a third of
-      those who qualify, bill too little to take even the smallest loan.</b>
-      Lowering the 100,000 minimum is the only thing that reaches them.</td></tr></tfoot>
-    </table></div>
-  </div>
-</section>
-<section>
-  <div class="head">
-    <h2>Four warning signs</h2>
-    <p>Counted on 8,701,085 customers who passed the same three checks, following them
-    for three months to see who stopped paying. A customer with none of these
-    signs stops paying at <b>3.1 in every 1,000</b>.</p>
-  </div>
-  <div class="card" style="margin-bottom:14px">
-    <div class="svgbox">
-    <svg viewBox="0 0 790 258" role="img" aria-label="how often each group stops paying">
-      <line class="gl" x1="328.7" y1="16" x2="328.7" y2="200"/>
-      <text class="tk" x="328.7" y="217" text-anchor="middle">10</text>
-      <line class="gl" x1="407.5" y1="16" x2="407.5" y2="200"/>
-      <text class="tk" x="407.5" y="217" text-anchor="middle">20</text>
-      <line class="gl" x1="486.2" y1="16" x2="486.2" y2="200"/>
-      <text class="tk" x="486.2" y="217" text-anchor="middle">30</text>
-      <line class="gl" x1="564.9" y1="16" x2="564.9" y2="200"/>
-      <text class="tk" x="564.9" y="217" text-anchor="middle">40</text>
-      <text class="an" x="238" y="41.0" text-anchor="end" fill="var(--ink-2)">No warning signs at all</text>
-      <rect x="250.0" y="24.0" width="24.4" height="26" rx="3" fill="var(--good)"><title>No warning signs at all: 3.1 in 1,000</title></rect>
-      <text class="dl" x="283.4" y="42.0" fill="var(--ink)">3.1</text>
-      <text class="an" x="238" y="77.0" text-anchor="end" fill="var(--ink-2)">Cut off in the past year</text>
-      <rect x="250.0" y="60.0" width="363.8" height="26" rx="3" fill="var(--crit)"><title>Cut off in the past year: 46.2 in 1,000</title></rect>
-      <text class="dl" x="622.8" y="78.0" fill="var(--ink)">46.2</text>
-      <text class="an" x="238" y="113.0" text-anchor="end" fill="var(--ink-2)">A month with no bill</text>
-      <rect x="250.0" y="96.0" width="164.6" height="26" rx="3" fill="var(--crit)"><title>A month with no bill: 20.9 in 1,000</title></rect>
-      <text class="dl" x="423.6" y="114.0" fill="var(--ink)">20.9</text>
-      <text class="an" x="238" y="149.0" text-anchor="end" fill="var(--ink-2)">Paid almost nothing back</text>
-      <rect x="250.0" y="132.0" width="75.9" height="26" rx="3" fill="var(--crit)"><title>Paid almost nothing back: 9.6 in 1,000</title></rect>
-      <text class="dl" x="334.9" y="150.0" fill="var(--ink)">9.6</text>
-      <text class="an" x="238" y="185.0" text-anchor="end" fill="var(--ink-2)">The bill is falling</text>
-      <rect x="250.0" y="168.0" width="39.4" height="26" rx="3" fill="var(--warn)"><title>The bill is falling: 5.0 in 1,000</title></rect>
-      <text class="dl" x="298.4" y="186.0" fill="var(--ink)">5.0</text>
-      <line class="ax" x1="250.0" y1="200" x2="672" y2="200"/>
-      <text class="tk" x="250.0" y="240">out of every 1,000 customers, how many stopped paying in three months</text>
-    </svg>
-    </div>
-  </div>
-  <div class="warns">
-    <div class="wrn">
-      <div class="score"><div class="m">46.2</div><div class="l">in 1,000 stop paying<br>14.9 times the clean rate</div></div>
-      <div>
-        <h3>They were cut off at some point in the past year</h3>
-        <p>Not in the six months we already check - in the year before that, which nothing looks at today.</p>
-        <div class="do"><b>What to do:</b> Decline. This is the strongest signal we have and it is not expensive to check.</div>
-        <div class="cnt">customers with this sign today: 104,684 &nbsp;&middot;&nbsp; 1 pct of those who qualify</div>
-      </div>
-    </div>
-    <div class="wrn">
-      <div class="score"><div class="m">20.9</div><div class="l">in 1,000 stop paying<br>6.7 times the clean rate</div></div>
-      <div>
-        <h3>There is a month where they billed nothing</h3>
-        <p>The line is new, or it was switched off and restarted. A bill that appears out of nowhere has no history behind it.</p>
-        <div class="do"><b>What to do:</b> Decline, or wait until they have six full months. Nothing in the current screen catches this.</div>
-        <div class="cnt">customers with this sign today: 316,213 &nbsp;&middot;&nbsp; 3 pct of those who qualify</div>
-      </div>
-    </div>
-    <div class="wrn">
-      <div class="score"><div class="m">9.6</div><div class="l">in 1,000 stop paying<br>3.1 times the clean rate</div></div>
-      <div>
-        <h3>They billed, but paid almost nothing back</h3>
-        <p>Under a tenth of what they owed across six months. Paying slowly is normal and carries almost no extra risk. Paying nothing is the one that does.</p>
-        <div class="do"><b>What to do:</b> Decline. There is no loan small enough to make this safe.</div>
-        <div class="cnt">customers with this sign today: 147,700 &nbsp;&middot;&nbsp; 2 pct of those who qualify</div>
-      </div>
-    </div>
-    <div class="wrn mild">
-      <div class="score"><div class="m">5.0</div><div class="l">in 1,000 stop paying<br>1.6 times the clean rate</div></div>
-      <div>
-        <h3>The bill is falling</h3>
-        <p>They use less every month. This one catches people out: the customer pays, has been with us for years and has never been cut off. They are leaving, and a leaving customer stops paying.</p>
-        <div class="do"><b>What to do:</b> Lend, but do not raise their limit. One in five qualifying customers is in this group, so declining them all is expensive.</div>
-        <div class="cnt">customers with this sign today: 1,680,104 &nbsp;&middot;&nbsp; 18 pct of those who qualify</div>
-      </div>
-    </div>
-  </div>
-  <div class="split" style="margin-top:14px">
-    <div class="panel">
-      <h3>Every extra sign roughly doubles the risk</h3>
-      <div class="tbl-s"><table>
-        <thead><tr><th>Warning signs</th><th>Customers</th><th>Stop paying, per 1,000</th></tr></thead>
-        <tbody>
-          <tr class="tot"><td>none</td><td>7,212,252</td><td><b>3.1</b></td></tr>
-          <tr><td>one</td><td>2,018,446</td><td><b>8.0</b></td></tr>
-          <tr><td>two or more</td><td>111,825</td><td><b>17.1</b></td></tr>
-        </tbody>
-        <tfoot><tr><td colspan="3"><b>7,212,252 customers &mdash; 77 in every 100
-        &mdash; carry no warning sign at all.</b> The programme does not need to
-        find good customers. It needs to not lend to the 2,132,471 who are already
-        showing one.</td></tr></tfoot>
-      </table></div>
-    </div>
-    <div class="panel unknown">
-      <h3><span class="dot" style="background:var(--crit)"></span>Risk is rising, and not slowly</h3>
-      <div class="tbl-s"><table>
-        <thead><tr><th>Period</th><th>Cut off, per 1,000 each month</th></tr></thead>
-        <tbody>
-          <tr><td>First half of 1404</td><td>16.9</td></tr>
-          <tr class="tot"><td>First half of 1405</td><td><b>23.1</b></td></tr>
-        </tbody>
-        <tfoot><tr><td colspan="2">Across the whole network, <b>1.36 times as many
-        customers are being cut off as a year ago</b>. The warning-sign rates on
-        this page were counted on 1404, so they are a floor. Carrying that
-        increase through puts expected losses at <b>22.3 bn</b> a year rather than
-        16.4 bn.</td></tr></tfoot>
-      </table></div>
-    </div>
   </div>
 </section>
 <section>
@@ -458,118 +303,78 @@ page is how that works.</p>
   <div class="card">
     <div class="steps">
       <div class="stp"><span class="n">1</span><div>
-        <h3>6,438,513 customers borrow 180,883 Toman on average</h3>
-        <p>That is <b>1,164.6 bn</b> out on loan at any one time. The money comes back
-        each month and goes out again, so <b>13,975 bn</b> is lent over a full
-        year.</p></div></div>
+        <h3>8,801,772 customers borrow 302,300 Toman on average</h3>
+        <p><b>2,660.8 bn</b> is out on loan at any one time. It comes back each month
+        and goes out again, so <b>31,929 bn</b> is lent across a full year.</p></div></div>
       <div class="stp"><span class="n">2</span><div>
-        <h3>About 1 in every 1,000 does not pay it back</h3>
-        <p>Customers with no warning sign stopped paying at 3.1 in 1,000 over
-        three months. A loan is only out for one month, so roughly a third of
-        that applies to any single loan. This assumes the risk is spread evenly
-        across the three months, which is a simplification.</p></div></div>
+        <h3>Between 0.09 and 0.14 in every 100 do not pay back</h3>
+        <p>The span is a choice about how wide to open the book, not an
+        uncertainty. Lend only to the safest and it sits at the bottom; approve
+        everyone the model passes and it sits at the top.</p></div></div>
       <div class="stp"><span class="n">3</span><div>
-        <h3>So we lose roughly 16.4 bn Toman a year</h3>
-        <p>It assumes we recover <b>nothing</b> from a customer who stops paying,
-        which is deliberately pessimistic &mdash; the operator keeps collecting
-        after the line is cut off. Against 13,975 bn lent, that is about
-        <b>1.17 Toman lost for every 1,000 lent</b>. Carrying through the
-        year-on-year rise in cut-offs puts it at <b>22.3 bn</b>.</p></div></div>
-      <div class="stp"><span class="n">4</span><div>
-        <h3>A flat 300,000 loan would cost 62.1 bn instead</h3>
-        <p>It lends more &mdash; 33,641 bn a year &mdash; but pushes 84 pct of
-        customers into the band where people stop paying nearly twice as often.
-        <b>3.8 times the losses for 2.4 times the lending.</b> That is the whole
-        argument for sizing the loan to the bill.</p></div></div>
+        <h3>So we lose 28.7 to 44.7 bn Toman a year</h3>
+        <p>That assumes we recover <b>nothing</b> from a customer who stops
+        paying, which is deliberately pessimistic &mdash; the operator keeps
+        collecting after the line is cut off. Against 31,929 bn lent, the midpoint
+        is about <b>1.15 Toman lost for every 1,000 lent</b>.</p></div></div>
     </div>
+  </div>
+  <div class="card">
+    <h3>If losses come in worse than modelled</h3>
+    <div class="tbl-s"><table>
+      <thead><tr><th>Scenario</th><th>Multiple</th><th>Lost in a year</th>
+      <th>Against 31,929 bn lent</th></tr></thead>
+      <tbody>
+        <tr class="tot"><td>As modelled</td><td>1.00&times;</td><td>36.7 bn</td><td>0.11 pct</td></tr>
+        <tr><td>Live-set drift</td><td>1.16&times;</td><td>42.5 bn</td><td>0.13 pct</td></tr>
+        <tr><td>Lending into Nowruz</td><td>1.68&times;</td><td>61.7 bn</td><td>0.19 pct</td></tr>
+        <tr><td>Twice the modelled rate</td><td>2.00&times;</td><td>73.4 bn</td><td>0.23 pct</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="4">Even at <b>twice</b> the modelled rate the
+      programme loses under <b>73.4 bn</b> on <b>31,929 bn</b> lent. The loss case is
+      not where the risk in this product sits &mdash; the volume case is.</td></tr></tfoot>
+    </table></div>
   </div>
 </section>
 <section>
   <div class="head">
     <h2>What we do not know yet</h2>
-    <p>Four things, said plainly, so nothing above is taken as more certain than
-    it is.</p>
+    <p>Two things, so nothing above is taken as more certain than it is.</p>
   </div>
   <div class="split">
     <div class="panel unknown">
       <h3><span class="dot" style="background:var(--crit)"></span>Nobody in this data ever had credit</h3>
       <ul>
-        <li>Every number here describes how customers behave when they are
-        <b>not</b> borrowing. How they behave when they are is genuinely
-        unknown.</li>
+        <li>The score describes how customers behave when they are <b>not</b>
+        borrowing. How they behave when they are is genuinely unknown.</li>
         <li><b>A capped pilot is the only thing that answers it</b>, and a
         one-month loan means the answer arrives in weeks rather than a year.</li>
       </ul>
     </div>
     <div class="panel unknown">
-      <h3><span class="dot" style="background:var(--crit)"></span>We are measuring what they spend, not what they are invoiced</h3>
+      <h3><span class="dot" style="background:var(--crit)"></span>Is the 15,000 bn target lending or exposure?</h3>
       <ul>
-        <li>Every figure here uses <b>total service revenue</b>. About
-        <b>48 pct of that is packages bought with cash</b> and never reaches the
-        postpaid bill, so the bill is roughly <b>half</b> what these numbers
-        say.</li>
-        <li>A draw is repaid on the bill. <b>Money that never reaches the bill
-        cannot repay it</b>, so the loan sizes here are too generous &mdash;
-        every customer count is a ceiling, and the 2,906,210 we excluded for spending
-        too little is an undercount.</li>
-        <li>There is one argument the other way and it should not be lost: the
-        risk figures were measured against revenue too, both sides from the same
-        column, so applying the rule in revenue terms is at least consistent
-        with how they were fitted. The two readings disagree by about 1.9 times
-        and we do not yet know which is right.</li>
-        <li><b>This does not have to be estimated.</b> The billing system
-        records the end-of-cycle bill, which already excludes cash packages.
-        <code>57_bill_basis.sql</code> rebuilds every count on it and measures
-        the cash share on these exact customers rather than assuming the
-        network average.</li>
-      </ul>
-    </div>
-  </div>
-  <div class="split" style="margin-top:14px">
-    <div class="panel unknown">
-      <h3><span class="dot" style="background:var(--crit)"></span>Which month the limit is set against</h3>
-      <ul>
-        <li>We use a month the customer <b>reliably</b> reaches &mdash; their
-        second-lowest of six, 144,031 Toman for a typical customer.</li>
-        <li>Their six-month average is 262,860 Toman. Setting limits against
-        the average instead would <b>roughly double the programme</b> and take
-        on more risk. A decision, not a detail, and cheap to count both ways.</li>
-      </ul>
-    </div>
-    <div class="panel unknown">
-      <h3><span class="dot" style="background:var(--crit)"></span>Does the loan add to the bill or replace part of it?</h3>
-      <ul>
-        <li>If customers spend it on things they were buying anyway, the bill
-        barely moves and the limit rule has room to spare.</li>
-        <li>If it is all extra spending, the bill rises by the full amount.
-        <b>Everything here assumes the second</b>, which is the cautious
-        reading.</li>
-      </ul>
-    </div>
-    <div class="panel unknown">
-      <h3><span class="dot" style="background:var(--crit)"></span>What "stopped paying" means here</h3>
-      <ul>
-        <li>A customer counts as having stopped paying when their line is cut off
-        in both directions. That is the operator's own decision and it takes time
-        to reach, so some customers already in trouble have not been cut off yet
-        when we count.</li>
-        <li>That makes these rates a <b>floor rather than a ceiling</b>. It is
-        being checked separately. It changes how many we have caught by the time
-        we look, not which customers are risky.</li>
+        <li>At monthly turnover the two differ by twelve times. As
+        <b>lending over a year</b> the programme reaches 31,929 bn, more than
+        twice the target.</li>
+        <li>As <b>money out at any one moment</b> it reaches 2,660.8 bn and falls
+        well short. Everything in the volume case depends on which is
+        meant.</li>
       </ul>
     </div>
   </div>
 </section>
 
 <footer>
-  <span>Customer counts are from billing records for 140501&ndash;140506. Risk
-  figures were counted on 140401&ndash;140406, because measuring whether someone
-  stops paying needs the months afterwards to observe it. All amounts in Toman;
-  the billing system stores Rial and every figure here is that value divided by
-  ten.</span>
-  <span>The detailed version, with the queries and the statistics behind every
-  figure, is in the <a href="https://claude.ai/artifact/HZSVj2iWoYHdhrTDxjF2uQ">programme
-  deck</a> and the <a href="https://claude.ai/artifact/H5jJHuD6i6r3gim31Rfrte">risk
+  <span>Customer counts are from billing records for 140501&ndash;140506.
+  Grades, limits and the risk ranking come from the scoring model refit on
+  1405-07-14, which reads 0.8278 on its accuracy measure. The bill-shock figures
+  were measured on 4.0 million customer-months.</span>
+  <span>All amounts in Toman; the billing system stores Rial and every figure
+  here is that value divided by ten. The fuller versions, with the queries and
+  the statistics behind each figure, are the
+  <a href="https://claude.ai/artifact/HZSVj2iWoYHdhrTDxjF2uQ">programme deck</a>
+  and the <a href="https://claude.ai/artifact/H5jJHuD6i6r3gim31Rfrte">risk
   workbook</a>.</span>
 </footer>
 </div>
