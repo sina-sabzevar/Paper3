@@ -189,7 +189,15 @@ everything below should go in before `42` runs.
 guards pass. Expect `dcb_model` to shrink in events, not rows: the one-month
 label gives about **19,215** against the four-month 45,361.
 
-**2. `sql/47_export_parts.sql`** — re-export both tables.
+**2. Get the tables to the notebook.** Two routes, same output:
+
+- `python3 notebook/fetch_dcb.py` — pulls both tables through `IQ.Get_DF`
+  and writes the same parquet files the notebook globs. Skips the export and
+  the file transfer entirely. Use this if IQ reaches Trino from the machine
+  the notebook runs on.
+- `sql/47_export_parts.sql` — the export route, if it does not.
+
+Both split on `BITWISE_AND(hash, 1)`, so the files are interchangeable.
 
 **3. `notebook/train_model.ipynb`** with:
 
