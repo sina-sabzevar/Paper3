@@ -576,9 +576,13 @@ the MH numerator and denominator sums. Corrected above.
 below: a draw of exactly one month's bill makes the rise 2.00×, which is the
 1.91 band and not the 1.13 one.
 That one constraint is the difference between **27 bn** and **46 bn** of annual
-loss on the same book. A 100,000 minimum ticket stays in the safer band only
-above roughly **133,000 Toman a month** — and the screen bar, which nobody
-validated, sits at 170,000. It lands within 30% of where this puts it.
+loss on the same book. A 100,000 minimum ticket clears the 2.00× edge only while
+the bill stays above **100,000 Toman a month**, since the edge is draw = bill
+and nothing else. (An earlier version of this line said 133,000, which is where
+the rise hits 1.75× — not a band edge. Corrected.) The screen bar, which nobody
+validated, sits at **170,000**: a 70% margin over the edge. That is the right
+side to err on, but it was not chosen for that reason, and the margin is the
+answer to how much room the minimum ticket has, not a coincidence to lean on.
 
 What this does *not* settle: capping limits at 1× the bill shrinks the limit
 for lighter billers, so the volume consequence needs the billing distribution

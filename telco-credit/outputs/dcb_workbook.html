@@ -1,0 +1,966 @@
+<title>DCB Risk Workbook</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a presentation surface - wide bands, big figures, one idea per band,
+   readable from across a meeting room. */
+:root{
+  --plane:#f6f6f3; --surface:#fdfdfc; --raise:#eeeeea; --sunk:#e6e6e0;
+  --ink:#0b0b0b; --ink-2:#4e4d4a; --ink-3:#86857f;
+  --rule:rgba(11,11,11,0.09); --grid:#e1e0d9; --axis:#c3c2b7;
+  --s1:#2a78d6; --s2:#eb6834;
+  --o1:#86b6ef; --o2:#3987e5; --o3:#256abf; --o4:#104281;
+  --good:#0ca30c; --good-ink:#006300; --warn:#fab219; --crit:#d03b3b;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --plane:#0c0c0d; --surface:#17171a; --raise:#202024; --sunk:#131316;
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8a8980;
+  --rule:rgba(255,255,255,0.10); --grid:#2c2c2a; --axis:#3a3a37;
+  --s1:#3987e5; --s2:#d95926;
+  --o1:#184f95; --o2:#2a78d6; --o3:#86b6ef; --o4:#cde2fb;
+  --good:#0ca30c; --good-ink:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --plane:#0c0c0d; --surface:#17171a; --raise:#202024; --sunk:#131316;
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8a8980;
+  --rule:rgba(255,255,255,0.10); --grid:#2c2c2a; --axis:#3a3a37;
+  --s1:#3987e5; --s2:#d95926;
+  --o1:#184f95; --o2:#2a78d6; --o3:#86b6ef; --o4:#cde2fb;
+  --good:#0ca30c; --good-ink:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+}
+*{box-sizing:border-box}
+body{background:var(--plane);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.5;margin:0;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1000px;margin:0 auto;padding-inline:22px;padding-block:36px 72px}
+h1,h2,h3{margin:0;text-wrap:balance}
+h1{font-size:clamp(30px,5.4vw,46px);font-weight:700;letter-spacing:-0.025em;line-height:1.08}
+h2{font-size:clamp(20px,3.2vw,26px);font-weight:600;letter-spacing:-0.015em}
+h3{font-size:15px;font-weight:600}
+p{margin:0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:0.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+
+header{display:flex;flex-direction:column;gap:14px;padding-bottom:10px}
+.lede{color:var(--ink-2);font-size:17px;max-width:64ch}
+.spec{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.chip{font-family:var(--mono);font-size:12.5px;background:var(--raise);
+  border:1px solid var(--rule);border-radius:999px;padding:4px 12px;color:var(--ink-2)}
+.chip b{color:var(--ink);font-weight:600}
+
+section{margin-top:40px}
+.head{border-top:2px solid var(--ink);padding-top:14px;margin-bottom:18px;
+  display:flex;flex-direction:column;gap:7px}
+.head p{color:var(--ink-2);font-size:15px;max-width:66ch}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:22px 20px}
+.card + .card{margin-top:14px}
+.cap{color:var(--ink-3);font-size:13px;line-height:1.55;margin-top:16px;max-width:72ch}
+.cap b{color:var(--ink-2);font-weight:500}
+
+.hero{background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+  padding:26px 22px;display:flex;flex-wrap:wrap;gap:26px 40px;align-items:flex-end}
+.hero .big{display:flex;flex-direction:column;gap:4px}
+.hero .big .v{font-family:var(--mono);font-size:clamp(38px,8vw,64px);font-weight:600;
+  letter-spacing:-0.03em;line-height:0.98}
+.hero .big .k{font-size:14px;color:var(--ink-2)}
+.hero .sub{color:var(--ink-2);font-size:15px;max-width:38ch;flex:1 1 280px}
+
+.kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--rule);}
+.kpi.k6{grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpi{
+  border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+@media (max-width:760px){.kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{background:var(--surface);padding:16px 17px 18px;display:flex;flex-direction:column;gap:6px}
+.tile .k{font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3)}
+.tile .v{font-family:var(--mono);font-size:clamp(21px,3.2vw,27px);font-weight:600;letter-spacing:-0.02em;line-height:1}
+.tile .s{font-size:12.5px;color:var(--ink-3);line-height:1.4}
+
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:420px}
+.tbl-s{overflow-x:auto;margin-top:6px}
+th,td{text-align:right;padding:9px 11px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:0.07em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--axis)}
+tbody td{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-2)}
+tbody td:first-child{font-family:var(--sans);color:var(--ink);font-weight:500}
+tr.off td{color:var(--ink-3)}
+tr.tot td{font-weight:600;color:var(--ink);border-top:1px solid var(--axis);border-bottom:none}
+tfoot td{font-family:var(--sans);font-size:13px;color:var(--ink-3);white-space:normal;
+  text-align:left;border-bottom:none;padding-top:12px;line-height:1.55}
+tfoot b{color:var(--ink-2);font-weight:500}
+
+/* the ticket-by-bill grid */
+.grid{display:grid;gap:2px;margin-top:4px;min-width:430px}
+.gcell{padding:9px 6px;border-radius:4px;text-align:center;
+  font-family:var(--mono);font-size:12.5px;line-height:1.35}
+.gcell b{display:block;font-weight:600;font-size:13px}
+.gcell .sh{font-size:11px;opacity:0.75}
+.ghead{padding:6px;text-align:center;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3)}
+.grow{padding:9px 8px;font-family:var(--mono);font-size:12px;text-align:right;
+  color:var(--ink-2);white-space:nowrap}
+.grow em{font-style:normal;color:var(--ink-3);font-size:10.5px;display:block}
+.g1{background:color-mix(in srgb,var(--good) 16%,var(--surface));color:var(--ink)}
+.g2{background:color-mix(in srgb,var(--warn) 26%,var(--surface));color:var(--ink)}
+.g3{background:color-mix(in srgb,var(--crit) 20%,var(--surface));color:var(--ink)}
+.glegend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px;font-size:12.5px;color:var(--ink-2)}
+.glegend span{display:flex;align-items:center;gap:7px}
+.glegend i{width:12px;height:12px;border-radius:3px;display:block}
+.svgbox{overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+.gl{stroke:var(--grid);stroke-width:1}
+.ax{stroke:var(--axis);stroke-width:1}
+.tk{fill:var(--ink-3);font-family:var(--mono);font-size:11px}
+.dl{font-family:var(--mono);font-size:12.5px;font-weight:600}
+.an{font-family:var(--sans);font-size:12px;fill:var(--ink-3)}
+
+.split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.split{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:20px 18px}
+.panel.known{border-left:3px solid var(--good)}
+.panel.unknown{border-left:3px solid var(--crit)}
+.panel h3{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.panel ul{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:11px}
+.panel li{font-size:14px;color:var(--ink-2);line-height:1.5;padding-left:16px;position:relative}
+.panel li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:1.5px;background:var(--ink-3)}
+.panel li b{color:var(--ink);font-weight:600}
+
+.ask{display:flex;flex-direction:column;gap:0}
+.q{display:flex;gap:16px;padding:16px 0;border-bottom:1px solid var(--rule)}
+.q:last-child{border-bottom:none}
+.q .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-3);flex:0 0 24px;padding-top:2px}
+.q .b{min-width:0}
+.q .b h3{margin-bottom:4px}
+.q .b p{font-size:14px;color:var(--ink-2)}
+a{color:var(--s1)}
+code{font-family:var(--mono);font-size:13px;background:var(--raise);padding:1px 5px;border-radius:4px}
+footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:12.5px;
+  display:flex;flex-direction:column;gap:6px}
+:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* the label calendar */
+.cal{display:flex;gap:3px;min-width:560px;margin-top:6px}
+.cal .mo{flex:1 1 0;border-radius:3px;padding:7px 2px 8px;text-align:center;
+  font-family:var(--mono);font-size:10px;color:var(--ink-2);line-height:1.3;
+  border:1px solid var(--rule)}
+.cal .mo b{display:block;font-size:11px;color:var(--ink);font-weight:600}
+.cal .pre,.callegend i.pre{background:var(--raise)}
+.cal .ft,.callegend i.ft{background:color-mix(in srgb,var(--o2) 20%,var(--surface))}
+.cal .dw,.callegend i.dw{background:color-mix(in srgb,var(--warn) 30%,var(--surface))}
+.cal .lb,.callegend i.lb{background:color-mix(in srgb,var(--crit) 24%,var(--surface))}
+.callegend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:13px;color:var(--ink-2)}
+.callegend span{display:flex;align-items:center;gap:7px}
+.callegend i{width:12px;height:12px;border-radius:3px;display:block;border:1px solid var(--rule)}
+
+/* the nine subscribers */
+.scns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:820px){.scns{grid-template-columns:1fr}}
+.scn{background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+  padding:18px 18px 20px;display:flex;flex-direction:column;gap:13px;min-width:0}
+.scn.good{border-left:3px solid var(--good)}
+.scn.warn{border-left:3px solid var(--warn)}
+.scn.crit{border-left:3px solid var(--crit)}
+.scn .top{display:flex;align-items:baseline;gap:10px}
+.scn .top .n{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink-3)}
+.scn .top h3{font-size:15.5px;min-width:0}
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 14px;
+  font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.facts span{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dotted var(--rule);padding-bottom:3px}
+.facts b{color:var(--ink-2);font-weight:500}
+.drw{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);
+  background:var(--raise);border-radius:5px;padding:8px 10px;line-height:1.45}
+.drw b{color:var(--ink);font-weight:600}
+.drv{display:flex;flex-direction:column;gap:9px;margin:0;padding:0;list-style:none}
+.drv li{display:flex;gap:11px;align-items:flex-start;font-size:13px;color:var(--ink-2);line-height:1.45}
+.drv .m{font-family:var(--mono);font-size:14px;font-weight:600;flex:0 0 58px;text-align:right}
+.drv .m.hot{color:var(--crit)}
+.drv .m.mid{color:var(--warn)}
+.drv .m.ok{color:var(--good-ink)}
+.drv em{font-style:normal;display:block;color:var(--ink-3);font-size:11.5px;
+  font-family:var(--mono);margin-top:2px}
+.pd{display:flex;align-items:baseline;gap:9px;border-top:1px solid var(--rule);padding-top:11px}
+.pd .v{font-family:var(--mono);font-size:21px;font-weight:600;letter-spacing:-0.02em}
+.pd .k{font-size:12px;color:var(--ink-3);line-height:1.35}
+.scn .note{font-size:13px;color:var(--ink-3);line-height:1.55}
+.sees{font-family:var(--mono);font-size:11px;color:var(--ink-3);line-height:1.5;
+  border-top:1px solid var(--rule);padding-top:10px}
+.sees b{color:var(--ink-2);font-weight:500;letter-spacing:0.06em;text-transform:uppercase;font-size:10px}
+
+.warnbox{background:color-mix(in srgb,var(--warn) 13%,var(--surface));
+  border:1px solid color-mix(in srgb,var(--warn) 45%,var(--rule));
+  border-radius:8px;padding:16px 18px;font-size:14px;color:var(--ink-2);line-height:1.6}
+.warnbox b{color:var(--ink);font-weight:600}
+/* a panel holding a min-width table is a grid child: without this the track
+   cannot shrink and the whole page scrolls sideways on a phone */
+.split > *{min-width:0}
+.panel .tbl-s{max-width:100%}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:13px;color:var(--ink-2)}
+.legend span{display:flex;align-items:center;gap:7px}
+.legend i{width:11px;height:11px;border-radius:2px;display:block}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">Direct Carrier Billing &middot; the detail behind the deck</p>
+  <h1>What the label means, and what moves it</h1>
+  <p class="lede">The one-page deck carries the decisions. This carries the
+  evidence under them: how a default is defined when nobody in the data ever
+  had credit, nine subscribers worked end to end, and the whole bill-shock
+  chain including the two measurements that turned out to be wrong.</p>
+  <div class="spec">
+    <span class="chip">windows <b>140401&ndash;140408</b></span>
+    <span class="chip">screened <b>8,701,085</b></span>
+    <span class="chip">label <b>one month</b></span>
+    <span class="chip">all amounts <b>Toman</b></span>
+  </div>
+</header>
+<div class="kpi" style="margin-top:26px">
+  <div class="tile"><span class="k">base rate, one month</span><span class="v">0.2208 pct</span>
+    <span class="s">19,215 two-way bars in a single label month</span></div>
+  <div class="tile"><span class="k">population</span><span class="v">8,701,085</span>
+    <span class="s">subscribers past the screen on the 1404 window</span></div>
+  <div class="tile"><span class="k">worst measured premium</span><span class="v">13.2&times;</span>
+    <span class="s">a two-way bar in the 12 months before</span></div>
+  <div class="tile"><span class="k">model, test AUC</span><span class="v">0.8278</span>
+    <span class="s">on the four-month label, not yet refit for DCB</span></div>
+</div>
+<section>
+  <div class="head">
+    <p class="eyebrow">Part one</p>
+    <h2>What counts as a default</h2>
+    <p>Nobody in this data was ever given spendable credit, so the label cannot
+    be "did not repay the DCB debt". It is the operator's own action: the month
+    after the draw, was the line two-way barred.</p>
+  </div>
+  <div class="card">
+    <h3>The calendar</h3>
+    <div class="svgbox"><div class="cal">
+      <div class="mo pre"><b>01&ndash;12</b>1403</div>
+      <div class="mo ft"><b>01</b>1404</div>
+      <div class="mo ft"><b>02</b>1404</div>
+      <div class="mo ft"><b>03</b>1404</div>
+      <div class="mo ft"><b>04</b>1404</div>
+      <div class="mo ft"><b>05</b>1404</div>
+      <div class="mo ft"><b>06</b>1404</div>
+      <div class="mo dw"><b>07</b>1404</div>
+      <div class="mo lb"><b>08</b>1404</div>
+    </div></div>
+    <div class="callegend">
+      <span><i class="pre"></i>140301&ndash;140312 &mdash; bar history, read but never scored</span>
+      <span><i class="ft"></i>140401&ndash;140406 &mdash; the six feature months</span>
+      <span><i class="dw"></i>140407 &mdash; the draw lands on this bill</span>
+      <span><i class="lb"></i>140408 &mdash; was the line two-way barred</span>
+    </div>
+    <p class="cap">The draw month sits between the features and the label on
+    purpose. A subscriber is scored on what they did before the credit existed
+    and judged on the first bill that carries it, which is the only shape a
+    one-month product can be measured in.</p>
+  </div>
+  <div class="split" style="margin-top:14px">
+    <div class="panel known">
+      <h3><span class="dot" style="background:var(--good)"></span>The label is</h3>
+      <ul>
+        <li><b>sbrp_stat_id = 4</b> in month 140408 &mdash; a two-way bar. The
+        line can neither call nor be called.</li>
+        <li><b>Two-way, not one-way.</b> A one-way bar restricts telco spending,
+        and DCB credit is a separate pool: a subscriber cannot buy packages with
+        it and cannot pay their bill with it. A DCB default cannot produce a
+        one-way bar, so counting one would be counting the wrong event.</li>
+        <li><b>One month.</b> The draw is repaid on the next bill, so the window
+        that matters is the one month after it.</li>
+        <li>Measured at <b>0.2208 pct</b>, <b>19,215 events</b> &mdash; thick enough to
+        fit on. The four-month version of the same label ran 0.5213 pct.</li>
+      </ul>
+    </div>
+    <div class="panel unknown">
+      <h3><span class="dot" style="background:var(--crit)"></span>The label is not</h3>
+      <ul>
+        <li><b>A repayment record.</b> No subscriber in this window had DCB
+        credit to fail to repay. The bar is a proxy for the behaviour that
+        would cause a default, not an observation of one.</li>
+        <li><b>Prompt.</b> A bar can lag more than the window allows, so some
+        defaults land outside it and the measured rate is a floor.</li>
+        <li><b>Blind to substitution.</b> Whether a subscriber spends DCB credit
+        <i>instead of</i> what they already buy, or <i>on top of</i> it, is
+        unknown. Substitution can only make this safer.</li>
+        <li><b>Behaviour under credit.</b> Everything here is how subscribers
+        behave without it. A pilot is the only thing that answers that.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>The screen that produced the population</h3>
+    <div class="tbl-s"><table>
+      <thead><tr><th>Condition</th><th>Column</th><th>What it removes</th></tr></thead>
+      <tbody>
+        <tr><td>Revenue at or above 105,000 in 2 of the 6 months</td>
+            <td>r1 &hellip; r6</td><td>subscribers too light to carry a bill</td></tr>
+        <tr><td>Never one-way barred in the window</td>
+            <td>o1 &hellip; o6</td><td>lines already restricted</td></tr>
+        <tr><td>Never two-way barred in the window</td>
+            <td>f_twoway</td><td>lines already gone</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="3">The revenue bar is <b>97.67 percent of all
+      exclusions</b>, and 46_bar_ladder_risk showed it is a <b>capacity</b>
+      screen rather than a risk one: lowering it adds volume without adding
+      loss rate. The production bar is 170,000, measured here at 105,000 because the model
+      window predates two price rises. <b>Nothing in this screen looks for a
+      zero-billing month</b>, which Part three shows is worth 7.7x.</td></tr></tfoot>
+    </table></div>
+  </div>
+</section>
+<section>
+  <div class="head">
+    <p class="eyebrow">Part two</p>
+    <h2>Nine subscribers, worked through</h2>
+    <p>Each card is a constructed profile. The six months of revenue are
+    invented to make a point; every multiplier attached to them is measured,
+    and the query it came from is printed under it.</p>
+  </div>
+  <div class="warnbox">
+    <b>What these cards do not contain is a model score.</b> The model has not
+    yet been refit on the one-month label, so there is no pd for these profiles
+    and inventing one would be the worst thing on this page. What each card
+    shows instead is arithmetic you can check: the measured base rate of
+    0.2208 pct multiplied by the measured premiums the profile triggers. Where two
+    premiums apply, the range runs from the largest alone to all of them
+    multiplied &mdash; the drivers are not known to be independent, and the
+    truth is somewhere inside. Once the refit runs, every card gets a real pd
+    and this arithmetic becomes the check on it.
+  </div>
+  <div class="scns" style="margin-top:14px">
+    <article class="scn warn">
+      <div class="top"><span class="n">01</span><h3>Steady, heavy biller</h3></div>
+      <svg viewBox="0 0 268 58" role="img" aria-label="six months of billing, then the draw month">
+        <rect x="0.0" y="29.6" width="34.0" height="15.4" rx="2" fill="var(--o2)"><title>month 1: 200,000 Toman</title></rect>
+        <text class="tk" x="17.0" y="56" text-anchor="middle" style="font-size:9px">1</text>
+        <rect x="39.0" y="29.2" width="34.0" height="15.8" rx="2" fill="var(--o2)"><title>month 2: 205,000 Toman</title></rect>
+        <text class="tk" x="56.0" y="56" text-anchor="middle" style="font-size:9px">2</text>
+        <rect x="78.0" y="29.8" width="34.0" height="15.2" rx="2" fill="var(--o2)"><title>month 3: 198,000 Toman</title></rect>
+        <text class="tk" x="95.0" y="56" text-anchor="middle" style="font-size:9px">3</text>
+        <rect x="117.0" y="28.8" width="34.0" height="16.2" rx="2" fill="var(--o2)"><title>month 4: 210,000 Toman</title></rect>
+        <text class="tk" x="134.0" y="56" text-anchor="middle" style="font-size:9px">4</text>
+        <rect x="156.0" y="29.5" width="34.0" height="15.5" rx="2" fill="var(--o2)"><title>month 5: 202,000 Toman</title></rect>
+        <text class="tk" x="173.0" y="56" text-anchor="middle" style="font-size:9px">5</text>
+        <rect x="195.0" y="29.1" width="34.0" height="15.9" rx="2" fill="var(--o2)"><title>month 6: 207,000 Toman</title></rect>
+        <text class="tk" x="212.0" y="56" text-anchor="middle" style="font-size:9px">6</text>
+        <rect x="234.0" y="29.1" width="34.0" height="15.9" rx="2" fill="var(--o2)"><title>the bill: 207,000 Toman</title></rect>
+        <rect x="234.0" y="4.0" width="34.0" height="23.1" rx="2" fill="var(--crit)"><title>the draw: 300,000 Toman</title></rect>
+        <text class="tk" x="251.0" y="56" text-anchor="middle" style="font-size:9px">draw</text>
+      </svg>
+      <div class="facts">
+        <span>tenure<b>96 mo</b></span>
+        <span>coverage<b>1.00</b></span>
+        <span>zero months<b>0</b></span>
+        <span>prior bars<b>0</b></span>
+      </div>
+      <div class="drw">draw <b>300,000</b> on a <b>207,000</b> bill &rarr; the bill rises <b>2.45&times;</b></div>
+      <ul class="drv">
+        <li><span class="m hot">1.907&times;</span><span>A draw of 300,000 on a 207,000 bill<em>53 S10/S11 corrected, rise of 2x or more</em></span></li>
+      </ul>
+      <div class="pd"><span class="v">0.421 pct</span><span class="k">indicative, from the base rate<br>and the measured premiums</span></div>
+      <p class="note">Nothing about this subscriber is risky. The ticket is. At 150,000 the same person sits at 1.72x and carries the 1.133 premium, which is less than half the expected loss for half the draw.</p>
+      <div class="sees"><b>the model reads</b><br>rev_6m, rev_max, rev_trend, pay_months, tenure_m</div>
+    </article>
+    <article class="scn warn">
+      <div class="top"><span class="n">02</span><h3>Steady, light biller</h3></div>
+      <svg viewBox="0 0 268 58" role="img" aria-label="six months of billing, then the draw month">
+        <rect x="0.0" y="23.6" width="34.0" height="21.4" rx="2" fill="var(--o2)"><title>month 1: 115,000 Toman</title></rect>
+        <text class="tk" x="17.0" y="56" text-anchor="middle" style="font-size:9px">1</text>
+        <rect x="39.0" y="24.9" width="34.0" height="20.1" rx="2" fill="var(--o2)"><title>month 2: 108,000 Toman</title></rect>
+        <text class="tk" x="56.0" y="56" text-anchor="middle" style="font-size:9px">2</text>
+        <rect x="78.0" y="22.7" width="34.0" height="22.3" rx="2" fill="var(--o2)"><title>month 3: 120,000 Toman</title></rect>
+        <text class="tk" x="95.0" y="56" text-anchor="middle" style="font-size:9px">3</text>
+        <rect x="117.0" y="24.2" width="34.0" height="20.8" rx="2" fill="var(--o2)"><title>month 4: 112,000 Toman</title></rect>
+        <text class="tk" x="134.0" y="56" text-anchor="middle" style="font-size:9px">4</text>
+        <rect x="156.0" y="23.1" width="34.0" height="21.9" rx="2" fill="var(--o2)"><title>month 5: 118,000 Toman</title></rect>
+        <text class="tk" x="173.0" y="56" text-anchor="middle" style="font-size:9px">5</text>
+        <rect x="195.0" y="24.6" width="34.0" height="20.4" rx="2" fill="var(--o2)"><title>month 6: 110,000 Toman</title></rect>
+        <text class="tk" x="212.0" y="56" text-anchor="middle" style="font-size:9px">6</text>
+        <rect x="234.0" y="24.6" width="34.0" height="20.4" rx="2" fill="var(--o2)"><title>the bill: 110,000 Toman</title></rect>
+        <rect x="234.0" y="4.0" width="34.0" height="18.6" rx="2" fill="var(--warn)"><title>the draw: 100,000 Toman</title></rect>
+        <text class="tk" x="251.0" y="56" text-anchor="middle" style="font-size:9px">draw</text>
+      </svg>
+      <div class="facts">
+        <span>tenure<b>54 mo</b></span>
+        <span>coverage<b>0.96</b></span>
+        <span>zero months<b>0</b></span>
+        <span>prior bars<b>0</b></span>
+      </div>
+      <div class="drw">draw <b>100,000</b> on a <b>110,000</b> bill &rarr; the bill rises <b>1.91&times;</b></div>
+      <ul class="drv">
+        <li><span class="m mid">1.133&times;</span><span>A draw of 100,000 on a 110,000 bill<em>53 S10/S11 corrected, rise of up to 2x</em></span></li>
+      </ul>
+      <div class="pd"><span class="v">0.250 pct</span><span class="k">indicative, from the base rate<br>and the measured premiums</span></div>
+      <p class="note">The 100,000 minimum ticket is the binding case. It clears 2.00x only while the bill stays above 100,000 Toman, and this subscriber is 10,000 above that line. A month of lighter use puts them in the 1.91 band at the product's smallest possible draw.</p>
+      <div class="sees"><b>the model reads</b><br>rev_6m, rev_min, pay_months, tenure_m</div>
+    </article>
+    <article class="scn crit">
+      <div class="top"><span class="n">03</span><h3>The bill is collapsing</h3></div>
+      <svg viewBox="0 0 268 58" role="img" aria-label="six months of billing, then the draw month">
+        <rect x="0.0" y="6.0" width="34.0" height="39.0" rx="2" fill="var(--o2)"><title>month 1: 480,000 Toman</title></rect>
+        <text class="tk" x="17.0" y="56" text-anchor="middle" style="font-size:9px">1</text>
+        <rect x="39.0" y="8.8" width="34.0" height="36.2" rx="2" fill="var(--o2)"><title>month 2: 445,000 Toman</title></rect>
+        <text class="tk" x="56.0" y="56" text-anchor="middle" style="font-size:9px">2</text>
+        <rect x="78.0" y="13.3" width="34.0" height="31.7" rx="2" fill="var(--o2)"><title>month 3: 390,000 Toman</title></rect>
+        <text class="tk" x="95.0" y="56" text-anchor="middle" style="font-size:9px">3</text>
+        <rect x="117.0" y="20.2" width="34.0" height="24.8" rx="2" fill="var(--o2)"><title>month 4: 305,000 Toman</title></rect>
+        <text class="tk" x="134.0" y="56" text-anchor="middle" style="font-size:9px">4</text>
+        <rect x="156.0" y="26.3" width="34.0" height="18.7" rx="2" fill="var(--o2)"><title>month 5: 230,000 Toman</title></rect>
+        <text class="tk" x="173.0" y="56" text-anchor="middle" style="font-size:9px">5</text>
+        <rect x="195.0" y="32.0" width="34.0" height="13.0" rx="2" fill="var(--o2)"><title>month 6: 160,000 Toman</title></rect>
+        <text class="tk" x="212.0" y="56" text-anchor="middle" style="font-size:9px">6</text>
+        <rect x="234.0" y="32.0" width="34.0" height="13.0" rx="2" fill="var(--o2)"><title>the bill: 160,000 Toman</title></rect>
+        <rect x="234.0" y="17.8" width="34.0" height="12.2" rx="2" fill="var(--warn)"><title>the draw: 150,000 Toman</title></rect>
+        <text class="tk" x="251.0" y="56" text-anchor="middle" style="font-size:9px">draw</text>
+      </svg>
+      <div class="facts">
+        <span>tenure<b>71 mo</b></span>
+        <span>coverage<b>0.92</b></span>
+        <span>zero months<b>0</b></span>
+        <span>prior bars<b>0</b></span>
+      </div>
+      <div class="drw">draw <b>150,000</b> on a <b>160,000</b> bill &rarr; the bill rises <b>1.94&times;</b></div>
+      <ul class="drv">
+        <li><span class="m hot">1.887&times;</span><span>The bill fell across the window<em>53 S10/S11 corrected, bill below 0.80x</em></span></li>
+        <li><span class="m mid">1.133&times;</span><span>A draw of 150,000 on a 160,000 bill<em>53 S10/S11 corrected, rise of up to 2x</em></span></li>
+      </ul>
+      <div class="pd"><span class="v">0.417 to 0.472 pct</span><span class="k">indicative, from the base rate<br>and the measured premiums</span></div>
+      <p class="note">The strongest single signal in the data, and it looks like nothing on a credit screen - the subscriber pays, has tenure and has never been barred. They are leaving. rev_trend reads -620,000 and that is the column carrying it.</p>
+      <div class="sees"><b>the model reads</b><br>rev_trend, r1..r6, rev_max, rev_min</div>
+    </article>
+    <article class="scn crit">
+      <div class="top"><span class="n">04</span><h3>Spending is escalating</h3></div>
+      <svg viewBox="0 0 268 58" role="img" aria-label="six months of billing, then the draw month">
+        <rect x="0.0" y="36.6" width="34.0" height="8.4" rx="2" fill="var(--o2)"><title>month 1: 120,000 Toman</title></rect>
+        <text class="tk" x="17.0" y="56" text-anchor="middle" style="font-size:9px">1</text>
+        <rect x="39.0" y="35.6" width="34.0" height="9.4" rx="2" fill="var(--o2)"><title>month 2: 135,000 Toman</title></rect>
+        <text class="tk" x="56.0" y="56" text-anchor="middle" style="font-size:9px">2</text>
+        <rect x="78.0" y="34.6" width="34.0" height="10.4" rx="2" fill="var(--o2)"><title>month 3: 150,000 Toman</title></rect>
+        <text class="tk" x="95.0" y="56" text-anchor="middle" style="font-size:9px">3</text>
+        <rect x="117.0" y="32.8" width="34.0" height="12.2" rx="2" fill="var(--o2)"><title>month 4: 175,000 Toman</title></rect>
+        <text class="tk" x="134.0" y="56" text-anchor="middle" style="font-size:9px">4</text>
+        <rect x="156.0" y="30.7" width="34.0" height="14.3" rx="2" fill="var(--o2)"><title>month 5: 205,000 Toman</title></rect>
+        <text class="tk" x="173.0" y="56" text-anchor="middle" style="font-size:9px">5</text>
+        <rect x="195.0" y="26.9" width="34.0" height="18.1" rx="2" fill="var(--o2)"><title>month 6: 260,000 Toman</title></rect>
+        <text class="tk" x="212.0" y="56" text-anchor="middle" style="font-size:9px">6</text>
+        <rect x="234.0" y="26.9" width="34.0" height="18.1" rx="2" fill="var(--o2)"><title>the bill: 260,000 Toman</title></rect>
+        <rect x="234.0" y="4.0" width="34.0" height="20.9" rx="2" fill="var(--crit)"><title>the draw: 300,000 Toman</title></rect>
+        <text class="tk" x="251.0" y="56" text-anchor="middle" style="font-size:9px">draw</text>
+      </svg>
+      <div class="facts">
+        <span>tenure<b>38 mo</b></span>
+        <span>coverage<b>0.94</b></span>
+        <span>zero months<b>0</b></span>
+        <span>prior bars<b>0</b></span>
+      </div>
+      <div class="drw">draw <b>300,000</b> on a <b>260,000</b> bill &rarr; the bill rises <b>2.15&times;</b></div>
+      <ul class="drv">
+        <li><span class="m hot">1.668&times;</span><span>A 2x draw on a bill already climbing<em>53 S10/S11, rising + 2x or more. Understated: measured before the reference band was cleaned</em></span></li>
+      </ul>
+      <div class="pd"><span class="v">0.368 pct</span><span class="k">indicative, from the base rate<br>and the measured premiums</span></div>
+      <p class="note">The trap in the feature set. A rising bill reads as health, and on its own it is. Combined with a draw that doubles it, this is the worst cell measured anywhere in 53. The limit engine has to read rev_trend and the draw size together, not either alone.</p>
+      <div class="sees"><b>the model reads</b><br>rev_trend, r1..r6, avail_max</div>
+    </article>
+    <article class="scn good">
+      <div class="top"><span class="n">05</span><h3>Spending had been falling</h3></div>
+      <svg viewBox="0 0 268 58" role="img" aria-label="six months of billing, then the draw month">
+        <rect x="0.0" y="6.0" width="34.0" height="39.0" rx="2" fill="var(--o2)"><title>month 1: 300,000 Toman</title></rect>
+        <text class="tk" x="17.0" y="56" text-anchor="middle" style="font-size:9px">1</text>
+        <rect x="39.0" y="7.3" width="34.0" height="37.7" rx="2" fill="var(--o2)"><title>month 2: 290,000 Toman</title></rect>
+        <text class="tk" x="56.0" y="56" text-anchor="middle" style="font-size:9px">2</text>
+        <rect x="78.0" y="21.6" width="34.0" height="23.4" rx="2" fill="var(--o2)"><title>month 3: 180,000 Toman</title></rect>
+        <text class="tk" x="95.0" y="56" text-anchor="middle" style="font-size:9px">3</text>
+        <rect x="117.0" y="25.5" width="34.0" height="19.5" rx="2" fill="var(--o2)"><title>month 4: 150,000 Toman</title></rect>
+        <text class="tk" x="134.0" y="56" text-anchor="middle" style="font-size:9px">4</text>
+        <rect x="156.0" y="26.8" width="34.0" height="18.2" rx="2" fill="var(--o2)"><title>month 5: 140,000 Toman</title></rect>
+        <text class="tk" x="173.0" y="56" text-anchor="middle" style="font-size:9px">5</text>
+        <rect x="195.0" y="26.1" width="34.0" height="18.9" rx="2" fill="var(--o2)"><title>month 6: 145,000 Toman</title></rect>
+        <text class="tk" x="212.0" y="56" text-anchor="middle" style="font-size:9px">6</text>
+        <rect x="234.0" y="26.1" width="34.0" height="18.9" rx="2" fill="var(--o2)"><title>the bill: 145,000 Toman</title></rect>
+        <rect x="234.0" y="4.6" width="34.0" height="19.5" rx="2" fill="var(--crit)"><title>the draw: 150,000 Toman</title></rect>
+        <text class="tk" x="251.0" y="56" text-anchor="middle" style="font-size:9px">draw</text>
+      </svg>
+      <div class="facts">
+        <span>tenure<b>83 mo</b></span>
+        <span>coverage<b>0.98</b></span>
+        <span>zero months<b>0</b></span>
+        <span>prior bars<b>0</b></span>
+      </div>
+      <div class="drw">draw <b>150,000</b> on a <b>145,000</b> bill &rarr; the bill rises <b>2.03&times;</b></div>
+      <ul class="drv">
+        <li><span class="m ok">1.001&times;</span><span>A 2x draw on a bill that had been falling<em>53 S10/S11, falling + 2x or more</em></span></li>
+      </ul>
+      <div class="pd"><span class="v">0.221 pct</span><span class="k">indicative, from the base rate<br>and the measured premiums</span></div>
+      <p class="note">The same 2x rise as 04 and no excess risk whatsoever. For someone whose bill had been dropping, a doubled month is a return to what they used to spend. Direction is not a detail on top of size - it decides whether size matters.</p>
+      <div class="sees"><b>the model reads</b><br>rev_trend, r1..r6</div>
+    </article>
+    <article class="scn crit">
+      <div class="top"><span class="n">06</span><h3>The line is new</h3></div>
+      <svg viewBox="0 0 268 58" role="img" aria-label="six months of billing, then the draw month">
+        <rect x="0.0" y="45.0" width="34.0" height="1.5" rx="2" fill="var(--o2)"><title>month 1: 0 Toman</title></rect>
+        <text class="tk" x="17.0" y="56" text-anchor="middle" style="font-size:9px">1</text>
+        <rect x="39.0" y="45.0" width="34.0" height="1.5" rx="2" fill="var(--o2)"><title>month 2: 0 Toman</title></rect>
+        <text class="tk" x="56.0" y="56" text-anchor="middle" style="font-size:9px">2</text>
+        <rect x="78.0" y="45.0" width="34.0" height="1.5" rx="2" fill="var(--o2)"><title>month 3: 0 Toman</title></rect>
+        <text class="tk" x="95.0" y="56" text-anchor="middle" style="font-size:9px">3</text>
+        <rect x="117.0" y="24.2" width="34.0" height="20.8" rx="2" fill="var(--o2)"><title>month 4: 180,000 Toman</title></rect>
+        <text class="tk" x="134.0" y="56" text-anchor="middle" style="font-size:9px">4</text>
+        <rect x="156.0" y="22.5" width="34.0" height="22.5" rx="2" fill="var(--o2)"><title>month 5: 195,000 Toman</title></rect>
+        <text class="tk" x="173.0" y="56" text-anchor="middle" style="font-size:9px">5</text>
+        <rect x="195.0" y="23.3" width="34.0" height="21.7" rx="2" fill="var(--o2)"><title>month 6: 188,000 Toman</title></rect>
+        <text class="tk" x="212.0" y="56" text-anchor="middle" style="font-size:9px">6</text>
+        <rect x="234.0" y="23.3" width="34.0" height="21.7" rx="2" fill="var(--o2)"><title>the bill: 188,000 Toman</title></rect>
+        <rect x="234.0" y="4.0" width="34.0" height="17.3" rx="2" fill="var(--warn)"><title>the draw: 150,000 Toman</title></rect>
+        <text class="tk" x="251.0" y="56" text-anchor="middle" style="font-size:9px">draw</text>
+      </svg>
+      <div class="facts">
+        <span>tenure<b>4 mo</b></span>
+        <span>coverage<b>1.00</b></span>
+        <span>zero months<b>3</b></span>
+        <span>prior bars<b>0</b></span>
+      </div>
+      <div class="drw">draw <b>150,000</b> on a <b>188,000</b> bill &rarr; the bill rises <b>1.80&times;</b></div>
+      <ul class="drv">
+        <li><span class="m hot">7.7&times;</span><span>A zero-billing month inside the window<em>53, new-subscriber group: 2.706 pct against 0.350 pct</em></span></li>
+      </ul>
+      <div class="pd"><span class="v">1.700 pct</span><span class="k">indicative, from the base rate<br>and the measured premiums</span></div>
+      <p class="note">This profile satisfies the screen. It asks for revenue above the bar in 2 of 6 months and this line clears it in 3. Nothing looks for the gap. 109,360 subscribers are in this position and they bar at 7.7x everyone else.</p>
+      <div class="sees"><b>the model reads</b><br>n_zero_rev_months, rev_months, tenure_m, pre_absent</div>
+    </article>
+    <article class="scn crit">
+      <div class="top"><span class="n">07</span><h3>Barred before</h3></div>
+      <svg viewBox="0 0 268 58" role="img" aria-label="six months of billing, then the draw month">
+        <rect x="0.0" y="23.5" width="34.0" height="21.5" rx="2" fill="var(--o2)"><title>month 1: 180,000 Toman</title></rect>
+        <text class="tk" x="17.0" y="56" text-anchor="middle" style="font-size:9px">1</text>
+        <rect x="39.0" y="24.0" width="34.0" height="21.0" rx="2" fill="var(--o2)"><title>month 2: 176,000 Toman</title></rect>
+        <text class="tk" x="56.0" y="56" text-anchor="middle" style="font-size:9px">2</text>
+        <rect x="78.0" y="23.1" width="34.0" height="21.9" rx="2" fill="var(--o2)"><title>month 3: 184,000 Toman</title></rect>
+        <text class="tk" x="95.0" y="56" text-anchor="middle" style="font-size:9px">3</text>
+        <rect x="117.0" y="23.7" width="34.0" height="21.3" rx="2" fill="var(--o2)"><title>month 4: 179,000 Toman</title></rect>
+        <text class="tk" x="134.0" y="56" text-anchor="middle" style="font-size:9px">4</text>
+        <rect x="156.0" y="23.4" width="34.0" height="21.6" rx="2" fill="var(--o2)"><title>month 5: 181,000 Toman</title></rect>
+        <text class="tk" x="173.0" y="56" text-anchor="middle" style="font-size:9px">5</text>
+        <rect x="195.0" y="23.9" width="34.0" height="21.1" rx="2" fill="var(--o2)"><title>month 6: 177,000 Toman</title></rect>
+        <text class="tk" x="212.0" y="56" text-anchor="middle" style="font-size:9px">6</text>
+        <rect x="234.0" y="23.9" width="34.0" height="21.1" rx="2" fill="var(--o2)"><title>the bill: 177,000 Toman</title></rect>
+        <rect x="234.0" y="4.0" width="34.0" height="17.9" rx="2" fill="var(--warn)"><title>the draw: 150,000 Toman</title></rect>
+        <text class="tk" x="251.0" y="56" text-anchor="middle" style="font-size:9px">draw</text>
+      </svg>
+      <div class="facts">
+        <span>tenure<b>112 mo</b></span>
+        <span>coverage<b>0.88</b></span>
+        <span>zero months<b>0</b></span>
+        <span>prior bars<b>1</b></span>
+      </div>
+      <div class="drw">draw <b>150,000</b> on a <b>177,000</b> bill &rarr; the bill rises <b>1.85&times;</b></div>
+      <ul class="drv">
+        <li><span class="m hot">13.2&times;</span><span>A two-way bar in the 12 months before the window<em>42, pre-window measurement against the label rate</em></span></li>
+      </ul>
+      <div class="pd"><span class="v">2.915 pct</span><span class="k">indicative, from the base rate<br>and the measured premiums</span></div>
+      <p class="note">The screen excludes a bar inside the feature window and says nothing about the year before it. That history is the single most valuable thing in the feature set: removing the six pre_ columns costs 0.0239 of test AUC, which is 92 percent of what the refit gained.</p>
+      <div class="sees"><b>the model reads</b><br>pre_tw_any, pre_tw_months, pre_months_seen</div>
+    </article>
+    <article class="scn crit">
+      <div class="top"><span class="n">08</span><h3>Bills, but does not pay</h3></div>
+      <svg viewBox="0 0 268 58" role="img" aria-label="six months of billing, then the draw month">
+        <rect x="0.0" y="21.9" width="34.0" height="23.1" rx="2" fill="var(--o2)"><title>month 1: 220,000 Toman</title></rect>
+        <text class="tk" x="17.0" y="56" text-anchor="middle" style="font-size:9px">1</text>
+        <rect x="39.0" y="22.1" width="34.0" height="22.9" rx="2" fill="var(--o2)"><title>month 2: 218,000 Toman</title></rect>
+        <text class="tk" x="56.0" y="56" text-anchor="middle" style="font-size:9px">2</text>
+        <rect x="78.0" y="21.3" width="34.0" height="23.7" rx="2" fill="var(--o2)"><title>month 3: 225,000 Toman</title></rect>
+        <text class="tk" x="95.0" y="56" text-anchor="middle" style="font-size:9px">3</text>
+        <rect x="117.0" y="22.0" width="34.0" height="23.0" rx="2" fill="var(--o2)"><title>month 4: 219,000 Toman</title></rect>
+        <text class="tk" x="134.0" y="56" text-anchor="middle" style="font-size:9px">4</text>
+        <rect x="156.0" y="21.7" width="34.0" height="23.3" rx="2" fill="var(--o2)"><title>month 5: 222,000 Toman</title></rect>
+        <text class="tk" x="173.0" y="56" text-anchor="middle" style="font-size:9px">5</text>
+        <rect x="195.0" y="21.8" width="34.0" height="23.2" rx="2" fill="var(--o2)"><title>month 6: 221,000 Toman</title></rect>
+        <text class="tk" x="212.0" y="56" text-anchor="middle" style="font-size:9px">6</text>
+        <rect x="234.0" y="21.8" width="34.0" height="23.2" rx="2" fill="var(--o2)"><title>the bill: 221,000 Toman</title></rect>
+        <rect x="234.0" y="4.0" width="34.0" height="15.8" rx="2" fill="var(--warn)"><title>the draw: 150,000 Toman</title></rect>
+        <text class="tk" x="251.0" y="56" text-anchor="middle" style="font-size:9px">draw</text>
+      </svg>
+      <div class="facts">
+        <span>tenure<b>63 mo</b></span>
+        <span>coverage<b>0.04</b></span>
+        <span>zero months<b>0</b></span>
+        <span>prior bars<b>0</b></span>
+      </div>
+      <div class="drw">draw <b>150,000</b> on a <b>221,000</b> bill &rarr; the bill rises <b>1.68&times;</b></div>
+      <ul class="drv">
+        <li><span class="m hot">8.3&times;</span><span>Payment coverage under 0.10<em>52, D3: the only coverage band carrying excess risk</em></span></li>
+      </ul>
+      <div class="pd"><span class="v">1.833 pct</span><span class="k">indicative, from the base rate<br>and the measured premiums</span></div>
+      <p class="note">Revenue says nothing is wrong. The payment side says everything is. This is the case the revenue bar cannot see, because the bar screens on what a subscriber is billed rather than what they pay.</p>
+      <div class="sees"><b>the model reads</b><br>paid_6m, paid_max, pay_months, outst_max, outst_avg</div>
+    </article>
+    <article class="scn good">
+      <div class="top"><span class="n">09</span><h3>Pays slowly, pays eventually</h3></div>
+      <svg viewBox="0 0 268 58" role="img" aria-label="six months of billing, then the draw month">
+        <rect x="0.0" y="23.9" width="34.0" height="21.1" rx="2" fill="var(--o2)"><title>month 1: 350,000 Toman</title></rect>
+        <text class="tk" x="17.0" y="56" text-anchor="middle" style="font-size:9px">1</text>
+        <rect x="39.0" y="24.3" width="34.0" height="20.7" rx="2" fill="var(--o2)"><title>month 2: 344,000 Toman</title></rect>
+        <text class="tk" x="56.0" y="56" text-anchor="middle" style="font-size:9px">2</text>
+        <rect x="78.0" y="23.4" width="34.0" height="21.6" rx="2" fill="var(--o2)"><title>month 3: 358,000 Toman</title></rect>
+        <text class="tk" x="95.0" y="56" text-anchor="middle" style="font-size:9px">3</text>
+        <rect x="117.0" y="24.0" width="34.0" height="21.0" rx="2" fill="var(--o2)"><title>month 4: 349,000 Toman</title></rect>
+        <text class="tk" x="134.0" y="56" text-anchor="middle" style="font-size:9px">4</text>
+        <rect x="156.0" y="23.8" width="34.0" height="21.2" rx="2" fill="var(--o2)"><title>month 5: 352,000 Toman</title></rect>
+        <text class="tk" x="173.0" y="56" text-anchor="middle" style="font-size:9px">5</text>
+        <rect x="195.0" y="24.1" width="34.0" height="20.9" rx="2" fill="var(--o2)"><title>month 6: 347,000 Toman</title></rect>
+        <text class="tk" x="212.0" y="56" text-anchor="middle" style="font-size:9px">6</text>
+        <rect x="234.0" y="24.1" width="34.0" height="20.9" rx="2" fill="var(--o2)"><title>the bill: 347,000 Toman</title></rect>
+        <rect x="234.0" y="4.0" width="34.0" height="18.1" rx="2" fill="var(--warn)"><title>the draw: 300,000 Toman</title></rect>
+        <text class="tk" x="251.0" y="56" text-anchor="middle" style="font-size:9px">draw</text>
+      </svg>
+      <div class="facts">
+        <span>tenure<b>77 mo</b></span>
+        <span>coverage<b>0.61</b></span>
+        <span>zero months<b>0</b></span>
+        <span>prior bars<b>0</b></span>
+      </div>
+      <div class="drw">draw <b>300,000</b> on a <b>347,000</b> bill &rarr; the bill rises <b>1.86&times;</b></div>
+      <ul class="drv">
+        <li><span class="m mid">1.133&times;</span><span>A draw of 300,000 on a 347,000 bill<em>53 S10/S11 corrected, rise of up to 2x</em></span></li>
+      </ul>
+      <div class="pd"><span class="v">0.250 pct</span><span class="k">indicative, from the base rate<br>and the measured premiums</span></div>
+      <p class="note">The false alarm, and worth stating because it is the one a credit committee will want to decline. Coverage of 0.61 means a growing balance and a subscriber who is always behind - and 0.10 to 1.00 carries no excess bar risk at all. Only paying essentially nothing does, which is 08.</p>
+      <div class="sees"><b>the model reads</b><br>paid_6m, pay_months, outst_max</div>
+    </article>
+  </div>
+  <p class="cap">Cards 04 and 05 are the pair to look at twice. Identical draw,
+  identical rise, and one carries 1.668 while the other carries 1.001 &mdash;
+  the only difference is which way the bill was already moving. That is the
+  single most useful thing Part three produced, and no screen in the current
+  design reads it.</p>
+</section>
+<section>
+  <div class="head">
+    <p class="eyebrow">Part three</p>
+    <h2>Bill shock, and the two answers that were wrong</h2>
+    <p>The question is narrow: a subscriber's bill jumps because a draw landed
+    on it, so does the jump itself make them more likely to be barred. It took
+    four passes to answer, and the first two answers were both wrong for
+    reasons worth keeping.</p>
+  </div>
+  <div class="card">
+    <h3>Pass one &mdash; the raw gradient</h3>
+    <p class="cap" style="margin-top:6px">Bar rate by how far the bill moved,
+    across all subscribers, 140401&ndash;140406.</p>
+    <div class="svgbox">
+    <svg viewBox="0 0 790 310" role="img" aria-label="bar rate by shock band">
+      <line class="gl" x1="311.1" y1="18" x2="311.1" y2="252"/>
+      <text class="tk" x="311.1" y="269" text-anchor="middle">0.2 pct</text>
+      <line class="gl" x1="412.1" y1="18" x2="412.1" y2="252"/>
+      <text class="tk" x="412.1" y="269" text-anchor="middle">0.4 pct</text>
+      <line class="gl" x1="513.2" y1="18" x2="513.2" y2="252"/>
+      <text class="tk" x="513.2" y="269" text-anchor="middle">0.6 pct</text>
+      <text class="an" x="198" y="38.0" text-anchor="end" fill="var(--ink-2)">The bill fell</text>
+      <text class="tk" x="198" y="51.0" text-anchor="end">under 0.80</text>
+      <rect x="210.0" y="26.0" width="208.0" height="28" rx="3" fill="var(--crit)" ><title>The bill fell: 4,393,649 subscriber-months, 18,086 bars, 0.4116 pct</title></rect>
+      <text class="dl" x="427.0" y="45.0" fill="var(--ink)">0.4116 pct</text>
+      <text class="dl" x="690" y="45.0" fill="var(--ink-3)">1.80&times;</text>
+      <text class="an" x="198" y="77.0" text-anchor="end" fill="var(--ink-2)">Normal</text>
+      <text class="tk" x="198" y="90.0" text-anchor="end">0.80 - 1.25</text>
+      <rect x="210.0" y="65.0" width="115.7" height="28" rx="3" fill="var(--sunk)" stroke="var(--axis)" stroke-width="1"><title>Normal: 6,428,541 subscriber-months, 14,723 bars, 0.2290 pct</title></rect>
+      <text class="dl" x="334.7" y="84.0" fill="var(--ink)">0.2290 pct</text>
+      <text class="dl" x="690" y="84.0" fill="var(--ink-3)">1.00&times;</text>
+      <text class="an" x="198" y="116.0" text-anchor="end" fill="var(--ink-2)">Rose a little</text>
+      <text class="tk" x="198" y="129.0" text-anchor="end">1.25 - 1.50</text>
+      <rect x="210.0" y="104.0" width="123.1" height="28" rx="3" fill="var(--o1)" ><title>Rose a little: 2,441,872 subscriber-months, 5,948 bars, 0.2436 pct</title></rect>
+      <text class="dl" x="342.1" y="123.0" fill="var(--ink)">0.2436 pct</text>
+      <text class="dl" x="690" y="123.0" fill="var(--ink-3)">1.06&times;</text>
+      <text class="an" x="198" y="155.0" text-anchor="end" fill="var(--ink-2)">Rose by half</text>
+      <text class="tk" x="198" y="168.0" text-anchor="end">1.50 - 2.00</text>
+      <rect x="210.0" y="143.0" width="153.4" height="28" rx="3" fill="var(--o2)" ><title>Rose by half: 2,141,578 subscriber-months, 6,501 bars, 0.3036 pct</title></rect>
+      <text class="dl" x="372.4" y="162.0" fill="var(--ink)">0.3036 pct</text>
+      <text class="dl" x="690" y="162.0" fill="var(--ink-3)">1.33&times;</text>
+      <text class="an" x="198" y="194.0" text-anchor="end" fill="var(--ink-2)">Rose past double</text>
+      <text class="tk" x="198" y="207.0" text-anchor="end">2.00 - 3.00</text>
+      <rect x="210.0" y="182.0" width="228.2" height="28" rx="3" fill="var(--o3)" ><title>Rose past double: 1,138,755 subscriber-months, 5,143 bars, 0.4516 pct</title></rect>
+      <text class="dl" x="447.2" y="201.0" fill="var(--ink)">0.4516 pct</text>
+      <text class="dl" x="690" y="201.0" fill="var(--ink-3)">1.97&times;</text>
+      <text class="an" x="198" y="233.0" text-anchor="end" fill="var(--ink-2)">Rose past triple</text>
+      <text class="tk" x="198" y="246.0" text-anchor="end">over 3.00</text>
+      <rect x="210.0" y="221.0" width="364.4" height="28" rx="3" fill="var(--o4)" ><title>Rose past triple: 796,137 subscriber-months, 5,741 bars, 0.7211 pct</title></rect>
+      <text class="dl" x="583.4" y="240.0" fill="var(--ink)">0.7211 pct</text>
+      <text class="dl" x="690" y="240.0" fill="var(--ink-3)">3.15&times;</text>
+      <line class="ax" x1="210.0" y1="252" x2="640" y2="252"/>
+      <text class="tk" x="690" y="20">vs normal</text>
+      <text class="tk" x="210.0" y="292">two-way bar rate in the two months after the bill</text>
+    </svg>
+    </div>
+    <p class="cap"><b>Read the top row before the gradient.</b> The highest
+    rate of any band belongs to subscribers whose bill <i>fell</i>, which is
+    the opposite of what a shock story predicts. It was almost missed, because
+    the first version of this query put the falling months inside the reference
+    band and compared everything against them.</p>
+  </div>
+  <div class="card">
+    <h3>Pass two &mdash; compare each subscriber against themselves</h3>
+    <p class="cap" style="margin-top:6px">A subscriber whose bill jumps may
+    simply be a riskier subscriber. The fix is to use each person as their own
+    control: one normal month, one shocked month, 1,169,169 pairs.</p>
+    <div class="tbl-s"><table>
+      <thead><tr><th>Shock</th><th>Pairs</th><th>Their normal month</th>
+      <th>Their shocked month</th><th>Premium</th><th>Discordant</th><th>McNemar</th></tr></thead>
+      <tbody>
+        <tr><td>1.50 - 2.00</td><td>767,568</td><td>0.2366 pct</td><td>0.2331 pct</td><td><b>0.985</b></td><td>628 vs 655</td><td>0.47</td></tr>
+        <tr><td>2.00 - 3.00</td><td>286,658</td><td>0.3342 pct</td><td>0.3328 pct</td><td><b>0.996</b></td><td>330 vs 334</td><td>0.91</td></tr>
+        <tr><td>over 3.00</td><td>114,943</td><td>0.5037 pct</td><td>0.4472 pct</td><td><b>0.888</b></td><td>168 vs 233</td><td>0.0014</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="7">Flat, flat, and <b>significantly safer</b> past
+      three times normal. The conclusion drawn at this point was "a bigger bill
+      does not make a subscriber default, premium 1.00" &mdash; and it was
+      published before the next check was run. <b>It was wrong.</b></td></tr></tfoot>
+    </table></div>
+  </div>
+  <div class="card">
+    <h3>Why pass two could never have worked</h3>
+    <p class="cap" style="margin-top:6px">Split the same paired test by
+    <i>which</i> of the two months carried the raised bill.</p>
+    <div class="tbl-s"><table>
+      <thead><tr><th>The shocked month was</th><th>Pairs</th><th>Normal</th>
+      <th>Shocked</th><th>Premium</th><th>Discordant</th></tr></thead>
+      <tbody>
+        <tr><td>140405 carried the raised bill</td><td>592,731</td><td>0.3696 pct</td><td>0.2785 pct</td><td><b>0.75&times;</b></td><td>405 vs 945</td></tr>
+        <tr><td>140406 carried the raised bill</td><td>576,438</td><td>0.2016 pct</td><td>0.2786 pct</td><td><b>1.38&times;</b></td><td>721 vs 277</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="6">Opposite directions, both strongly significant,
+      and <b>the pooled 0.97 was these two cancelling.</b> The cause is
+      structural. With two months per subscriber, a raised month in one position
+      is a normal month in the other, so "raised against normal" is
+      <i>always also</i> "140405 against 140406" &mdash; and those two months
+      are judged on different outcome windows. 140406 runs 1.33 to 1.38 times
+      hotter whichever role it plays. The design was never identified; no amount
+      of data would have fixed it.</td></tr></tfoot>
+    </table></div>
+    <p class="cap"><b>Withdrawn:</b> "premium 1.00, measured on 1,169,169 paired
+    comparisons". It had already been written into the deck and had to come back
+    out.</p>
+  </div>
+  <div class="card">
+    <h3>Pass three &mdash; hold the calendar still instead</h3>
+    <p class="cap" style="margin-top:6px">Every row is bill month 140406, so no
+    month effect can survive. What is controlled instead is <i>who</i> gets a
+    raised bill: the comparison is made inside narrow strata of how large the
+    bill normally is and which way it was already moving.</p>
+    <div class="svgbox">
+    <svg viewBox="0 0 790 330" role="img" aria-label="premium by prior direction and shock size">
+      <line class="gl" x1="328.6" y1="18" x2="328.6" y2="266"/>
+      <text class="tk" x="328.6" y="283" text-anchor="middle">0.5&times;</text>
+      <line class="gl" x1="461.3" y1="18" x2="461.3" y2="266"/>
+      <text class="tk" x="461.3" y="283" text-anchor="middle">1.0&times;</text>
+      <line class="gl" x1="593.9" y1="18" x2="593.9" y2="266"/>
+      <text class="tk" x="593.9" y="283" text-anchor="middle">1.5&times;</text>
+      <line x1="461.3" y1="18" x2="461.3" y2="270" stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text class="an" x="184" y="52.0" text-anchor="end" fill="var(--ink-2)">The bill was falling</text>
+        <rect x="196.0" y="28.0" width="187.5" height="20" rx="2" fill="var(--s1)"><title>The bill was falling, rose up to 2x: 0.707</title></rect>
+        <text class="dl" x="391.5" y="43.0" fill="var(--ink)" style="font-size:11.5px">0.707</text>
+        <rect x="196.0" y="52.0" width="265.5" height="20" rx="2" fill="var(--s2)"><title>The bill was falling, rose 2x or more: 1.001</title></rect>
+        <text class="dl" x="469.5" y="67.0" fill="var(--ink)" style="font-size:11.5px">1.001</text>
+      <text class="an" x="184" y="112.0" text-anchor="end" fill="var(--ink-2)">The bill was flat</text>
+        <rect x="196.0" y="88.0" width="218.8" height="20" rx="2" fill="var(--s1)"><title>The bill was flat, rose up to 2x: 0.825</title></rect>
+        <text class="dl" x="422.8" y="103.0" fill="var(--ink)" style="font-size:11.5px">0.825</text>
+        <rect x="196.0" y="112.0" width="383.8" height="20" rx="2" fill="var(--s2)"><title>The bill was flat, rose 2x or more: 1.447</title></rect>
+        <text class="dl" x="587.8" y="127.0" fill="var(--ink)" style="font-size:11.5px">1.447</text>
+      <text class="an" x="184" y="172.0" text-anchor="end" fill="var(--ink-2)">The bill was rising</text>
+        <rect x="196.0" y="148.0" width="245.1" height="20" rx="2" fill="var(--s1)"><title>The bill was rising, rose up to 2x: 0.924</title></rect>
+        <text class="dl" x="449.1" y="163.0" fill="var(--ink)" style="font-size:11.5px">0.924</text>
+        <rect x="196.0" y="172.0" width="442.5" height="20" rx="2" fill="var(--s2)"><title>The bill was rising, rose 2x or more: 1.668</title></rect>
+        <text class="dl" x="646.5" y="187.0" fill="var(--ink)" style="font-size:11.5px">1.668</text>
+      <line class="ax" x1="100" y1="198.0" x2="700" y2="198.0"/>
+      <text class="an" x="184" y="232.0" text-anchor="end" fill="var(--ink)">Pooled</text>
+        <rect x="196.0" y="208.0" width="220.7" height="20" rx="2" fill="var(--s1)"><title>Pooled, rose up to 2x: 0.832</title></rect>
+        <text class="dl" x="424.7" y="223.0" fill="var(--ink)" style="font-size:11.5px">0.832</text>
+        <rect x="196.0" y="232.0" width="370.3" height="20" rx="2" fill="var(--s2)"><title>Pooled, rose 2x or more: 1.396</title></rect>
+        <text class="dl" x="574.3" y="247.0" fill="var(--ink)" style="font-size:11.5px">1.396</text>
+      <line class="ax" x1="196.0" y1="266" x2="700" y2="266"/>
+      <text class="tk" x="196.0" y="306">bar rate relative to a bill in its normal range</text>
+    </svg>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>the bill rose by up to 2&times;</span>
+      <span><i style="background:var(--s2)"></i>the bill rose by 2&times; or more</span>
+    </div>
+    <p class="cap"><b>A large rise matters, and it matters most to subscribers
+    whose bill was already climbing.</b> For someone whose bill had been
+    falling, a doubled month is a return to normal and carries no excess risk
+    at all; for someone already on the way up it runs 1.668. The risk is in
+    sustained escalation, not in one large bill. These figures are still
+    understated: they were measured before the reference band was cleaned.</p>
+  </div>
+  <div class="card">
+    <h3>Pass four &mdash; the corrected run</h3>
+    <p class="cap" style="margin-top:6px">Two defects found in the query above,
+    both biasing the premiums <i>down</i>.</p>
+    <div class="split" style="margin-top:14px">
+      <div class="panel unknown">
+        <h3><span class="dot" style="background:var(--crit)"></span>The reference band held the worst cases</h3>
+        <ul>
+          <li>The control was <code>shock &lt; 1.25</code>, which swallowed every
+          month where the bill <b>fell</b> &mdash; the riskiest months in the
+          data, at 0.4116 pct against a normal 0.2290 pct.</li>
+          <li>Fixed to <b>0.80&ndash;1.25</b>, with the falling months kept
+          visible as a band of their own.</li>
+        </ul>
+      </div>
+      <div class="panel unknown">
+        <h3><span class="dot" style="background:var(--crit)"></span>A missing value was treated as a stratum</h3>
+        <ul>
+          <li><code>prior_trend IS NULL</code> means the first baseline month
+          billed zero: a line that started or restarted inside the window, not
+          a direction.</li>
+          <li><b>109,360 of them</b>, barring at <b>2.706 pct</b> against 0.350 pct for
+          everyone else, and 73,789 sat in the high-shock band because a bill
+          appearing out of nothing reads as an enormous rise.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tbl-s" style="margin-top:16px"><table>
+      <thead><tr><th>Band</th><th>Premium</th><th>95 pct interval</th></tr></thead>
+      <tbody>
+        <tr><td>The bill fell</td><td><b>1.887&times;</b></td><td>1.834 &ndash; 1.942</td></tr>
+        <tr class="off"><td>Normal</td><td><b>1.000&times;</b></td><td>&mdash;</td></tr>
+        <tr><td>Rose by up to 2x</td><td><b>1.133&times;</b></td><td>1.097 &ndash; 1.171</td></tr>
+        <tr><td>Rose by 2x or more</td><td><b>1.907&times;</b></td><td>1.829 &ndash; 1.989</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="3">Mantel-Haenszel pooled over four bill-size bands
+      and three prior-direction bands, one calendar month, new lines excluded.
+      <b>12,042 defaults over 4.0 million subscriber-months.</b> Crude and adjusted
+      agree to three decimals (1.908 against 1.907) &mdash; <b>adjusting for month,
+      bill size and prior direction moved the estimate from 1.97 to 1.91,
+      essentially not at all.</b> That is itself the finding: the obvious
+      confounders are not where the risk is. It does not prove causation;
+      selection on something unobserved is still possible. The earlier interval
+      of 0.30 to 12.09 was wrong, from summing per-stratum variances instead of
+      using the Robins-Breslow-Greenland formula.</td></tr></tfoot>
+    </table></div>
+  </div>
+  <div class="split" style="margin-top:14px">
+    <div class="panel">
+      <h3>The premium falls as the bill grows</h3>
+      <div class="tbl-s"><table>
+        <thead><tr><th>Normal bill</th><th>Premium</th></tr></thead><tbody>
+          <tr><td>under 150,000</td><td><b>2.11&times;</b></td></tr>
+          <tr><td>150,000 - 300,000</td><td><b>1.61&times;</b></td></tr>
+          <tr><td>300,000 - 600,000</td><td><b>1.37&times;</b></td></tr>
+          <tr><td>above 600,000</td><td><b>1.00&times;</b></td></tr>
+        </tbody>
+        <tfoot><tr><td colspan="2">The reverse of the raw read, which had it the
+        other way round because it was confounded by who gets a big bill. Above
+        600,000 a month the rise carries no premium at all.</td></tr></tfoot>
+      </table></div>
+    </div>
+    <div class="panel unknown">
+      <h3><span class="dot" style="background:var(--crit)"></span>The screen nobody wrote</h3>
+      <div class="tbl-s"><table>
+        <thead><tr><th></th><th>n</th><th>Bars</th><th>Rate</th></tr></thead><tbody>
+          <tr><td>A zero-billing month in the window</td><td>109,360</td><td>2,959</td><td><b>2.706 pct</b></td></tr>
+          <tr><td>Everyone else</td><td>8,585,353</td><td>30,050</td><td>0.350 pct</td></tr>
+        </tbody>
+        <tfoot><tr><td colspan="4"><b>7.7&times;.</b> New or restarted lines. The
+        screen asks for revenue above the bar in 2 of 6 months, which a line
+        that first appeared in month 4 satisfies, and nothing looks for the gap.
+        Cheap to add, large effect, and it is card 06 in Part two.</td></tr></tfoot>
+      </table></div>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="head">
+    <p class="eyebrow">Part four</p>
+    <h2>What the model is, and what it is not yet</h2>
+    <p>Everything below was fitted on the <b>four-month</b> label. It ranks
+    well and it is honestly calibrated at the level. It has not been refit for
+    the one-month product, and until it is, the pd column is not the DCB pd.</p>
+  </div>
+  <div class="card">
+    <div class="tbl-s"><table>
+      <thead><tr><th>Model</th><th>First run</th><th>After adding bar history</th><th>Gain</th></tr></thead>
+      <tbody>
+        <tr><td>Logistic, VALID</td><td>0.7385</td><td><b>0.7843</b></td><td>+0.0458</td></tr>
+        <tr><td>HistGB, VALID</td><td>0.7918</td><td><b>0.8157</b></td><td>+0.0239</td></tr>
+        <tr class="tot"><td>HistGB calibrated, TEST</td><td>0.8017</td><td><b>0.8278</b></td><td>+0.0261</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="4">The linear model gained twice what boosting did,
+      because a prior bar is close to a straight additive signal. Removing the
+      six pre_ columns costs <b>0.0239</b> of test AUC, which is 92 percent of what
+      the refit bought. A <b>scale-free</b> variant &mdash; every Rial amount
+      removed from the inputs &mdash; scores <b>0.8230</b>, costing 0.0048. Take
+      that trade: scale-free features cannot drift with inflation, and twelve
+      features in the full model already drift significantly.</td></tr></tfoot>
+    </table></div>
+  </div>
+  <div class="card">
+    <h3>Calibration is conservative exactly where the book is drawn</h3>
+    <div class="tbl-s"><table>
+      <thead><tr><th>Decile group</th><th>Predicted</th><th>Observed</th><th>Ratio</th></tr></thead>
+      <tbody>
+        <tr><td>Safest 3 deciles</td><td>0.1038 pct</td><td>0.0806 pct</td><td><b>0.776</b></td></tr>
+        <tr><td>Safest 5 deciles</td><td>0.1305 pct</td><td>0.1171 pct</td><td><b>0.898</b></td></tr>
+        <tr><td>All 10 deciles</td><td>0.5232 pct</td><td>0.5146 pct</td><td><b>0.983</b></td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="4">Level error is 1.68 percent, which is tight for
+      a 0.5 percent event. But the model <b>over-predicts risk in the safest
+      deciles</b>, which is where the book comes from. The error runs in the
+      safe direction, so realised loss should land at or under the quoted
+      figure &mdash; state it that way rather than quoting a point estimate.
+      Observed risk is monotone across all ten deciles, so the <b>ranking</b>,
+      which is what the book is cut on, is sound. The live set scores a mean pd
+      of 0.5952 pct against TEST's observed 0.5146 pct, +15.7 percent: that is drift
+      showing up in the level, not the ranking. <b>Trust the order, not the
+      number.</b></td></tr></tfoot>
+    </table></div>
+  </div>
+</section>
+<section>
+  <div class="head">
+    <p class="eyebrow">Part five</p>
+    <h2>What is still open</h2>
+    <p>Listed so that nothing on this page is read as more settled than it is.</p>
+  </div>
+  <div class="card">
+    <div class="ask">
+      <div class="q"><span class="n">01</span><div class="b">
+        <h3>The model has not been refit on the one-month label</h3>
+        <p>42_model_datasets.sql now builds the DCB calendar and the one-month
+        rate is measured, but the notebook has not been run against it. Until
+        it is, every pd on the deck is a four-month pd and the scenario cards
+        here carry arithmetic instead of scores.</p></div></div>
+      <div class="q"><span class="n">02</span><div class="b">
+        <h3>Nobody in the data ever held credit</h3>
+        <p>The largest unknown on the page, and the only thing that answers it
+        is a capped pilot. A one-month term means the answer arrives in weeks
+        rather than a year.</p></div></div>
+      <div class="q"><span class="n">03</span><div class="b">
+        <h3>Capping the draw below one month's bill shrinks limits for light billers</h3>
+        <p>The rule is right on risk and the volume consequence is unmeasured.
+        It needs the billing distribution of the scored set, which is a query
+        rather than an assumption.</p></div></div>
+      <div class="q"><span class="n">04</span><div class="b">
+        <h3>The substitution share</h3>
+        <p>Whether DCB spending replaces what a subscriber already buys or adds
+        to it is unknown, and it decides whether the bill actually rises by the
+        full draw. Everything on this page assumes it adds, which is the
+        pessimistic reading.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>Sources, in order of appearance: 42_model_datasets.sql (screen, windows,
+  pre-window bar history), 52_one_month_label_choice.sql (the one-month rate and
+  the coverage bands), 53_bill_shock.sql S1&ndash;S11 (every shock figure),
+  train_model.ipynb and validate_model.ipynb (AUC, calibration, drift).</span>
+  <span>All amounts in Toman; the database stores Rial and every figure here is
+  the Rial value divided by ten. The nine profiles in Part two are constructed
+  illustrations and are not individual subscribers.</span>
+</footer>
+</div>

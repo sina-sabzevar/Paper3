@@ -137,6 +137,7 @@ svg{display:block;max-width:100%;height:auto}
 .q .b{min-width:0}
 .q .b h3{margin-bottom:4px}
 .q .b p{font-size:14px;color:var(--ink-2)}
+a{color:var(--s1)}
 code{font-family:var(--mono);font-size:13px;background:var(--raise);padding:1px 5px;border-radius:4px}
 footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:12.5px;
   display:flex;flex-direction:column;gap:6px}
@@ -393,9 +394,10 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
     </table></div>
     <p class="cap"><b>The rule that follows.</b> Keep the draw below one month's bill and the
     rise stays under 2&times;, where the premium is 1.13 rather than 1.91. That single constraint is the
-    difference between <b>27 bn</b> and <b>46 bn</b> of annual loss. A 100,000 minimum ticket stays inside
-    the safer band only above about <b>133,000 Toman a month</b> &mdash; and the screen bar, which nobody
-    ever validated, sits at 170,000. It lands within 30 pct of where this analysis would put it.</p>
+    difference between <b>27 bn</b> and <b>46 bn</b> of annual loss. A 100,000 minimum ticket clears the
+    2.00&times; edge only while the bill stays above <b>100,000 Toman a month</b>, because the edge is
+    draw equals bill and nothing else. The screen bar, which nobody ever validated, sits at 170,000
+    &mdash; a 70 pct margin over that edge, which is the right side to err on.</p>
     <p class="cap"><b>And a screen that is missing.</b> Subscribers whose billing history has a
     <b>zero month</b> inside the qualifying window &mdash; new or restarted lines &mdash; default at
     <b>2.71 pct against 0.35 pct</b> for everyone else. That is <b>7.7&times;</b>, on 109,360 subscribers,
@@ -492,6 +494,11 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
     </div>
   </div>
 </section>
+
+<p class="cap" style="margin-top:22px">The full chain of evidence behind these numbers
+  &mdash; the label definition, nine subscribers worked end to end, and the two shock
+  measurements that turned out to be wrong &mdash; is in the
+  <a href="https://claude.ai/artifact/H5jJHuD6i6r3gim31Rfrte">DCB Risk Workbook</a>.</p>
 
 <footer>
   <span>Population, screen, model and seasonality: measured in this project's queries and training
