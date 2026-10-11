@@ -499,6 +499,7 @@ def add_scale_free(d):
 
 
 SCALE_FREE_KEEP = ["rev_months", "rev_months_wide", "pay_months", "n_arpu_null",
+                   "n_zero_rev_months",
                    "n_active1", "f_reclaim", "tenure_m", "pre_months_seen",
                    "pre_ow_any", "pre_tw_any", "pre_ow_months", "pre_tw_months",
                    "pre_absent"]

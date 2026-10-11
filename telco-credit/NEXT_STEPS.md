@@ -164,3 +164,66 @@ run this before lending, not after.
 4. **A pilot.** Nobody in this data was ever given spendable credit. The
    0.2 pct is the right number for the population; it is not a promise about a
    product that has never run.
+
+
+---
+
+# Revised runbook — after the DCB change
+
+The earlier steps assumed the four-month product. The label has changed, so
+**the dataset and the model both have to be rebuilt**. One cycle, not two —
+everything below should go in before `42` runs.
+
+## Already in the generator, not yet run
+
+| change | why |
+|---|---|
+| label is `140408`, one month | the product is one-month DCB; `140407` is the draw month and belongs to neither features nor label |
+| `LABEL_EVENT = "twoway"` | a one-way bar restricts telco usage, which a DCB default cannot cause |
+| `n_zero_rev_months` | a zero-billing month in the window is **7.7×** riskier and nothing looked for it |
+| `DRAW_SKIP`, `TERM_MONTHS` | declared and guarded, so a label quietly widened back is rejected |
+
+## The cycle
+
+**1. `sql/42_model_datasets.sql`** — rebuilds both tables. All structural
+guards pass. Expect `dcb_model` to shrink in events, not rows: the one-month
+label gives about **19,215** against the four-month 45,361.
+
+**2. `sql/47_export_parts.sql`** — re-export both tables.
+
+**3. `notebook/train_model.ipynb`** with:
+
+```python
+FEATURE_SET         = "scale_free"   # costs 0.0048 AUC, immune to inflation
+DROP_AVAIL_FEATURES = True           # before any second-cycle scoring
+```
+
+The second one matters more than it did a week ago: granting DCB raises
+`available_credit` by the grant, so from cycle two those columns describe our
+own decision rather than the subscriber.
+
+**4. `notebook/select_book.py`** — the tie-break is already in. Re-cut.
+
+**5. `sql/51_book_cut.sql`** — build `dcb_book` in Trino with the same order.
+
+## What does NOT need rebuilding
+
+The **premium is not a model feature.** The model predicts a subscriber's base
+risk at their normal bill; the limit engine multiplies by the premium the draw
+implies — 1.13 under 2× the bill, 1.91 at or above it. Keeping that outside the
+model means it can be re-measured, or changed as a policy, without a refit.
+
+The same goes for the limit ladder and the screen bar. Those are product
+decisions sitting on top of a ranking, not parameters of it.
+
+## Expect these to move
+
+| | before | after |
+|---|---|---|
+| event rate | 0.5213 pct | **0.2208 pct** |
+| TEST AUC | 0.8278 | lower — a thinner label is harder |
+| book PD | 0.1790 pct | roughly a third of it |
+
+A one-month label has 42 pct of the events. Do not read a fall in AUC as the
+model getting worse until it is compared against the one-month base rate
+rather than the four-month one.

@@ -304,6 +304,14 @@ def block(name, fm, lm, table, bar, pre):
 
     # ---- the screened projection -------------------------------------------
     rm = " + ".join(f"IF(f.r{i}>={bar},1,0)" for i in range(1, 7))
+    # A month billing nothing. MEASURED in 53_bill_shock.sql S10/S11:
+    # subscribers whose history carries a zero month default at 2.706 pct
+    # against 0.350 pct for everyone else - 7.7x, on 109,360 subscribers.
+    # rev_min already goes to zero for them, so a tree COULD find it, but it
+    # has to discover a split at the very bottom of a Rial-scaled column to do
+    # so. A count is explicit, scale-free, and survives the inflation that
+    # makes rev_min's threshold move every year.
+    nz = " + ".join(f"IF(f.r{i}<=0,1,0)" for i in range(1, 7))
     rw = " + ".join(f"IF(f.r{i}>={SUPERSET_BAR},1,0)" for i in range(1, 7))
     ob = "+".join(f"f.o{i}" for i in range(1, 7))
     pm_ = " + ".join(f"IF(COALESCE(p.q{i},0)>={bar},1,0)" for i in range(1, 7))
@@ -314,6 +322,8 @@ def block(name, fm, lm, table, bar, pre):
     L.append("            GREATEST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)       AS rev_max,")
     L.append("            LEAST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)          AS rev_min,")
     L.append("            (f.r4+f.r5+f.r6) - (f.r1+f.r2+f.r3)           AS rev_trend,")
+    L.append(f"            {nz}")
+    L.append("                                                          AS n_zero_rev_months,")
     L.append(f"            {rm}")
     L.append("                                                          AS rev_months,")
     L.append(f"            {rw}")

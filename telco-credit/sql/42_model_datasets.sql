@@ -195,6 +195,8 @@ proj AS (
             GREATEST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)       AS rev_max,
             LEAST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)          AS rev_min,
             (f.r4+f.r5+f.r6) - (f.r1+f.r2+f.r3)           AS rev_trend,
+            IF(f.r1<=0,1,0) + IF(f.r2<=0,1,0) + IF(f.r3<=0,1,0) + IF(f.r4<=0,1,0) + IF(f.r5<=0,1,0) + IF(f.r6<=0,1,0)
+                                                          AS n_zero_rev_months,
             IF(f.r1>=1050000,1,0) + IF(f.r2>=1050000,1,0) + IF(f.r3>=1050000,1,0) + IF(f.r4>=1050000,1,0) + IF(f.r5>=1050000,1,0) + IF(f.r6>=1050000,1,0)
                                                           AS rev_months,
             IF(f.r1>=520000,1,0) + IF(f.r2>=520000,1,0) + IF(f.r3>=520000,1,0) + IF(f.r4>=520000,1,0) + IF(f.r5>=520000,1,0) + IF(f.r6>=520000,1,0)
@@ -334,6 +336,8 @@ proj AS (
             GREATEST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)       AS rev_max,
             LEAST(f.r1,f.r2,f.r3,f.r4,f.r5,f.r6)          AS rev_min,
             (f.r4+f.r5+f.r6) - (f.r1+f.r2+f.r3)           AS rev_trend,
+            IF(f.r1<=0,1,0) + IF(f.r2<=0,1,0) + IF(f.r3<=0,1,0) + IF(f.r4<=0,1,0) + IF(f.r5<=0,1,0) + IF(f.r6<=0,1,0)
+                                                          AS n_zero_rev_months,
             IF(f.r1>=1700000,1,0) + IF(f.r2>=1700000,1,0) + IF(f.r3>=1700000,1,0) + IF(f.r4>=1700000,1,0) + IF(f.r5>=1700000,1,0) + IF(f.r6>=1700000,1,0)
                                                           AS rev_months,
             IF(f.r1>=520000,1,0) + IF(f.r2>=520000,1,0) + IF(f.r3>=520000,1,0) + IF(f.r4>=520000,1,0) + IF(f.r5>=520000,1,0) + IF(f.r6>=520000,1,0)
