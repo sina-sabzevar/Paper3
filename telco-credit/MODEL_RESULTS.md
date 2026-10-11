@@ -539,3 +539,62 @@ The across-subscriber 1.97× stands as the bound. The identified estimate is
 **1.40 pooled, rising to 1.67** for subscribers already escalating — and both
 will rise further once the reference band is fixed. The dashboard's 0.08–0.15%
 range still covers it.
+
+## The corrected run: 1.91x, and a limit rule falls out of it
+
+Clean reference band (0.80–1.25), new-subscriber group excluded, pooled
+Mantel-Haenszel over four bill-size bands and three prior-direction bands,
+one calendar month:
+
+| | premium | 95% CI |
+|---|---|---|
+| the bill **fell** | 1.887 | 1.834 – 1.942 |
+| rose by up to 2× | **1.133** | 1.097 – 1.171 |
+| rose by 2× or more | **1.907** | 1.829 – 1.989 |
+
+12,042 defaults over 4.0M subscriber-months. Crude and adjusted agree to three
+decimals (1.908 vs 1.907).
+
+**Adjusting for month, bill size and prior direction moved the estimate from
+1.97 to 1.91 — essentially not at all.** That is the finding: the obvious
+confounders are not where the risk is. It does not prove causation — selection
+on something unobserved is still possible — but 1.91 is the number to plan
+with, not a ceiling.
+
+My earlier CI of 0.30–12.09 was wrong: I summed per-stratum variances instead
+of using the Robins–Breslow–Greenland formula, which divides by the product of
+the MH numerator and denominator sums. Corrected above.
+
+### The limit rule
+
+| ticket | on a 170,000 bill | premium |
+|---|---|---|
+| 100,000 | 1.59× | 1.13 |
+| 300,000 | 2.76× | 1.91 |
+
+**Keep the draw at or below one month's bill and the rise stays under 2×.**
+That one constraint is the difference between **27 bn** and **46 bn** of annual
+loss on the same book. A 100,000 minimum ticket stays in the safer band only
+above roughly **133,000 Toman a month** — and the screen bar, which nobody
+validated, sits at 170,000. It lands within 30% of where this puts it.
+
+What this does *not* settle: capping limits at 1× the bill shrinks the limit
+for lighter billers, so the volume consequence needs the billing distribution
+of the scored set. That is a query, not an assumption.
+
+### The missing screen
+
+| | n | rate |
+|---|---|---|
+| a zero-billing month in the window | 109,360 | **2.706%** |
+| everyone else | 8,585,353 | 0.350% |
+
+**7.7×.** New or restarted lines. The screen asks for revenue above the bar in
+2 of 6 months, which a line that first appeared in month 4 satisfies, and
+nothing looks for the gap. Cheap to add, large effect.
+
+### Also reversed from the raw read
+
+The premium falls as the bill grows: 2.11 under 150k, 1.61 at 150–300k, 1.37 at
+300–600k, 1.00 above 600k. S3's raw version had it the other way round, because
+it was confounded by who gets a big bill.
