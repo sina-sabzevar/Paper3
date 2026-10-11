@@ -142,6 +142,11 @@ svg{display:block;max-width:100%;height:auto}
 .q .b{min-width:0}
 .q .b h3{margin-bottom:4px}
 .q .b p{font-size:14px;color:var(--ink-2)}
+.warnbox{background:color-mix(in srgb,var(--warn) 13%,var(--surface));
+  border:1px solid color-mix(in srgb,var(--warn) 45%,var(--rule));
+  border-radius:8px;padding:16px 18px;font-size:14px;color:var(--ink-2);line-height:1.6}
+.warnbox b{color:var(--ink);font-weight:600}
+.warnbox h3{margin-bottom:8px}
 a{color:var(--s1)}
 code{font-family:var(--mono);font-size:13px;background:var(--raise);padding:1px 5px;border-radius:4px}
 footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:12.5px;

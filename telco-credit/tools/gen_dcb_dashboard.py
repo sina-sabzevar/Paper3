@@ -297,33 +297,53 @@ __GRID__
 # ------------------------------------------------- decisions
 W("""<section>
   <div class="head">
-    <h2>Four decisions needed</h2>
-    <p>None of these is a modelling question. Each one changes the size of the programme.</p>
+    <h2>Five decisions needed</h2>
+    <p>One is a measurement that has to be made before the rest are worth deciding. The other
+    four are not modelling questions, and each changes the size of the programme.</p>
+  </div>
+  <div class="warnbox" style="margin-bottom:14px">
+    <h3>Open, and it sits under every risk number on this page</h3>
+    A two-way bar is the <b>end</b> of the operator's dunning ladder, not the start of it. The
+    label asks whether a subscriber was barred in 140408, one month after the draw lands on the
+    140407 bill &mdash; but if escalation takes months, that bar was set in motion before the
+    draw existed. The model would then be reading the cause of its own label out of the payment
+    columns, and the measured 0.2208 pct would not be the rate at which draws go unpaid.
+    <b><code>55_label_lag.sql</code> settles it</b> and has not yet been run. Until it does, treat the loss figures here as
+    the right shape and an unverified level. The
+    <a href="https://claude.ai/artifact/H5jJHuD6i6r3gim31Rfrte">workbook</a> sets out what each outcome would mean.
   </div>
   <div class="card">
     <div class="ask">
 
       <div class="q"><span class="n">01</span><div class="b">
+        <h3>Does the label measure the draw, or something that started before it?</h3>
+        <p>Every subscriber in the training set was clean on the monthly status through 140406,
+        so all 19,215 events went from clean to two-way barred in at most two months. Either the
+        ladder can run that fast, or the monthly snapshot is missing one-way episodes, or some
+        bars skip the one-way stage. <b>55_label_lag.sql</b> distinguishes them. It is one query
+        and it decides whether the model needs refitting on a different label.</p></div></div>
+
+      <div class="q"><span class="n">02</span><div class="b">
         <h3>Is the 15,000 bn target annual lending or peak exposure?</h3>
         <p>At monthly turnover the two differ by twelve times. On the first reading the programme
         clears the target at <b>2.1&times;</b>; on the second it stands at 2,661 bn and is 5.6&times;
         short. Everything in the volume case depends on which is meant.</p></div></div>
 
-      <div class="q"><span class="n">02</span><div class="b">
+      <div class="q"><span class="n">03</span><div class="b">
         <h3>Does the revenue bar come down?</h3>
         <p>It excludes 31.2 million subscribers and was sized for a four-month, 500,000 Toman line.
         A 100,000 ticket needs a fraction of that capacity. Lowering it is the largest lever on
         volume &mdash; and when it was tested, the subscribers a lower bar admits came in
         <b>safer</b>, not riskier.</p></div></div>
 
-      <div class="q"><span class="n">03</span><div class="b">
+      <div class="q"><span class="n">04</span><div class="b">
         <h3>Is 300,000 on one bill too much?</h3>
         <p>Under the old product a 500,000 line sat across four bills &mdash; about three quarters of
         total billing. A 300,000 ticket on a single bill is <b>1.76&times;</b> that month's invoice at
         the screen level. Per bill, the new product asks more of the subscriber, not less, which is
         why the limit should be sized from their own billing rather than set flat.</p></div></div>
 
-      <div class="q"><span class="n">04</span><div class="b">
+      <div class="q"><span class="n">05</span><div class="b">
         <h3>Does it launch as a pilot?</h3>
         <p>The loss rate on a product nobody has run is not knowable from history. A capped cohort
         for one or two cycles converts the largest unknown on this page into a measurement, and a

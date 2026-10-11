@@ -604,3 +604,76 @@ nothing looks for the gap. Cheap to add, large effect.
 The premium falls as the bill grows: 2.11 under 150k, 1.61 at 150–300k, 1.37 at
 300–600k, 1.00 above 600k. S3's raw version had it the other way round, because
 it was confounded by who gets a big bill.
+
+---
+
+# The label may not measure the draw — open, and it sits under everything
+
+Sina's objection, and it is the right one: `sbrp_stat_id = 4` is the **end** of
+the operator's dunning ladder, not the start of one. The label asks whether a
+subscriber was two-way barred in 140408, one month after the draw lands on the
+140407 bill. If escalation takes months, that bar was set in motion before the
+draw existed.
+
+Two consequences, both serious:
+
+1. **Leakage.** The model would be reading the cause of its own label out of
+   `q5`, `q6`, `paid_6m` and `outst_max`. Part of the 0.8278 test AUC would be
+   recognition of an already-failing subscriber rather than prediction, and the
+   number alone cannot say how much.
+2. **Wrong question.** The product event is "a draw rides on the 140407 bill,
+   does the bill come back". A bar is not that event over a one-month horizon.
+
+`10_dcb_extract_v2.sql` already asserts the ladder as *"one-way → +3 months to
+escalate → +1 more to persist"*. That was written as an assumption and never
+measured. If it is right, a one-month bar label cannot work.
+
+## What argues the other way, and why it has to be measured
+
+`dcb_model` screens on `o1..o6 = 0` and `f_twoway = 0`, so every labelled
+subscriber was clean on the monthly snapshot through 140406. If the ladder
+really took three months the label would be empty. It is not — **19,215
+events**. So exactly one of these is true, and which one decides the design:
+
+- the ladder can run in one or two months for some subscribers
+- a monthly snapshot misses one-way episodes that start and cure inside a
+  month, so the screen is not catching them
+- some two-way bars arrive without a one-way stage at all
+
+## `55_label_lag.sql` — written, not yet run
+
+| | decides |
+|---|---|
+| L0 | builds the base on dcb_model's exact screen, carrying status 140407–140412 and payments 140405–140409 |
+| **L1** | the lag curve: where bars actually land across six months. This alone says where the label month belongs. |
+| **L2** | for subscribers first barred in 140408, their status in **140407** — the draw month. `s7 = 2` means a genuine one-month event; `s7 = 3` means the draw would have gone to someone already in dunning. |
+| **L3** | the leakage test: had the labelled group already stopped paying in 140405/140406 |
+| L4 | ladder or no ladder — did a one-way bar come first, and how many months before |
+| **L5** | the repayment label's rate: was the 140407 bill covered by end of 140408, at thresholds 0.10 / 0.50 / 0.90 |
+| L6 | reconcile to 19,215 / 0.2208%, and count subscribers absent from the label month that `42`'s inner join silently drops |
+
+## The three replacements
+
+| option | the label becomes | cost |
+|---|---|---|
+| move the window | a two-way bar in whichever month L1 shows them landing | drifts further from the draw; the 1405 scoring window moves with it |
+| screen harder | the same bar, only for subscribers still paying normally through 140406 | removes the leakage by removing the subscribers most worth catching, and conditions the population on the thing being predicted |
+| **change the event** | **was the 140407 bill covered by end of 140408** | no ladder lag — it is literally the product event — but paying late is normal, so the threshold must be chosen |
+
+**Recommendation pending L1–L3: the third, at a coverage threshold of 0.10.**
+`52` D3 measured that coverage between 0.10 and 1.00 carries *no* excess bar
+risk and only "paid essentially nothing" does, so 0.10 is measured rather than
+picked. Keep the bar alongside it as a loss-severity label; it costs one column.
+
+## What this does and does not touch
+
+- **Touches:** the 0.2208% base rate, the 0.8278 AUC, every scenario figure on
+  the workbook, and the loss figures on the deck — all now "right shape,
+  unverified level".
+- **Also touches `53`,** and in the opposite direction. Its outcome is a
+  two-way bar in the *two months after* the bill. If the ladder is slow, a bar
+  in M+1/M+2 was initiated before month M, so the shock **cannot** have caused
+  it and the 1.91× is purely selection. L1 bears on this too.
+- **Does not touch:** the revenue bar being a capacity rather than a risk
+  screen, the 7.7× on zero-billing months, or the limit rule — that one is
+  arithmetic on the band edges, not on the label.

@@ -260,10 +260,6 @@ EXTRA = """
   border-top:1px solid var(--rule);padding-top:10px}
 .sees b{color:var(--ink-2);font-weight:500;letter-spacing:0.06em;text-transform:uppercase;font-size:10px}
 
-.warnbox{background:color-mix(in srgb,var(--warn) 13%,var(--surface));
-  border:1px solid color-mix(in srgb,var(--warn) 45%,var(--rule));
-  border-radius:8px;padding:16px 18px;font-size:14px;color:var(--ink-2);line-height:1.6}
-.warnbox b{color:var(--ink);font-weight:600}
 /* a panel holding a min-width table is a grid child: without this the track
    cannot shrink and the whole page scrolls sideways on a phone */
 .split > *{min-width:0}
@@ -370,7 +366,51 @@ W("""  <div class="split" style="margin-top:14px">
   </div>
 """ % (pct(LAB1_PCT), f(LAB1_N), pct(LAB4_PCT)))
 
-W("""  <div class="card" style="margin-top:14px">
+W("""  <div class="warnbox" style="margin-top:14px">
+    <h3>Open: does this label measure the draw at all?</h3>
+    A two-way bar is the <b>end</b> of the operator's dunning ladder, not the start of it. If
+    escalation takes months, a bar in 140408 was set in motion before 140407 &mdash; before the
+    draw existed. Two things would follow, and both are serious. The model would be reading the
+    cause of its own label out of <code>q5</code>, <code>q6</code> and <code>paid_6m</code>, so
+    part of the 0.8278 would be recognition rather than prediction and the number alone cannot
+    say how much. And the product question &mdash; a draw lands on the 140407 bill, does it come
+    back &mdash; would not be the question being answered.
+    <br><br>
+    What argues the other way: the screen requires a clean monthly status through 140406, so
+    every one of the <b>19,215 events went from clean to two-way barred in at most two
+    months</b>. Either the ladder can run that fast, or a monthly snapshot is missing one-way
+    episodes that start and cure inside a month, or some bars skip the one-way stage entirely.
+    <b><code>55_label_lag.sql</code> distinguishes them</b>: L1 shows where bars actually land
+    across six months, L2 asks what the barred subscribers were in the draw month, and L3 asks
+    whether they had already stopped paying before the feature window closed. Until it runs,
+    treat the base rate and the AUC on this page as unverified for this product.
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h3>What replaces it, depending on the answer</h3>
+    <div class="tbl-s"><table>
+      <thead><tr><th>Option</th><th>The label becomes</th><th>What it costs</th></tr></thead>
+      <tbody>
+        <tr><td>Move the window</td><td>a two-way bar in whichever month L1 shows the bars
+            actually landing</td><td>the label drifts further from the draw, and the 1405 scoring
+            window has to move with it</td></tr>
+        <tr><td>Keep one month, screen harder</td><td>the same bar, but only for subscribers
+            still paying normally through 140406</td><td>removes the leakage by removing the
+            subscribers most worth catching, and conditions the population on the thing being
+            predicted</td></tr>
+        <tr class="tot"><td>Change the event</td><td>was the 140407 bill covered by the end of
+            140408</td><td>no ladder lag at all, because it is literally the product event
+            &mdash; but paying late is normal, so the threshold has to be chosen</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="3">The third is the one to try first, at a coverage threshold of
+      <b>0.10</b>: 52's D3 found that coverage between 0.10 and 1.00 carries no excess bar risk
+      and only "paid essentially nothing" does, so that threshold is measured rather than picked.
+      L5 returns its rate. Running both &mdash; repayment for the credit decision, the bar for
+      loss severity &mdash; is also available and costs one extra column.</td></tr></tfoot>
+    </table></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
     <h3>The screen that produced the population</h3>
     <div class="tbl-s"><table>
       <thead><tr><th>Condition</th><th>Column</th><th>What it removes</th></tr></thead>
@@ -793,22 +833,29 @@ W("""<section>
   <div class="card">
     <div class="ask">
       <div class="q"><span class="n">01</span><div class="b">
+        <h3>Whether the label measures the draw</h3>
+        <p>The one above everything else on this page, because every risk figure here rests on
+        it. <code>55_label_lag.sql</code> is written and has not been run. If L2 shows the
+        barred subscribers were already one-way barred in the draw month, the label is measuring
+        an episode that began before the credit existed and the model needs refitting on the
+        repayment event instead.</p></div></div>
+      <div class="q"><span class="n">02</span><div class="b">
         <h3>The model has not been refit on the one-month label</h3>
         <p>42_model_datasets.sql now builds the DCB calendar and the one-month
         rate is measured, but the notebook has not been run against it. Until
         it is, every pd on the deck is a four-month pd and the scenario cards
         here carry arithmetic instead of scores.</p></div></div>
-      <div class="q"><span class="n">02</span><div class="b">
+      <div class="q"><span class="n">03</span><div class="b">
         <h3>Nobody in the data ever held credit</h3>
         <p>The largest unknown on the page, and the only thing that answers it
         is a capped pilot. A one-month term means the answer arrives in weeks
         rather than a year.</p></div></div>
-      <div class="q"><span class="n">03</span><div class="b">
+      <div class="q"><span class="n">04</span><div class="b">
         <h3>Capping the draw below one month's bill shrinks limits for light billers</h3>
         <p>The rule is right on risk and the volume consequence is unmeasured.
         It needs the billing distribution of the scored set, which is a query
         rather than an assumption.</p></div></div>
-      <div class="q"><span class="n">04</span><div class="b">
+      <div class="q"><span class="n">05</span><div class="b">
         <h3>The substitution share</h3>
         <p>Whether DCB spending replaces what a subscriber already buys or adds
         to it is unknown, and it decides whether the bill actually rises by the
