@@ -177,9 +177,13 @@ SPLIT_VALID = 90              # under this -> valid; at or over -> test
 # subscribers who appear in the window but not in that month. The parts check
 # is the one that catches a half-finished export; compare the printed row
 # count against T1 in 42 by eye.
+# parts is per EXTENSION, because the two routes give different file counts.
+# The export writes TWO parquet parts; the usual next step is to concatenate
+# them into ONE csv and train from that. Both are correct, and a single flat
+# number would reject whichever one was not used.
 EXPECT = {
-    "dcb_model": dict(rows=None, parts=2),
-    "dcb_score": dict(rows=None, parts=2),
+    "dcb_model": dict(rows=None, parquet_parts=2, csv_parts=1),
+    "dcb_score": dict(rows=None, parquet_parts=2, csv_parts=1),
 }
 
 # The DCB ticket. The product is one-month credit, 100,000 minimum, 300,000
@@ -310,14 +314,15 @@ def load(stem):
             print(f"    {', '.join(os.path.basename(f) for f in files)}")
 
         exp = EXPECT.get(stem, {})
-        if exp.get("parts") is not None and len(files) != exp["parts"]:
+        key = "parquet_parts" if ext == ".parquet" else "csv_parts"
+        want = exp.get(key)
+        if want is not None and len(files) != want:
             raise ValueError(
-                f"{stem}: found {len(files)} file(s), expected "
-                f"{exp['parts']}. A missing part looks exactly like a smaller "
-                f"export from the outside, so this is the only thing that "
-                f"catches it. Check the export, or set the 'parts' entry for "
-                f"{stem} in EXPECT to None if it really is in {len(files)} "
-                f"piece(s).")
+                f"{stem}: found {len(files)} {ext} file(s), expected {want}. "
+                f"A missing part looks exactly like a smaller export from the "
+                f"outside, so this is the only thing that catches it. Check "
+                f"the export, or set '{key}' for {stem} in EXPECT to None if "
+                f"it really is in {len(files)} piece(s).")
         if exp.get("rows") is not None and len(df) != exp["rows"]:
             raise ValueError(
                 f"{stem}: loaded {len(df):,} rows, expected {exp['rows']:,} "
@@ -325,6 +330,25 @@ def load(stem):
                 f"or truncated, or 42 was re-run with a different bar - in "
                 f"which case update EXPECT from its T1 output. A short load "
                 f"trains a plausible-looking model on less data than intended.")
+        # THE SPLIT IS md5(str(sbrp_id)), SO THE DTYPE IS PART OF THE ANSWER.
+        # str(9891234567) is '9891234567' but str(9891234567.0) is
+        # '9891234567.0' - different strings, different md5, different bucket.
+        # Parquet carries the integer type; a csv round trip does not, and on
+        # some pandas versions a single blank cell turns the whole column to
+        # float. Nothing would error: the model would simply be fitted and
+        # tested on different subscribers than the parquet route gives.
+        if "sbrp_id" in df.columns and not pd.api.types.is_integer_dtype(df.sbrp_id):
+            before = str(df.sbrp_id.dtype)
+            if df.sbrp_id.isna().any():
+                raise ValueError(
+                    f"{stem}: sbrp_id is {before} and contains nulls. The "
+                    f"split hashes str(sbrp_id), so this cannot be made safe "
+                    f"by casting - find out why an id is missing first.")
+            df["sbrp_id"] = df.sbrp_id.astype("int64")
+            print(f"    sbrp_id was {before}, cast to int64 - the split hashes "
+                  f"its STRING form, so the type changes which subscribers "
+                  f"land in train, valid and test")
+
         if "sbrp_id" in df.columns:
             dup = len(df) - df.sbrp_id.nunique()
             if dup:

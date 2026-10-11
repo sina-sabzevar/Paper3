@@ -199,6 +199,18 @@ label gives about **19,215** against the four-month 45,361.
 
 Both split on `BITWISE_AND(hash, 1)`, so the files are interchangeable.
 
+**Either way, the usual next step — concatenating the two parquet parts into a
+single CSV and training from that — now works without editing anything.**
+`EXPECT` counts parts per extension: two parquet files, or one CSV. A genuinely
+missing parquet part still stops the run.
+
+One thing the CSV route needs and the parquet route does not: **`sbrp_id` has to
+stay an integer.** The split is `md5(str(sbrp_id)) mod 100`, and
+`str(9891234567)` is not `str(9891234567.0)` — a float column puts a different
+set of subscribers in train, valid and test, with nothing to show for it. The
+loader now casts it back and says so, and refuses outright if the column is
+float *and* has nulls, because that cannot be fixed by casting.
+
 **3. `notebook/train_model.ipynb`** with:
 
 ```python
