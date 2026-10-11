@@ -187,9 +187,9 @@ W("""<section>
       <span class="s">Toman, at any one time</span></div>
     <div class="tile"><span class="k">Cycles per year</span><span class="v">12</span>
       <span class="s">the four-month product managed 3</span></div>
-    <div class="tile"><span class="k">Expected loss rate</span><span class="v">0.076 pct</span>
-      <span class="s">measured base rate, model selection applied</span></div>
-    <div class="tile"><span class="k">Annual loss</span><span class="v">24 bn</span>
+    <div class="tile"><span class="k">Expected loss rate</span><span class="v">0.08&ndash;0.15</span>
+      <span class="s">pct; base case to upper bound</span></div>
+    <div class="tile"><span class="k">Annual loss</span><span class="v">24&ndash;48 bn</span>
       <span class="s">Toman, against 31,929 bn lent</span></div>
   </div>
 </section>
@@ -304,31 +304,36 @@ W("""<section>
 # ------------------------------------------------- known / not known
 W("""<section>
   <div class="head">
-    <h2>What a bigger bill does &mdash; measured, not assumed</h2>
+    <h2>What a bigger bill does &mdash; and what we still cannot prove</h2>
     <p>DCB lands on the same invoice, so the product does not only lend: it raises the bill the
-    subscriber has to pay. The obvious worry is that a bill well above normal gets paid worse. It
-    does not.</p>
+    subscriber has to pay. Whether that makes the bill get paid worse is the central risk question,
+    and the history can bound it but not settle it.</p>
   </div>
   <div class="card">
     <div class="tbl-s"><table>
       <thead><tr><th>Comparison</th><th>Normal bill</th><th>Raised bill</th><th>Premium</th><th>Reading</th></tr></thead>
       <tbody>
-        <tr><td>Across subscribers</td><td>0.2290 pct</td><td>0.4516 pct</td><td>1.97&times;</td><td>looks alarming</td></tr>
-        <tr class="tot"><td>The same 1,169,169 subscribers</td><td>0.2868 pct</td><td>0.2786 pct</td><td>0.97&times;</td><td>no effect</td></tr>
+        <tr><td>Across subscribers</td><td>0.2290 pct</td><td>0.4516 pct</td><td>1.97&times;</td><td>an upper bound</td></tr>
+        <tr><td>Same subscribers, pooled</td><td>0.2868 pct</td><td>0.2786 pct</td><td>0.97&times;</td><td>not identified</td></tr>
+        <tr class="off"><td>&mdash; where the rise fell in month&nbsp;5</td><td>0.3696 pct</td><td>0.2785 pct</td><td>0.75&times;</td><td>opposite signs,</td></tr>
+        <tr class="off"><td>&mdash; where it fell in month&nbsp;6</td><td>0.2016 pct</td><td>0.2786 pct</td><td>1.38&times;</td><td>so neither is the answer</td></tr>
       </tbody>
-      <tfoot><tr><td colspan="5">Each of those subscribers contributes exactly one normal month and
-      one raised month, so the only thing differing is the bill. The premium is <b>0.97, with a 95 pct
-      interval of 0.92 to 1.02</b>. Split by how large the rise was, every band comes back at or below
-      1.00 &mdash; 0.985 at a 100,000 ticket, 0.996 at 300,000, and 0.888 past three times, that last one
-      significant in the <i>safe</i> direction. <b>The whole of the across-subscriber gradient is
-      selection</b>: people whose bills jump are riskier people, which is what the model already scores
-      them on.</td></tr></tfoot>
+      <tfoot><tr><td colspan="5">The paired comparison looked conclusive until it was split by
+      <i>which</i> month carried the raised bill, and then it came apart: the two halves point in
+      opposite directions and the pooled 0.97 is simply them cancelling. The cause is structural. With
+      only two months per subscriber, a raised month in one is a normal month in the other, so "raised
+      versus normal" is always also "month 5 versus month 6" &mdash; and those two have different outcome
+      windows, with month 6 running about <b>1.35&times;</b> hotter in both roles. <b>This design cannot
+      separate the bill from the calendar</b>, so the honest range is 0.75 to 1.38 and the
+      across-subscriber 1.97&times; stands as the planning bound.</td></tr></tfoot>
     </table></div>
-    <p class="cap"><b>The arrow runs the other way.</b> The highest default rate of any group belongs
-    to subscribers whose bill <i>fell</i> &mdash; 0.4116 pct, 1.80&times; normal. A collapsing bill is what
-    precedes a service bar, because the subscriber has already stopped using the service. A bill that
-    jumps is a month of health. Subscribers do pay a large bill more slowly &mdash; median coverage falls
-    from 1.68 to 1.06 &mdash; but they pay it.</p>
+    <p class="cap"><b>What does hold.</b> The highest default rate of any group belongs to
+    subscribers whose bill <i>fell</i> &mdash; 0.4116 pct, 1.80&times; normal. A collapsing bill precedes a
+    service bar, because the subscriber has already stopped using the service. That also explains why
+    the split above fails: a subscriber who spiked then fell back has a "normal" month that is not a
+    clean control at all. Subscribers do pay a large bill more slowly &mdash; median coverage falls from
+    1.68 to 1.06 &mdash; and separately, a shortfall anywhere between a tenth and full payment carries no
+    excess default risk whatsoever. Slower is not worse. That part is solid.</p>
   </div>
 </section>
 
@@ -353,17 +358,20 @@ W("""<section>
         <li>Risk is <b>seasonal</b>: the same exposure across Nowruz ran <b>1.68&times;</b> higher.</li>
         <li>The <b>one-month default rate</b>: <b>0.2208 pct</b>, 19,215 events across 8,701,085
         subscribers. Thick enough to fit a model on, and it sorts cleanly by billing consistency.</li>
-        <li>A raised bill carries <b>no extra default risk</b> for the same subscriber &mdash; premium
-        1.00, measured on 1,169,169 paired comparisons.</li>
+        <li>A payment shortfall between a tenth and full payment carries <b>no excess default
+        risk</b> &mdash; only "paid essentially nothing" does, at 8.3&times;. Paying slowly is not failing.</li>
       </ul>
     </div>
     <div class="panel unknown">
       <h3><span class="dot" style="background:var(--crit)"></span>Not yet measured</h3>
       <ul>
-        <li><b>The model has not yet been refitted on the one-month label.</b> The
-        <b>0.076 pct</b> above is the measured one-month base rate of <b>0.2208 pct</b> scaled by the
-        selection the model already achieves at this cut. It is an estimate built from two measured
-        numbers, not a guess &mdash; but it is not a fitted result, and the refit may move it.</li>
+        <li><b>What a raised bill does to default risk.</b> The history cannot separate it from the
+        calendar &mdash; see the section above. The range is <b>0.75&times; to 1.38&times;</b>, and the
+        across-subscriber <b>1.97&times;</b> is the planning bound. The loss figures quoted here span
+        that: <b>0.08 pct at a premium of 1, 0.15 pct at 1.97</b>.</li>
+        <li><b>The model has not yet been refitted on the one-month label.</b> The base case scales
+        the measured one-month rate of <b>0.2208 pct</b> by the selection the model already achieves
+        at this cut. Built from measured numbers, but not a fitted result.</li>
         <li>Whether a service bar can <b>lag beyond the two months</b> this window allows. A longer
         lag would push the true rate up.</li>
         <li><b>Behaviour under credit.</b> Nobody in this data was ever given spendable credit. The

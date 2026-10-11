@@ -174,16 +174,24 @@ scr AS (
 -- every barred subscriber was excluded by construction - so its bar rate is
 -- zero by definition and the row is marked unobservable rather than counted
 -- as clean. Only 140405 and 140406 carry a usable outcome.
+--
+-- prior_trend is the LAST baseline month over the FIRST - the direction the
+-- bill was already moving before the month being measured. S9 showed why it
+-- has to be carried: a subscriber who spiked and then fell back has a "normal"
+-- month that is not a clean control, because a falling bill is itself the
+-- strongest risk signal in the data.
 SELECT   sbrp_id, bill_month, billed, base, paid_next, tw_later, obs_ok,
          IF(base   > 0, billed    / base,   NULL) AS shock,
-         IF(billed > 0, paid_next / billed, NULL) AS cover
+         IF(billed > 0, paid_next / billed, NULL) AS cover,
+         IF(t_from  > 0, t_to      / t_from, NULL) AS prior_trend
 FROM     (
     SELECT sbrp_id, 140404 AS bill_month, b4 AS billed, (b1+b2+b3)/3.0 AS base,
-           p5 AS paid_next, CAST(NULL AS INTEGER) AS tw_later, 0 AS obs_ok FROM scr
+           p5 AS paid_next, CAST(NULL AS INTEGER) AS tw_later, 0 AS obs_ok,
+           b1 AS t_from, b3 AS t_to FROM scr
     UNION ALL
-    SELECT sbrp_id, 140405, b5, (b2+b3+b4)/3.0, p6, GREATEST(tw07, tw08), 1 FROM scr
+    SELECT sbrp_id, 140405, b5, (b2+b3+b4)/3.0, p6, GREATEST(tw07, tw08), 1, b2, b4 FROM scr
     UNION ALL
-    SELECT sbrp_id, 140406, b6, (b3+b4+b5)/3.0, p7, GREATEST(tw08, tw09), 1 FROM scr
+    SELECT sbrp_id, 140406, b6, (b3+b4+b5)/3.0, p7, GREATEST(tw08, tw09), 1, b3, b5 FROM scr
 );
 
 -- ---------------------------------------------------------------------------
@@ -594,3 +602,92 @@ SELECT   shocked_month,
 FROM     pairs
 GROUP BY shocked_month
 ORDER BY shocked_month;
+
+-- ---------------------------------------------------------------------------
+-- S10  ONE CALENDAR MONTH, STRATIFIED. The design S9 showed was needed.
+--
+--      S6 and S8 compared a subscriber's raised month against their own normal
+--      month. With only two months that is also a comparison of month 5
+--      against month 6, which have different outcome windows and differ by
+--      about 1.35x - so the paired premium was never identified, and S9's two
+--      strata duly came back at 0.75 and 1.38.
+--
+--      This fixes the calendar instead of the subscriber. Every row is bill
+--      month 140406, judged on bars in 140408-140409, so there is no month
+--      effect left to confound anything. What has to be controlled instead is
+--      WHO gets a raised bill, and two things are held constant for that:
+--
+--        baseline_band  how large their bill normally is. S3 showed the
+--                       shortfall rate varies with this on its own.
+--        prior_trend    whether their bill was already rising or falling
+--                       before this month. A falling bill is the strongest
+--                       risk signal in the data (S5's bill-fell band, 1.80x),
+--                       and it is what made S9's control group dirty.
+--
+--      Read the shock gradient DOWN each cell. If the rate still climbs with
+--      shock inside a fixed month, a fixed baseline size and a fixed prior
+--      direction, that is close to causal and the premium is real. If it goes
+--      flat once those are held, the across-subscriber 1.97x was selection
+--      after all - and this time it is shown rather than assumed.
+--
+--      This is a between-subscriber comparison inside narrow strata, not a
+--      within-subscriber one. It trades the paired design, which cannot work
+--      here, for stratification that can.
+-- ---------------------------------------------------------------------------
+SELECT   IF(base <  1500000, 'a  under 150k Toman',
+         IF(base <  3000000, 'b  150k - 300k',
+         IF(base <  6000000, 'c  300k - 600k',
+                             'd  over 600k')))          AS baseline_band,
+         IF(prior_trend IS NULL, 'x  unknown',
+         IF(prior_trend < 0.90, '1  was falling',
+         IF(prior_trend < 1.15, '2  was flat',
+                                '3  was rising')))      AS prior_direction,
+         IF(shock < 1.25, 'A  normal',
+         IF(shock < 2.00, 'B  1.25 - 2.00',
+                          'C  2.00 and over'))          AS shock_band,
+         COUNT(*)                                       AS n,
+         SUM(tw_later)                                  AS n_twoway,
+         100.0 * AVG(CAST(tw_later AS DOUBLE))          AS pct_twoway,
+         APPROX_PERCENTILE(billed, 0.5) / 10            AS med_billed_toman
+FROM     dwbi_temp40_db.dcb_shock
+WHERE    bill_month = 140406
+  AND    obs_ok = 1
+  AND    shock IS NOT NULL
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3;
+
+-- ---------------------------------------------------------------------------
+-- S11  THE SAME THING COLLAPSED TO ONE NUMBER PER STRATUM, so the gradient can
+--      be read at a glance. premium_B and premium_C are the shock bands
+--      against the normal band INSIDE each cell. If they cluster near 1.00
+--      across cells, a raised bill does not cause defaults. If they stay near
+--      the across-subscriber 1.97x, it does.
+-- ---------------------------------------------------------------------------
+WITH c AS (
+    SELECT   IF(base <  1500000, 'a  under 150k Toman',
+             IF(base <  3000000, 'b  150k - 300k',
+             IF(base <  6000000, 'c  300k - 600k',
+                                 'd  over 600k')))      AS baseline_band,
+             IF(prior_trend IS NULL, 'x  unknown',
+             IF(prior_trend < 0.90, '1  was falling',
+             IF(prior_trend < 1.15, '2  was flat',
+                                    '3  was rising')))  AS prior_direction,
+             IF(shock < 1.25, 'A', IF(shock < 2.00, 'B', 'C')) AS sb,
+             tw_later
+    FROM     dwbi_temp40_db.dcb_shock
+    WHERE    bill_month = 140406 AND obs_ok = 1 AND shock IS NOT NULL
+)
+SELECT   baseline_band, prior_direction,
+         COUNT(*) FILTER (WHERE sb = 'A')                       AS n_normal,
+         COUNT(*) FILTER (WHERE sb = 'B')                       AS n_mid,
+         COUNT(*) FILTER (WHERE sb = 'C')                       AS n_high,
+         100.0 * AVG(CAST(tw_later AS DOUBLE)) FILTER (WHERE sb = 'A') AS pct_normal,
+         100.0 * AVG(CAST(tw_later AS DOUBLE)) FILTER (WHERE sb = 'B') AS pct_mid,
+         100.0 * AVG(CAST(tw_later AS DOUBLE)) FILTER (WHERE sb = 'C') AS pct_high,
+         AVG(CAST(tw_later AS DOUBLE)) FILTER (WHERE sb = 'B')
+           / NULLIF(AVG(CAST(tw_later AS DOUBLE)) FILTER (WHERE sb = 'A'), 0) AS premium_B,
+         AVG(CAST(tw_later AS DOUBLE)) FILTER (WHERE sb = 'C')
+           / NULLIF(AVG(CAST(tw_later AS DOUBLE)) FILTER (WHERE sb = 'A'), 0) AS premium_C
+FROM     c
+GROUP BY baseline_band, prior_direction
+ORDER BY baseline_band, prior_direction;

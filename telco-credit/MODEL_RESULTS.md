@@ -436,3 +436,51 @@ cycle, **2.0 bn lost per cycle, about 24 bn a year against 31,929 bn lent.**
 
 It is built from two measured numbers rather than guessed, but it is not a
 fitted result. The refit on the one-month label may move it.
+
+## S9 breaks S6 and S8 — the paired design was never identified
+
+Splitting the same paired test by *which* month carried the raised bill:
+
+| shocked month | pairs | normal | shocked | premium | discordant |
+|---|---|---|---|---|---|
+| 140405 | 592,731 | 0.3696% | 0.2785% | **0.75×** | 405 vs 945 |
+| 140406 | 576,438 | 0.2016% | 0.2786% | **1.38×** | 721 vs 277 |
+
+Opposite directions, both strongly significant. **The pooled 0.97 was these two
+cancelling.**
+
+The cause is structural, not statistical. With two months per subscriber, a
+raised month in one position is a normal month in the other, so "raised versus
+normal" is *always also* "140405 versus 140406" — and those have different
+outcome windows (140407–08 against 140408–09). Read the same month in both
+roles and the calendar effect is plain: 140406 runs **1.33–1.38×** hotter than
+140405 whichever role it plays.
+
+A multiplicative split gives shock 1.02 and month 1.35, but it assumes the two
+strata share a baseline and they do not — 0.2729% against 0.2016%, 1.35× apart.
+That difference makes sense: stratum 1 is subscribers who spiked in 140405 and
+fell back in 140406, and **a falling bill is the strongest risk signal in the
+data**, so their "normal" month is not a clean control at all.
+
+**Withdrawn:** "premium 1.00, measured on 1,169,169 paired comparisons." Not
+supported. The honest range from this design is **0.75 to 1.38**, and the
+across-subscriber **1.97×** at the 300k band stands as the planning bound. The
+dashboard now carries 0.08–0.15% rather than 0.076%.
+
+### S10 / S11: fix the calendar instead of the subscriber
+
+Every row is bill month 140406, judged on 140408–09, so no month effect
+remains. What must be controlled instead is *who* gets a raised bill, and two
+things are held constant: `baseline_band` (how large their bill normally is,
+which S3 showed matters on its own) and `prior_trend` (whether the bill was
+already rising or falling — the thing that made S9's control group dirty).
+
+`prior_trend` is now carried on `dcb_shock`: the last baseline month over the
+first.
+
+Read the shock gradient down each cell. Flat once month, baseline size and
+prior direction are held → the 1.97× was selection, shown rather than assumed.
+Still climbing → the premium is real and the planning bound is the right number.
+
+This is a between-subscriber comparison inside narrow strata. It trades the
+paired design, which cannot work with two months, for stratification that can.
