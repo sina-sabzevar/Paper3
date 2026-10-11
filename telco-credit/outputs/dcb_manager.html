@@ -1,0 +1,456 @@
+<title>Lending on the Phone Bill</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a presentation surface - wide bands, big figures, one idea per band,
+   readable from across a meeting room. */
+:root{
+  --plane:#f6f6f3; --surface:#fdfdfc; --raise:#eeeeea; --sunk:#e6e6e0;
+  --ink:#0b0b0b; --ink-2:#4e4d4a; --ink-3:#86857f;
+  --rule:rgba(11,11,11,0.09); --grid:#e1e0d9; --axis:#c3c2b7;
+  --s1:#2a78d6; --s2:#eb6834;
+  --o1:#86b6ef; --o2:#3987e5; --o3:#256abf; --o4:#104281;
+  --good:#0ca30c; --good-ink:#006300; --warn:#fab219; --crit:#d03b3b;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --plane:#0c0c0d; --surface:#17171a; --raise:#202024; --sunk:#131316;
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8a8980;
+  --rule:rgba(255,255,255,0.10); --grid:#2c2c2a; --axis:#3a3a37;
+  --s1:#3987e5; --s2:#d95926;
+  --o1:#184f95; --o2:#2a78d6; --o3:#86b6ef; --o4:#cde2fb;
+  --good:#0ca30c; --good-ink:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --plane:#0c0c0d; --surface:#17171a; --raise:#202024; --sunk:#131316;
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8a8980;
+  --rule:rgba(255,255,255,0.10); --grid:#2c2c2a; --axis:#3a3a37;
+  --s1:#3987e5; --s2:#d95926;
+  --o1:#184f95; --o2:#2a78d6; --o3:#86b6ef; --o4:#cde2fb;
+  --good:#0ca30c; --good-ink:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+}
+*{box-sizing:border-box}
+body{background:var(--plane);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.5;margin:0;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1000px;margin:0 auto;padding-inline:22px;padding-block:36px 72px}
+h1,h2,h3{margin:0;text-wrap:balance}
+h1{font-size:clamp(30px,5.4vw,46px);font-weight:700;letter-spacing:-0.025em;line-height:1.08}
+h2{font-size:clamp(20px,3.2vw,26px);font-weight:600;letter-spacing:-0.015em}
+h3{font-size:15px;font-weight:600}
+p{margin:0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:0.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+
+header{display:flex;flex-direction:column;gap:14px;padding-bottom:10px}
+.lede{color:var(--ink-2);font-size:17px;max-width:64ch}
+.spec{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.chip{font-family:var(--mono);font-size:12.5px;background:var(--raise);
+  border:1px solid var(--rule);border-radius:999px;padding:4px 12px;color:var(--ink-2)}
+.chip b{color:var(--ink);font-weight:600}
+
+section{margin-top:40px}
+.head{border-top:2px solid var(--ink);padding-top:14px;margin-bottom:18px;
+  display:flex;flex-direction:column;gap:7px}
+.head p{color:var(--ink-2);font-size:15px;max-width:66ch}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:22px 20px}
+.card + .card{margin-top:14px}
+.cap{color:var(--ink-3);font-size:13px;line-height:1.55;margin-top:16px;max-width:72ch}
+.cap b{color:var(--ink-2);font-weight:500}
+
+.hero{background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+  padding:26px 22px;display:flex;flex-wrap:wrap;gap:26px 40px;align-items:flex-end}
+.hero .big{display:flex;flex-direction:column;gap:4px}
+.hero .big .v{font-family:var(--mono);font-size:clamp(38px,8vw,64px);font-weight:600;
+  letter-spacing:-0.03em;line-height:0.98}
+.hero .big .k{font-size:14px;color:var(--ink-2)}
+.hero .sub{color:var(--ink-2);font-size:15px;max-width:38ch;flex:1 1 280px}
+
+.kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--rule);}
+.kpi.k6{grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpi{
+  border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+@media (max-width:760px){.kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{background:var(--surface);padding:16px 17px 18px;display:flex;flex-direction:column;gap:6px}
+.tile .k{font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3)}
+.tile .v{font-family:var(--mono);font-size:clamp(21px,3.2vw,27px);font-weight:600;letter-spacing:-0.02em;line-height:1}
+.tile .s{font-size:12.5px;color:var(--ink-3);line-height:1.4}
+
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:420px}
+.tbl-s{overflow-x:auto;margin-top:6px}
+th,td{text-align:right;padding:9px 11px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:0.07em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--axis)}
+tbody td{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-2)}
+tbody td:first-child{font-family:var(--sans);color:var(--ink);font-weight:500}
+tr.off td{color:var(--ink-3)}
+tr.tot td{font-weight:600;color:var(--ink);border-top:1px solid var(--axis);border-bottom:none}
+tfoot td{font-family:var(--sans);font-size:13px;color:var(--ink-3);white-space:normal;
+  text-align:left;border-bottom:none;padding-top:12px;line-height:1.55}
+tfoot b{color:var(--ink-2);font-weight:500}
+
+/* the ticket-by-bill grid */
+.grid{display:grid;gap:2px;margin-top:4px;min-width:430px}
+.gcell{padding:9px 6px;border-radius:4px;text-align:center;
+  font-family:var(--mono);font-size:12.5px;line-height:1.35}
+.gcell b{display:block;font-weight:600;font-size:13px}
+.gcell .sh{font-size:11px;opacity:0.75}
+.ghead{padding:6px;text-align:center;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3)}
+.grow{padding:9px 8px;font-family:var(--mono);font-size:12px;text-align:right;
+  color:var(--ink-2);white-space:nowrap}
+.grow em{font-style:normal;color:var(--ink-3);font-size:10.5px;display:block}
+.g1{background:color-mix(in srgb,var(--good) 16%,var(--surface));color:var(--ink)}
+.g2{background:color-mix(in srgb,var(--warn) 26%,var(--surface));color:var(--ink)}
+.g3{background:color-mix(in srgb,var(--crit) 20%,var(--surface));color:var(--ink)}
+.glegend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px;font-size:12.5px;color:var(--ink-2)}
+.glegend span{display:flex;align-items:center;gap:7px}
+.glegend i{width:12px;height:12px;border-radius:3px;display:block}
+.svgbox{overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+.gl{stroke:var(--grid);stroke-width:1}
+.ax{stroke:var(--axis);stroke-width:1}
+.tk{fill:var(--ink-3);font-family:var(--mono);font-size:11px}
+.dl{font-family:var(--mono);font-size:12.5px;font-weight:600}
+.an{font-family:var(--sans);font-size:12px;fill:var(--ink-3)}
+
+.split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.split{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:20px 18px}
+.panel.known{border-left:3px solid var(--good)}
+.panel.unknown{border-left:3px solid var(--crit)}
+.panel h3{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.panel ul{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:11px}
+.panel li{font-size:14px;color:var(--ink-2);line-height:1.5;padding-left:16px;position:relative}
+.panel li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:1.5px;background:var(--ink-3)}
+.panel li b{color:var(--ink);font-weight:600}
+
+.ask{display:flex;flex-direction:column;gap:0}
+.q{display:flex;gap:16px;padding:16px 0;border-bottom:1px solid var(--rule)}
+.q:last-child{border-bottom:none}
+.q .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-3);flex:0 0 24px;padding-top:2px}
+.q .b{min-width:0}
+.q .b h3{margin-bottom:4px}
+.q .b p{font-size:14px;color:var(--ink-2)}
+.warnbox{background:color-mix(in srgb,var(--warn) 13%,var(--surface));
+  border:1px solid color-mix(in srgb,var(--warn) 45%,var(--rule));
+  border-radius:8px;padding:16px 18px;font-size:14px;color:var(--ink-2);line-height:1.6}
+.warnbox b{color:var(--ink);font-weight:600}
+.warnbox h3{margin-bottom:8px}
+a{color:var(--s1)}
+code{font-family:var(--mono);font-size:13px;background:var(--raise);padding:1px 5px;border-radius:4px}
+footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:12.5px;
+  display:flex;flex-direction:column;gap:6px}
+:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* a figure nobody has measured yet */
+.gap{font-family:var(--mono);font-size:0.82em;letter-spacing:0.04em;
+  background:color-mix(in srgb,var(--warn) 24%,var(--surface));
+  border:1px dashed color-mix(in srgb,var(--warn) 70%,var(--rule));
+  border-radius:4px;padding:1px 7px;color:var(--ink-2);white-space:nowrap}
+.tile .v .gap{font-size:14px}
+
+/* the funnel, as a plain waterfall */
+.fun{display:flex;flex-direction:column;gap:3px}
+.fstep{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;
+  padding:11px 14px;border-radius:6px;background:var(--raise);min-width:0}
+.fstep.keep{background:color-mix(in srgb,var(--s1) 14%,var(--surface))}
+.fstep.last{background:color-mix(in srgb,var(--good) 16%,var(--surface))}
+.fstep .t{font-size:14.5px;color:var(--ink);min-width:0}
+.fstep .t em{font-style:normal;display:block;color:var(--ink-3);font-size:12.5px;margin-top:2px}
+.fstep .v{font-family:var(--mono);font-size:17px;font-weight:600;white-space:nowrap}
+.fdrop{display:grid;grid-template-columns:1fr auto;gap:14px;padding:5px 14px 5px 30px;
+  font-size:13px;color:var(--ink-3)}
+.fdrop .v{font-family:var(--mono);white-space:nowrap}
+
+/* the warning-sign cards */
+.warns{display:flex;flex-direction:column;gap:12px}
+.wrn{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start;
+  background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+  padding:18px;border-left:3px solid var(--crit)}
+@media (max-width:620px){.wrn{grid-template-columns:1fr;gap:10px}}
+.wrn .score{text-align:center;min-width:112px}
+.wrn .score .m{font-family:var(--mono);font-size:30px;font-weight:600;color:var(--crit);
+  letter-spacing:-0.02em;line-height:1}
+.wrn .score .l{font-size:11.5px;color:var(--ink-3);margin-top:5px;line-height:1.35}
+.wrn h3{font-size:16px;margin-bottom:6px}
+.wrn p{font-size:14px;color:var(--ink-2);line-height:1.55}
+.wrn .do{margin-top:10px;font-size:13.5px;color:var(--ink);
+  background:var(--raise);border-radius:5px;padding:9px 11px;line-height:1.5}
+.wrn .do b{font-weight:600}
+.wrn .cnt{font-family:var(--mono);font-size:12.5px;color:var(--ink-3);margin-top:8px}
+
+/* the one rule */
+.rule{display:flex;flex-wrap:wrap;gap:20px 36px;align-items:center;
+  background:color-mix(in srgb,var(--good) 11%,var(--surface));
+  border:1px solid color-mix(in srgb,var(--good) 40%,var(--rule));
+  border-radius:8px;padding:24px 22px}
+.rule .big{font-size:clamp(21px,3.6vw,29px);font-weight:600;letter-spacing:-0.02em;
+  line-height:1.25;flex:1 1 300px;min-width:0;text-wrap:balance}
+.rule .why{font-size:14px;color:var(--ink-2);line-height:1.6;flex:1 1 260px;min-width:0}
+.steps{display:flex;flex-direction:column;gap:0;margin-top:4px}
+.stp{display:grid;grid-template-columns:30px 1fr;gap:14px;padding:14px 0;
+  border-bottom:1px solid var(--rule)}
+.stp:last-child{border-bottom:none}
+.stp .n{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--s1)}
+.stp h3{font-size:15px;margin-bottom:3px}
+.stp p{font-size:14px;color:var(--ink-2);line-height:1.55}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">Direct Carrier Billing &middot; what it is and what it costs</p>
+  <h1>Lending customers money on their next phone bill</h1>
+  <p class="lede">A customer borrows up to 300,000 Toman, spends it on services
+  they already buy, and repays it on the bill that arrives next month. This page
+  is who can have it, how much each person should get, and what it is likely to
+  cost us. No forecasts &mdash; every number here is something we counted.</p>
+  <div class="spec">
+    <span class="chip">term <b>one month</b></span>
+    <span class="chip">typical loan <b>300,000 Toman</b></span>
+    <span class="chip">smallest loan <b>100,000 Toman</b></span>
+    <span class="chip">counted on <b>the last six months</b></span>
+  </div>
+</header>
+<div class="kpi" style="margin-top:26px">
+  <div class="tile"><span class="k">customers who qualify today</span><span class="v">9,344,723</span>
+    <span class="s">out of 41,270,092 on the network</span></div>
+  <div class="tile"><span class="k">lent out at any one time</span><span class="v">2,803 bn</span>
+    <span class="s">if every one of them borrows the typical amount</span></div>
+  <div class="tile"><span class="k">lent over a year</span><span class="v">33,641 bn</span>
+    <span class="s">the same money, lent and repaid twelve times</span></div>
+  <div class="tile"><span class="k">stop paying, per 1,000</span><span class="v">2.2</span>
+    <span class="s">in the month a loan would be due</span></div>
+</div>
+<p class="cap">A one-month loan is the whole reason the second and third figures
+are so different. Money lent in month one comes back in month two and goes out
+again in month three. A four-month loan does that three times a year; this does
+it twelve times.</p>
+<section>
+  <div class="head">
+    <h2>Who qualifies</h2>
+    <p>Three checks, applied one after the other. Nothing here is a judgement
+    call &mdash; each one is a fact about the last six months.</p>
+  </div>
+  <div class="card">
+    <div class="fun">
+      <div class="fstep "><div class="t">Everyone on a permanent contract<em>the starting point</em></div><div class="v">41,270,092</div></div>
+      <div class="fdrop"><span>&minus; did not bill 170,000 Toman in any two months</span><span class="v">31,182,117</span></div>
+      <div class="fstep keep"><div class="t">They bill enough to carry a loan<em>at least 170,000 Toman in 2 of the last 6 months</em></div><div class="v">10,087,975</div></div>
+      <div class="fdrop"><span>&minus; had outgoing service suspended</span><span class="v">650,735</span></div>
+      <div class="fstep keep"><div class="t">Their outgoing service has never been cut off<em>not once in the last six months</em></div><div class="v">9,437,240</div></div>
+      <div class="fdrop"><span>&minus; had incoming service suspended</span><span class="v">92,517</span></div>
+      <div class="fstep last"><div class="t">Their incoming service has never been cut off<em>not once in the last six months</em></div><div class="v">9,344,723</div></div>
+    </div>
+    <p class="cap"><b>The first check does almost all of the work.</b> It removes
+    31,182,117 customers, which is 97 out of every 100 we turn away. It is not a judgement
+    about whether they would repay &mdash; it is about whether their bill is big
+    enough to carry a loan at all. If we want more customers, that number is the
+    one to move, and moving it adds volume without making the book riskier.</p>
+  </div>
+</section>
+<section>
+  <div class="head">
+    <h2>How much to give each person</h2>
+    <p>One rule covers it, and it is the most useful thing we measured.</p>
+  </div>
+  <div class="rule">
+    <div class="big">Never lend someone more than they bill in a month.</div>
+    <div class="why">If the loan is smaller than their usual bill, the bill they
+    get goes up by less than double, and customers in that position stop paying
+    at close to the normal rate. Once the loan is as large as the bill, the bill
+    doubles &mdash; and <b>customers whose bill doubles stop paying almost twice
+    as often</b>. The line is sharp, and it sits exactly at "the loan equals the
+    bill".</div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>What that is worth</h3>
+    <p class="cap" style="margin-top:6px">Same customers, same book, two
+    different limit policies.</p>
+    <div class="tbl-s"><table>
+      <thead><tr><th>Policy</th><th>How often they stop paying</th><th>Lost in a year</th></tr></thead>
+      <tbody>
+        <tr><td>Every loan stays under one month's bill</td><td>the ordinary rate</td>
+            <td><b>74.3 bn Toman</b></td></tr>
+        <tr class="tot"><td>Loans allowed to match or exceed it</td>
+            <td><b>1.7 times</b> as often</td><td><b>124.9 bn Toman</b></td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="3">A difference of <b>50.6 bn Toman a year</b>
+      from a rule that costs nothing to apply, because we already know what every
+      customer bills. The multiple was counted on 4 million customer-months; the
+      money is that multiple applied to this book.</td></tr></tfoot>
+    </table></div>
+  </div>
+  <div class="card">
+    <h3>How many customers can take each loan size</h3>
+    <div class="tbl-s"><table>
+      <thead><tr><th>Loan</th><th>Needs a monthly bill above</th><th>Customers who have one</th></tr></thead>
+      <tbody>
+        <tr><td>100,000 Toman</td><td>100,000</td><td><span class="gap" title="waiting on D3">D3</span></td></tr>
+        <tr><td>200,000 Toman</td><td>200,000</td><td><span class="gap" title="waiting on D3">D3</span></td></tr>
+        <tr class="tot"><td>300,000 Toman</td><td>300,000</td><td><span class="gap" title="waiting on D3">D3</span></td></tr>
+        <tr><td>500,000 Toman</td><td>500,000</td><td><span class="gap" title="waiting on D3">D3</span></td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="3">The typical qualifying customer bills
+      <span class="gap" title="waiting on D2">D2</span> Toman a month. <b>This is the one table that decides the size of the
+      programme</b>, because it says how much of the 9.3 million can actually
+      take the typical loan rather than a smaller one. It has never been
+      counted; statements D2 and D3 count it.</td></tr></tfoot>
+    </table></div>
+  </div>
+</section>
+<section>
+  <div class="head">
+    <h2>Four warning signs</h2>
+    <p>These are the things that actually predict a customer stopping paying.
+    Each one was counted on real customers over a real six months. The number on
+    the left is how many stopped paying for every 1,000 customers carrying that
+    sign, against <b>2.2 in 1,000</b> for an ordinary customer.</p>
+  </div>
+  <div class="warns">
+    <div class="wrn">
+      <div class="score"><div class="m">17.0</div><div class="l">in 1,000 stop paying<br>7.7 times the ordinary rate</div></div>
+      <div>
+        <h3>A month where they billed nothing</h3>
+        <p>The line is new, or it was switched off and restarted. A bill that appears out of nowhere has no history behind it.</p>
+        <div class="do"><b>What to do:</b> Add it to the screen. It is not checked today and it is the cheapest thing on this page to fix.</div>
+        <div class="cnt">how many customers have this sign today: <span class="gap" title="waiting on D4">D4</span> &nbsp;&middot;&nbsp; counted on 109,360 customers</div>
+      </div>
+    </div>
+    <div class="wrn">
+      <div class="score"><div class="m">18.3</div><div class="l">in 1,000 stop paying<br>8.3 times the ordinary rate</div></div>
+      <div>
+        <h3>They billed, but paid almost nothing back</h3>
+        <p>Under a tenth of what they owed, across six months. Paying slowly is normal and carries no extra risk at all. Paying nothing is the one that does.</p>
+        <div class="do"><b>What to do:</b> Decline. There is no limit small enough to make this safe.</div>
+        <div class="cnt">how many customers have this sign today: <span class="gap" title="waiting on D4">D4</span> &nbsp;&middot;&nbsp; counted on six months of payments</div>
+      </div>
+    </div>
+    <div class="wrn">
+      <div class="score"><div class="m">29.2</div><div class="l">in 1,000 stop paying<br>13.2 times the ordinary rate</div></div>
+      <div>
+        <h3>They were barred in the past year</h3>
+        <p>The service was cut off before. Not in the six months we look at, which we already check, but in the year before that, which we do not.</p>
+        <div class="do"><b>What to do:</b> Decline, or start them at the smallest ticket and let them earn it.</div>
+        <div class="cnt">how many customers have this sign today: <span class="gap" title="waiting on D4">D4</span> &nbsp;&middot;&nbsp; counted on the prior year's records</div>
+      </div>
+    </div>
+    <div class="wrn">
+      <div class="score"><div class="m">4.2</div><div class="l">in 1,000 stop paying<br>1.9 times the ordinary rate</div></div>
+      <div>
+        <h3>The bill is falling</h3>
+        <p>They are using less every month. This one surprises people: the customer pays, has been with us for years and has never been cut off. They are leaving, and a leaving customer stops paying.</p>
+        <div class="do"><b>What to do:</b> Lend, but do not raise their limit. The trend is the warning.</div>
+        <div class="cnt">how many customers have this sign today: <span class="gap" title="waiting on D4">D4</span> &nbsp;&middot;&nbsp; counted against customers with a steady bill</div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">How much riskier each group is was counted directly. The rate
+  beside it is that multiplier applied to the ordinary rate, because the counts
+  themselves were made over a different stretch of months and mixing the two
+  would be misleading. It also assumes the signs do not overlap, and a customer
+  carrying two of them is not necessarily twice as risky.
+  <b>Statement D6 replaces all four with one clean count on one set of months</b>,
+  including the rate for a customer carrying no signs at all &mdash; which is
+  the number the business case should actually be built on, and is lower than
+  anything on this page.</p>
+</section>
+<section>
+  <div class="head">
+    <h2>What it is likely to cost</h2>
+    <p>Worked out in the open, so every step can be argued with.</p>
+  </div>
+  <div class="card">
+    <div class="steps">
+      <div class="stp"><span class="n">1</span><div>
+        <h3>9,344,723 customers borrow 300,000 Toman each</h3>
+        <p>That is <b>2,803 bn Toman</b> out on loan at any one time, and
+        <b>33,641 bn</b> lent over a full year as the same money cycles twelve
+        times.</p></div></div>
+      <div class="stp"><span class="n">2</span><div>
+        <h3>About 2.2 in every 1,000 do not pay it back</h3>
+        <p>That is what we counted on customers who passed the same three
+        checks, over one month, which is the length of the loan. The real figure
+        for the lending book should be <i>lower</i>, because we would be turning
+        away everyone carrying a warning sign.</p></div></div>
+      <div class="stp"><span class="n">3</span><div>
+        <h3>So we lose roughly 74.3 bn Toman a year</h3>
+        <p>33,641 bn lent over the year, 2.2 in every 1,000 not repaid. It assumes we
+        recover <b>nothing</b> from a customer who stops paying, which is
+        deliberately pessimistic &mdash; the operator keeps collecting after the
+        line is cut off, so the real figure should come in under this.</p></div></div>
+      <div class="stp"><span class="n">4</span><div>
+        <h3>Ignore the limit rule and it becomes about 124.9 bn</h3>
+        <p>Customers whose bill doubles stop paying 1.7 times as often as
+        customers whose bill rises by less. That multiple is the difference
+        between the two figures, on exactly the same book and the same
+        customers. <b>It is the most expensive decision on this page and it
+        costs nothing to get right.</b></p></div></div>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="head">
+    <h2>What we do not know yet</h2>
+    <p>Three things, said plainly, so nothing on this page is taken as more
+    certain than it is.</p>
+  </div>
+  <div class="split">
+    <div class="panel unknown">
+      <h3><span class="dot" style="background:var(--crit)"></span>Nobody in this data ever had credit</h3>
+      <ul>
+        <li>Every number here describes how customers behave when they are
+        <b>not</b> borrowing. How they behave when they are is genuinely
+        unknown.</li>
+        <li><b>A capped pilot is the only thing that answers it</b>, and a
+        one-month loan means the answer arrives in weeks rather than a year.</li>
+      </ul>
+    </div>
+    <div class="panel unknown">
+      <h3><span class="dot" style="background:var(--crit)"></span>Does the loan add to the bill, or replace part of it?</h3>
+      <ul>
+        <li>If customers spend the loan on things they were going to buy
+        anyway, their bill barely moves and the limit rule has room to spare.</li>
+        <li>If it is all extra spending, the bill rises by the full amount.
+        <b>Everything here assumes the second</b>, which is the cautious
+        reading.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="panel unknown" style="margin-top:14px">
+    <h3><span class="dot" style="background:var(--crit)"></span>What "stopped paying" means here</h3>
+    <ul>
+      <li>We count a customer as having stopped paying when their line is cut
+      off in both directions. That is the operator's own decision and it takes
+      time to reach &mdash; so some customers who are already in trouble have
+      not been cut off yet when we count.</li>
+      <li>This makes the rates on this page a <b>floor rather than a ceiling</b>,
+      and it is being checked separately. It does not change which customers are
+      risky, only how many of them we have caught by the time we look.</li>
+    </ul>
+  </div>
+</section>
+<div class="warnbox" style="margin-top:26px">
+    <h3>Figures still being counted</h3>
+    The boxes marked <b>D2</b> and <b>D3</b> and <b>D4</b> on this page are waiting on
+    <code>sql/56_dashboard_numbers.sql</code>. Run it and the page fills in; until
+    then they are shown as gaps rather than estimates, because an estimate here
+    would be indistinguishable from a count and nobody downstream could tell.
+  </div>
+<footer>
+  <span>Customer counts are from the last six months of billing records.
+  Risk figures are counted on the six months before that, because measuring
+  whether someone stops paying needs months afterwards to observe. All amounts
+  in Toman.</span>
+  <span>The detailed version, with the queries and the statistics behind every
+  figure, is in the <a href="https://claude.ai/artifact/HZSVj2iWoYHdhrTDxjF2uQ">programme
+  deck</a> and the <a href="https://claude.ai/artifact/H5jJHuD6i6r3gim31Rfrte">risk
+  workbook</a>.</span>
+</footer>
+</div>
