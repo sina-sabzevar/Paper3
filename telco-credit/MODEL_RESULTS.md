@@ -677,3 +677,84 @@ picked. Keep the bar alongside it as a loss-severity label; it costs one column.
 - **Does not touch:** the revenue bar being a capacity rather than a risk
   screen, the 7.7× on zero-billing months, or the limit rule — that one is
   arithmetic on the band edges, not on the label.
+
+---
+
+# 56 ran — and the flat ticket does not survive it
+
+`56_dashboard_numbers.sql`, run 1405-07-19. Results in `outputs/56_results.xlsx`.
+
+## D3 is the finding: only 15.6% can take the typical ticket
+
+The limit rule says the draw stays **below** one month's bill. Measured against
+`bill_low` — a customer's second-lowest month of six, the bill they reliably
+reach:
+
+| ticket | customers who can take it | share |
+|---|---|---|
+| 100,000 | 6,438,513 | 68.9% |
+| 200,000 | 3,013,027 | 32.2% |
+| **300,000** | **1,455,303** | **15.6%** |
+| 500,000 | 369,677 | 4.0% |
+| **nothing — below the 100,000 minimum** | **2,906,210** | **31.1%** |
+
+`D7` says the same thing from the other side: a flat 300,000 offered to all
+9,344,723 puts **7,889,420 of them (84.4%)** into the 2×-or-more band.
+
+**Every volume figure built on "9.3M × 300,000" was wrong by 2.4×.**
+
+## Sizing each draw to the customer's own bill
+
+| ticket | customers | outstanding |
+|---|---|---|
+| 500,000 | 369,677 | 184.8 bn |
+| 300,000 | 1,085,626 | 325.7 bn |
+| 200,000 | 1,557,724 | 311.5 bn |
+| 100,000 | 3,425,486 | 342.5 bn |
+| **total** | **6,438,513** | **1,164.6 bn** |
+
+Average ticket **180,883**. At twelve cycles that is **13,975 bn a year —
+93% of the 15,000 bn ambition** on the annual-lending reading, from a book
+never more than 1,164.6 bn at risk. Expected loss **16.4 bn**, or **22.3 bn**
+carrying through D8's year-on-year rise. The flat-300,000 alternative lends
+2.4× more and loses **3.8×** more.
+
+**D2 caveat, and it is a decision not a detail.** Median `bill_low` is 144,031
+Toman; median `bill_avg` is 262,860. Setting limits against the average rather
+than a reliably-reached month roughly doubles the programme and takes on more
+risk. Cheap to count both ways and it has not been.
+
+## D6: the scorecard, measured, replacing every derived multiplier
+
+8,701,085 customers, three-month outcome. Clean baseline **3.100 per 1,000**.
+
+| sign | per 1,000 | vs clean | live count | predicted |
+|---|---|---|---|---|
+| cut off in the past year | **46.206** | **14.9×** | 104,684 | 13.2× ✓ |
+| a month with no bill | **20.909** | **6.7×** | 316,213 | 7.7× ✓ |
+| paid almost nothing | **9.638** | **3.1×** | 147,700 | 8.3× ✗ **overstated 2.7×** |
+| the bill is falling | **5.006** | **1.6×** | 1,680,104 | 1.9× ✓ |
+| *all customers* | 4.371 | 1.4× | — | |
+
+Three of four predictions held. **The payment-coverage multiplier was wrong** —
+52's D3 8.3× does not reproduce at 3.1×. Worth knowing before it is used again.
+
+D9's ladder is clean and monotone: **0 signs 3.100, 1 sign 7.994, 2+ signs
+17.126**. 7,212,252 customers (77.2%) carry no sign at all, and the flag counts
+are stable across the two windows (76.3% clean in 1404, 77.2% in 1405).
+
+## D8: risk is up by more than a third, year on year
+
+Whole-network two-way bar rate per 1,000 per month: **1404 h1 16.92 → 1405 h1
+23.08, a factor of 1.364.** Peak 26.82 in 140504. Every rate measured on the
+1404 window is therefore a floor for 1405 conditions. This is the whole base,
+not the screened set, so the trend transfers but the level does not.
+
+## What this invalidates
+
+- The deck's volume chart (31,929 bn annual) and its 27–46 bn loss band. A
+  correction band now sits above that chart; the figures underneath it still
+  assume the model's grade limits, which D3 shows most customers cannot carry.
+- `TAKE = 4,672,361` and the grade ladder generally: they rank by risk and say
+  nothing about whether a customer's bill can carry the limit. Both constraints
+  have to bind.

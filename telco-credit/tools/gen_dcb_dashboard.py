@@ -74,9 +74,23 @@ W("""<section>
     <p>The same money lent, collected and lent again. A four-month line turns over three times a
     year; a one-month line turns over twelve. Annual disbursement, in billions of Toman:</p>
   </div>
+  <div class="warnbox" style="margin-bottom:14px">
+    <h3>Measured since this chart was drawn, and it is lower</h3>
+    The figures below give every approved customer the limit their grade allows.
+    <b>56_dashboard_numbers has now counted whether their bill can carry it, and
+    mostly it cannot.</b> Only <b>1,455,303</b> of the 9,344,723 who qualify bill
+    enough to take a 300,000 Toman draw while keeping the rise under 2&times;, and
+    <b>2,906,210</b> bill too little for even the 100,000 minimum. Sizing each
+    draw to the customer's own bill reaches <b>6,438,513</b> customers at an
+    average of <b>180,883</b> and lends <b>13,975 bn</b> a year &mdash; 93 pct of
+    the ambition, not the %s bn below. The loss figures move with it, to about
+    <b>16 bn</b>, or <b>22 bn</b> carrying through the rise in cut-offs that D8
+    measured. The <a href="https://claude.ai/artifact/5idWf76K216cB7zS4tis9r">plain-language dashboard</a> is built on the
+    counted figures throughout.
+  </div>
   <div class="card">
     <div class="svgbox">
-""")
+""" % f(ann12))
 BW, BH = 790, 300
 PL, PR, PT, PB = 178, 706, 24, 214
 bars = [("Four-month line", "500,000 x 3 cycles", 4_672_361*500_000*3/1e9, False),
