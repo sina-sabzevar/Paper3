@@ -111,11 +111,11 @@ W("""<header>
 
 <div class="kpi" style="margin-top:26px">
   <div class="tile"><span class="k">customers approved</span><span class="v">%s</span>
-    <span class="s">%s pct of everyone scored</span></div>
+    <span class="s">%s&#37; of everyone scored</span></div>
   <div class="tile"><span class="k">average limit</span><span class="v">%s</span>
     <span class="s">set by the customer's own score</span></div>
   <div class="tile"><span class="k">lent over a year</span><span class="v">%s bn</span>
-    <span class="s">%s pct of the 15,000 bn ambition</span></div>
+    <span class="s">%s&#37; of the 15,000 bn ambition</span></div>
   <div class="tile"><span class="k">expected to go unpaid</span><span class="v">%s&ndash;%s bn</span>
     <span class="s">a year, assuming we recover nothing</span></div>
 </div>
@@ -165,31 +165,31 @@ W("""<section>
   </div>
   <div class="card">
     <div class="tbl-s"><table>
-      <thead><tr><th>Grade</th><th>Customers</th><th>Limit</th><th>Risk rank</th>
+      <thead><tr><th>Grade</th><th>Customers</th><th>Limit</th><th>4-month default rate</th>
       <th>Lent at a time</th><th>Share of losses</th></tr></thead>
       <tbody>
 """)
 for name, n, pd, lim, note in GRADES:
     if lim == 0:
         W('        <tr class="off"><td><span class="gr">%s</span> &mdash; %s</td><td>%s</td>'
-          '<td>declined</td><td>%s</td><td>&mdash;</td><td>&mdash;</td></tr>\n'
+          '<td>declined</td><td>%s&#37;</td><td>&mdash;</td><td>&mdash;</td></tr>\n'
           % (name, note, f(n), "{:.2f}".format(pd*100)))
         continue
     share = dict(RISKW)[name] / RISKT
     W('        <tr><td><span class="gr">%s</span>%s</td><td>%s</td><td>%s</td>'
-      '<td>%s</td><td>%s bn</td><td><b>%s pct</b></td></tr>\n'
+      '<td>%s&#37;</td><td>%s bn</td><td><b>%s&#37;</b></td></tr>\n'
       % (name, (" &mdash; " + note) if note else "", f(n), f(lim),
          "{:.2f}".format(pd*100), bnf(n*lim/1e9), "{:.0f}".format(100*share)))
 W("""        <tr class="tot"><td>Approved</td><td><b>%s</b></td><td>%s average</td>
-            <td></td><td><b>%s bn</b></td><td>100 pct</td></tr>
+            <td></td><td><b>%s bn</b></td><td>100&#37;</td></tr>
       </tbody>
       <tfoot><tr><td colspan="6"><b>Grade B carries half the losses</b> and it is
       the second-safest group &mdash; because it is the largest, and it gets a
       300,000 limit. Risk per customer is not the same as risk to the book, and
-      the limits are where that gets decided. <b>Risk rank</b> is the model's own
-      score on the four-month history it was built from, used here to order
-      customers and set limits; the money below uses the one-month rate, because
-      the product is one month.</td></tr></tfoot>
+      the limits are where that gets decided. The default rate column is the model's own score
+      on the four-month history it was built from, used to order customers and
+      set limits; the money below uses the one-month rate, because the product
+      is one month.</td></tr></tfoot>
     </table></div>
   </div>
 </section>
@@ -244,7 +244,7 @@ W("""<section>
         <p><b>%s bn</b> is out on loan at any one time. It comes back each month
         and goes out again, so <b>%s bn</b> is lent across a full year.</p></div></div>
       <div class="stp"><span class="n">2</span><div>
-        <h3>Between 0.09 and 0.14 in every 100 do not pay back</h3>
+        <h3>The one-month default rate is 0.09 to 0.14&#37;</h3>
         <p>The span is a choice about how wide to open the book, not an
         uncertainty. Lend only to the safest and it sits at the bottom; approve
         everyone the model passes and it sits at the top.</p></div></div>
@@ -266,7 +266,7 @@ W("""<section>
        one(ANNUAL*LOSS_LO), one(ANNUAL*LOSS_HI), f(ANNUAL), f(ANNUAL)))
 for nm, m in STRESS:
     cls = ' class="tot"' if m == 1.00 else ""
-    W('        <tr%s><td>%s</td><td>%s&times;</td><td>%s bn</td><td>%s pct</td></tr>\n'
+    W('        <tr%s><td>%s</td><td>%s&times;</td><td>%s bn</td><td>%s&#37;</td></tr>\n'
       % (cls, nm, "{:.2f}".format(m), one(LOSS_MID*m),
          "{:.2f}".format(100*LOSS_MID*m/ANNUAL)))
 W("""      </tbody>

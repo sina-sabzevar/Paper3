@@ -197,11 +197,11 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
 
 <div class="kpi" style="margin-top:26px">
   <div class="tile"><span class="k">customers approved</span><span class="v">8,801,772</span>
-    <span class="s">94 pct of everyone scored</span></div>
+    <span class="s">94&#37; of everyone scored</span></div>
   <div class="tile"><span class="k">average limit</span><span class="v">302,300</span>
     <span class="s">set by the customer's own score</span></div>
   <div class="tile"><span class="k">lent over a year</span><span class="v">31,929 bn</span>
-    <span class="s">213 pct of the 15,000 bn ambition</span></div>
+    <span class="s">213&#37; of the 15,000 bn ambition</span></div>
   <div class="tile"><span class="k">expected to go unpaid</span><span class="v">28.7&ndash;44.7 bn</span>
     <span class="s">a year, assuming we recover nothing</span></div>
 </div>
@@ -243,24 +243,24 @@ on the same money.</p>
   </div>
   <div class="card">
     <div class="tbl-s"><table>
-      <thead><tr><th>Grade</th><th>Customers</th><th>Limit</th><th>Risk rank</th>
+      <thead><tr><th>Grade</th><th>Customers</th><th>Limit</th><th>4-month default rate</th>
       <th>Lent at a time</th><th>Share of losses</th></tr></thead>
       <tbody>
-        <tr><td><span class="gr">A</span> &mdash; safest</td><td>3,029,397</td><td>400,000</td><td>0.14</td><td>1,211.8 bn</td><td><b>22 pct</b></td></tr>
-        <tr><td><span class="gr">B</span></td><td>4,087,448</td><td>300,000</td><td>0.33</td><td>1,226.2 bn</td><td><b>52 pct</b></td></tr>
-        <tr><td><span class="gr">C</span></td><td>1,085,787</td><td>150,000</td><td>0.74</td><td>162.9 bn</td><td><b>15 pct</b></td></tr>
-        <tr><td><span class="gr">D</span></td><td>599,140</td><td>100,000</td><td>1.35</td><td>59.9 bn</td><td><b>10 pct</b></td></tr>
-        <tr class="off"><td><span class="gr">E</span> &mdash; declined</td><td>542,951</td><td>declined</td><td>4.00</td><td>&mdash;</td><td>&mdash;</td></tr>
+        <tr><td><span class="gr">A</span> &mdash; safest</td><td>3,029,397</td><td>400,000</td><td>0.14&#37;</td><td>1,211.8 bn</td><td><b>22&#37;</b></td></tr>
+        <tr><td><span class="gr">B</span></td><td>4,087,448</td><td>300,000</td><td>0.33&#37;</td><td>1,226.2 bn</td><td><b>52&#37;</b></td></tr>
+        <tr><td><span class="gr">C</span></td><td>1,085,787</td><td>150,000</td><td>0.74&#37;</td><td>162.9 bn</td><td><b>15&#37;</b></td></tr>
+        <tr><td><span class="gr">D</span></td><td>599,140</td><td>100,000</td><td>1.35&#37;</td><td>59.9 bn</td><td><b>10&#37;</b></td></tr>
+        <tr class="off"><td><span class="gr">E</span> &mdash; declined</td><td>542,951</td><td>declined</td><td>4.00&#37;</td><td>&mdash;</td><td>&mdash;</td></tr>
         <tr class="tot"><td>Approved</td><td><b>8,801,772</b></td><td>302,300 average</td>
-            <td></td><td><b>2,660.8 bn</b></td><td>100 pct</td></tr>
+            <td></td><td><b>2,660.8 bn</b></td><td>100&#37;</td></tr>
       </tbody>
       <tfoot><tr><td colspan="6"><b>Grade B carries half the losses</b> and it is
       the second-safest group &mdash; because it is the largest, and it gets a
       300,000 limit. Risk per customer is not the same as risk to the book, and
-      the limits are where that gets decided. <b>Risk rank</b> is the model's own
-      score on the four-month history it was built from, used here to order
-      customers and set limits; the money below uses the one-month rate, because
-      the product is one month.</td></tr></tfoot>
+      the limits are where that gets decided. The default rate column is the model's own score
+      on the four-month history it was built from, used to order customers and
+      set limits; the money below uses the one-month rate, because the product
+      is one month.</td></tr></tfoot>
     </table></div>
   </div>
 </section>
@@ -307,7 +307,7 @@ on the same money.</p>
         <p><b>2,660.8 bn</b> is out on loan at any one time. It comes back each month
         and goes out again, so <b>31,929 bn</b> is lent across a full year.</p></div></div>
       <div class="stp"><span class="n">2</span><div>
-        <h3>Between 0.09 and 0.14 in every 100 do not pay back</h3>
+        <h3>The one-month default rate is 0.09 to 0.14&#37;</h3>
         <p>The span is a choice about how wide to open the book, not an
         uncertainty. Lend only to the safest and it sits at the bottom; approve
         everyone the model passes and it sits at the top.</p></div></div>
@@ -325,10 +325,10 @@ on the same money.</p>
       <thead><tr><th>Scenario</th><th>Multiple</th><th>Lost in a year</th>
       <th>Against 31,929 bn lent</th></tr></thead>
       <tbody>
-        <tr class="tot"><td>As modelled</td><td>1.00&times;</td><td>36.7 bn</td><td>0.11 pct</td></tr>
-        <tr><td>Live-set drift</td><td>1.16&times;</td><td>42.5 bn</td><td>0.13 pct</td></tr>
-        <tr><td>Lending into Nowruz</td><td>1.68&times;</td><td>61.7 bn</td><td>0.19 pct</td></tr>
-        <tr><td>Twice the modelled rate</td><td>2.00&times;</td><td>73.4 bn</td><td>0.23 pct</td></tr>
+        <tr class="tot"><td>As modelled</td><td>1.00&times;</td><td>36.7 bn</td><td>0.11&#37;</td></tr>
+        <tr><td>Live-set drift</td><td>1.16&times;</td><td>42.5 bn</td><td>0.13&#37;</td></tr>
+        <tr><td>Lending into Nowruz</td><td>1.68&times;</td><td>61.7 bn</td><td>0.19&#37;</td></tr>
+        <tr><td>Twice the modelled rate</td><td>2.00&times;</td><td>73.4 bn</td><td>0.23&#37;</td></tr>
       </tbody>
       <tfoot><tr><td colspan="4">Even at <b>twice</b> the modelled rate the
       programme loses under <b>73.4 bn</b> on <b>31,929 bn</b> lent. The loss case is
