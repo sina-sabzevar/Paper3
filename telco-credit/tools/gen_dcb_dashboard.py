@@ -111,6 +111,23 @@ tfoot td{font-family:var(--sans);font-size:13px;color:var(--ink-3);white-space:n
   text-align:left;border-bottom:none;padding-top:12px;line-height:1.55}
 tfoot b{color:var(--ink-2);font-weight:500}
 
+/* the ticket-by-bill grid */
+.grid{display:grid;gap:2px;margin-top:4px;min-width:430px}
+.gcell{padding:9px 6px;border-radius:4px;text-align:center;
+  font-family:var(--mono);font-size:12.5px;line-height:1.35}
+.gcell b{display:block;font-weight:600;font-size:13px}
+.gcell .sh{font-size:11px;opacity:0.75}
+.ghead{padding:6px;text-align:center;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3)}
+.grow{padding:9px 8px;font-family:var(--mono);font-size:12px;text-align:right;
+  color:var(--ink-2);white-space:nowrap}
+.grow em{font-style:normal;color:var(--ink-3);font-size:10.5px;display:block}
+.g1{background:color-mix(in srgb,var(--good) 16%,var(--surface));color:var(--ink)}
+.g2{background:color-mix(in srgb,var(--warn) 26%,var(--surface));color:var(--ink)}
+.g3{background:color-mix(in srgb,var(--crit) 20%,var(--surface));color:var(--ink)}
+.glegend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px;font-size:12.5px;color:var(--ink-2)}
+.glegend span{display:flex;align-items:center;gap:7px}
+.glegend i{width:12px;height:12px;border-radius:3px;display:block}
 .svgbox{overflow-x:auto}
 svg{display:block;max-width:100%;height:auto}
 .gl{stroke:var(--grid);stroke-width:1}
@@ -312,6 +329,33 @@ W("""<section>
     limit decision.</p>
   </div>
   <div class="card">
+    <div class="svgbox">
+__PREMIUM_CHART__
+    </div>
+    <p class="cap">Default rate relative to a bill in its normal range, from 12,042 defaults over
+    4.0 million subscriber-months. Whiskers are 95 percent intervals. <b>A bill that falls is as
+    dangerous as one that doubles</b> &mdash; a collapsing bill is what precedes a service bar, because
+    the subscriber has already stopped using the service.</p>
+  </div>
+
+  <div class="card">
+    <h3>Which premium a given limit lands in</h3>
+    <p class="cap" style="margin-top:6px">Pick the row for what a subscriber bills in a month and
+    the column for what you lend them. The cell is the resulting rise and the premium it carries.</p>
+__GRID__
+    <div class="glegend">
+      <span><i class="g1"></i>1.00&times; &mdash; rise under 1.25&times;</span>
+      <span><i class="g2"></i>1.13&times; &mdash; rise of 1.25 to 2.00&times;</span>
+      <span><i class="g3"></i>1.91&times; &mdash; rise of 2.00&times; or more</span>
+    </div>
+    <p class="cap"><b>Keep the draw below one month\'s bill and you stay out of the red.</b>
+    Strictly below &mdash; a draw of exactly one month\'s bill makes the rise 2.00&times;, which is
+    already the 1.91 band. The 170,000 row is the current screen bar: a 100,000 ticket puts it
+    in amber, a 300,000 ticket puts it in the red. That is the difference between <b>27 bn</b> and <b>46 bn</b> of
+    annual loss on the same book.</p>
+  </div>
+
+  <div class="card">
     <div class="tbl-s"><table>
       <thead><tr><th>Comparison</th><th>Normal bill</th><th>Raised bill</th><th>Premium</th><th>Reading</th></tr></thead>
       <tbody>
@@ -328,7 +372,7 @@ W("""<section>
       than a proven causal effect. Note the first row: a bill that <i>falls</i> is as dangerous as one
       that doubles.</td></tr></tfoot>
     </table></div>
-    <p class="cap"><b>The rule that follows.</b> Keep the draw at or below one month's bill and the
+    <p class="cap"><b>The rule that follows.</b> Keep the draw below one month's bill and the
     rise stays under 2&times;, where the premium is 1.13 rather than 1.91. That single constraint is the
     difference between <b>27 bn</b> and <b>46 bn</b> of annual loss. A 100,000 minimum ticket stays inside
     the safer band only above about <b>133,000 Toman a month</b> &mdash; and the screen bar, which nobody
@@ -442,5 +486,75 @@ W("""<section>
 </footer>
 </div>
 """)
-io.open("/home/user/Paper3/telco-credit/outputs/dcb_dashboard.html","w",encoding="utf-8").write(out.getvalue())
-print("written", len(out.getvalue()), "bytes")
+# ------------------------------------------------- the bill-shock premium chart
+# Measured premiums with their 95 pct intervals. A bar with no interval is one where
+# the stratified estimate was published without one - the whisker is left off rather
+# than invented.
+SHOCK = [("The bill fell",        "below 0.80\u00d7",    1.887, None,  None,  "crit"),
+         ("Normal",               "0.80 to 1.25\u00d7",  1.000, None,  None,  "base"),
+         ("Rose, under 2\u00d7",      "1.25 to 2.00\u00d7",  1.133, 1.10, 1.17, "warn"),
+         ("Rose by 2\u00d7 or more",  "2.00\u00d7 and above", 1.907, 1.829, 1.989, "crit")]
+CW, CH = 790, 286
+QL, QR, QT, QB = 196, 712, 20, 212
+QMAX = 2.25
+def px(v): return QL + v / QMAX * (QR - QL)
+_FILL = {"crit":"var(--crit)", "warn":"var(--warn)", "base":"var(--sunk)"}
+sv = io.StringIO(); S = sv.write
+S('    <svg viewBox="0 0 %d %d" role="img" aria-label="Default rate premium by how much the bill moved">\n' % (CW, CH))
+for g in (0.5, 1.0, 1.5, 2.0):
+    S('      <line class="gl" x1="%.1f" y1="%d" x2="%.1f" y2="%d"/>\n' % (px(g), QT, px(g), QB))
+    S('      <text class="tk" x="%.1f" y="%d" text-anchor="middle">%s&times;</text>\n'
+      % (px(g), QB+18, "{:.1f}".format(g)))
+qh, qgap = 34, 10
+for i, (l1, l2, v, lo, hi, kind) in enumerate(SHOCK):
+    y = QT + 10 + i*(qh+qgap)
+    S('      <text class="an" x="%d" y="%.1f" text-anchor="end" fill="var(--ink-2)">%s</text>\n'
+      % (QL-12, y+qh/2-3, l1))
+    S('      <text class="tk" x="%d" y="%.1f" text-anchor="end">%s</text>\n'
+      % (QL-12, y+qh/2+12, l2))
+    S('      <rect x="%.1f" y="%.1f" width="%.1f" height="%d" rx="3" fill="%s"/>\n'
+      % (px(0), y, max(px(v)-px(0), 2), qh, _FILL[kind]))
+    if lo is not None:
+        cy = y + qh/2
+        S('      <line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="var(--ink)" stroke-width="1.6"/>\n'
+          % (px(lo), cy, px(hi), cy))
+        for e in (lo, hi):
+            S('      <line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="var(--ink)" stroke-width="1.6"/>\n'
+              % (px(e), cy-7, px(e), cy+7))
+    # the value label clears the whisker cap, never sits under it
+    lx = px(hi) if hi is not None else px(v)
+    S('      <text class="dl" x="%.1f" y="%.1f" fill="var(--ink)">%s&times;</text>\n'
+      % (lx+10, y+qh/2+5, "{:.2f}".format(v)))
+S('      <line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="4 3"/>\n'
+  % (px(1.0), QT, px(1.0), QB+4))
+S('      <line class="ax" x1="%.1f" y1="%d" x2="%d" y2="%d"/>\n' % (px(0), QB, QR, QB))
+S('      <text class="tk" x="%.1f" y="%d">default rate relative to a bill in its normal range</text>\n'
+  % (px(0), QB+42))
+S('    </svg>\n')
+
+# ------------------------------------------------- the ticket-by-bill grid
+BILLS = [(1_000_000, "a heavy user"), (500_000, ""), (300_000, ""),
+         (170_000, "the screen bar"), (100_000, "")]
+LENDS = [100_000, 200_000, 300_000, 500_000]
+def band(sh):
+    if sh < 1.25: return "g1", "1.00"
+    if sh < 2.00: return "g2", "1.13"
+    return "g3", "1.91"
+gv = io.StringIO(); G = gv.write
+G('    <div class="tbl-s"><div class="grid" style="grid-template-columns:auto repeat(%d,1fr)">\n' % len(LENDS))
+G('      <div class="ghead"></div>\n')
+for L in LENDS:
+    G('      <div class="ghead">lend %s</div>\n' % f(L))
+for b, note in BILLS:
+    G('      <div class="grow">%s<em>%s</em></div>\n' % (f(b), note or "&nbsp;"))
+    for L in LENDS:
+        sh = 1.0 + L / float(b)
+        cls, prem = band(sh)
+        G('      <div class="gcell %s"><b>%s&times;</b><span class="sh">bill %s&times;</span></div>\n'
+          % (cls, prem, "{:.2f}".format(sh)))
+G('    </div></div>\n')
+
+html = out.getvalue().replace("__PREMIUM_CHART__", sv.getvalue()).replace("__GRID__", gv.getvalue())
+assert "__PREMIUM_CHART__" not in html and "__GRID__" not in html
+io.open("/home/user/Paper3/telco-credit/outputs/dcb_dashboard.html","w",encoding="utf-8").write(html)
+print("written", len(html), "bytes")

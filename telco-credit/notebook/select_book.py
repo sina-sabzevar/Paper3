@@ -134,7 +134,8 @@ def main():
     # The DCB premiums are MEASURED, in 53_bill_shock.sql S10/S11: a bill
     # raised under 2x carries 1.13x the default rate, one raised 2x or more
     # carries 1.91x. Which of the two applies is a LIMIT DECISION - keep the
-    # draw at or below one month's bill and it is the first.
+    # draw BELOW one month's bill and it is the first - strictly below, since a
+    # draw of exactly one month's bill makes the rise 2.00x, the 1.91 band.
     for nm, m in (("as predicted, no premium", 1.0),
                   ("draw under 1x the bill (measured 1.13x)", 1.13),
                   ("draw at or over 1x the bill (measured 1.91x)", 1.91),

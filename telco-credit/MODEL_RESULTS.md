@@ -572,7 +572,9 @@ the MH numerator and denominator sums. Corrected above.
 | 100,000 | 1.59× | 1.13 |
 | 300,000 | 2.76× | 1.91 |
 
-**Keep the draw at or below one month's bill and the rise stays under 2×.**
+**Keep the draw below one month's bill and the rise stays under 2×.** Strictly
+below: a draw of exactly one month's bill makes the rise 2.00×, which is the
+1.91 band and not the 1.13 one.
 That one constraint is the difference between **27 bn** and **46 bn** of annual
 loss on the same book. A 100,000 minimum ticket stays in the safer band only
 above roughly **133,000 Toman a month** — and the screen bar, which nobody

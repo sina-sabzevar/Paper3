@@ -93,6 +93,23 @@ tfoot td{font-family:var(--sans);font-size:13px;color:var(--ink-3);white-space:n
   text-align:left;border-bottom:none;padding-top:12px;line-height:1.55}
 tfoot b{color:var(--ink-2);font-weight:500}
 
+/* the ticket-by-bill grid */
+.grid{display:grid;gap:2px;margin-top:4px;min-width:430px}
+.gcell{padding:9px 6px;border-radius:4px;text-align:center;
+  font-family:var(--mono);font-size:12.5px;line-height:1.35}
+.gcell b{display:block;font-weight:600;font-size:13px}
+.gcell .sh{font-size:11px;opacity:0.75}
+.ghead{padding:6px;text-align:center;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3)}
+.grow{padding:9px 8px;font-family:var(--mono);font-size:12px;text-align:right;
+  color:var(--ink-2);white-space:nowrap}
+.grow em{font-style:normal;color:var(--ink-3);font-size:10.5px;display:block}
+.g1{background:color-mix(in srgb,var(--good) 16%,var(--surface));color:var(--ink)}
+.g2{background:color-mix(in srgb,var(--warn) 26%,var(--surface));color:var(--ink)}
+.g3{background:color-mix(in srgb,var(--crit) 20%,var(--surface));color:var(--ink)}
+.glegend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px;font-size:12.5px;color:var(--ink-2)}
+.glegend span{display:flex;align-items:center;gap:7px}
+.glegend i{width:12px;height:12px;border-radius:3px;display:block}
 .svgbox{overflow-x:auto}
 svg{display:block;max-width:100%;height:auto}
 .gl{stroke:var(--grid);stroke-width:1}
@@ -264,6 +281,100 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
     limit decision.</p>
   </div>
   <div class="card">
+    <div class="svgbox">
+    <svg viewBox="0 0 790 286" role="img" aria-label="Default rate premium by how much the bill moved">
+      <line class="gl" x1="310.7" y1="20" x2="310.7" y2="212"/>
+      <text class="tk" x="310.7" y="230" text-anchor="middle">0.5&times;</text>
+      <line class="gl" x1="425.3" y1="20" x2="425.3" y2="212"/>
+      <text class="tk" x="425.3" y="230" text-anchor="middle">1.0&times;</text>
+      <line class="gl" x1="540.0" y1="20" x2="540.0" y2="212"/>
+      <text class="tk" x="540.0" y="230" text-anchor="middle">1.5&times;</text>
+      <line class="gl" x1="654.7" y1="20" x2="654.7" y2="212"/>
+      <text class="tk" x="654.7" y="230" text-anchor="middle">2.0&times;</text>
+      <text class="an" x="184" y="44.0" text-anchor="end" fill="var(--ink-2)">The bill fell</text>
+      <text class="tk" x="184" y="59.0" text-anchor="end">below 0.80×</text>
+      <rect x="196.0" y="30.0" width="432.8" height="34" rx="3" fill="var(--crit)"/>
+      <text class="dl" x="638.8" y="52.0" fill="var(--ink)">1.89&times;</text>
+      <text class="an" x="184" y="88.0" text-anchor="end" fill="var(--ink-2)">Normal</text>
+      <text class="tk" x="184" y="103.0" text-anchor="end">0.80 to 1.25×</text>
+      <rect x="196.0" y="74.0" width="229.3" height="34" rx="3" fill="var(--sunk)"/>
+      <text class="dl" x="435.3" y="96.0" fill="var(--ink)">1.00&times;</text>
+      <text class="an" x="184" y="132.0" text-anchor="end" fill="var(--ink-2)">Rose, under 2×</text>
+      <text class="tk" x="184" y="147.0" text-anchor="end">1.25 to 2.00×</text>
+      <rect x="196.0" y="118.0" width="259.8" height="34" rx="3" fill="var(--warn)"/>
+      <line x1="448.3" y1="135.0" x2="464.3" y2="135.0" stroke="var(--ink)" stroke-width="1.6"/>
+      <line x1="448.3" y1="128.0" x2="448.3" y2="142.0" stroke="var(--ink)" stroke-width="1.6"/>
+      <line x1="464.3" y1="128.0" x2="464.3" y2="142.0" stroke="var(--ink)" stroke-width="1.6"/>
+      <text class="dl" x="474.3" y="140.0" fill="var(--ink)">1.13&times;</text>
+      <text class="an" x="184" y="176.0" text-anchor="end" fill="var(--ink-2)">Rose by 2× or more</text>
+      <text class="tk" x="184" y="191.0" text-anchor="end">2.00× and above</text>
+      <rect x="196.0" y="162.0" width="437.3" height="34" rx="3" fill="var(--crit)"/>
+      <line x1="615.5" y1="179.0" x2="652.1" y2="179.0" stroke="var(--ink)" stroke-width="1.6"/>
+      <line x1="615.5" y1="172.0" x2="615.5" y2="186.0" stroke="var(--ink)" stroke-width="1.6"/>
+      <line x1="652.1" y1="172.0" x2="652.1" y2="186.0" stroke="var(--ink)" stroke-width="1.6"/>
+      <text class="dl" x="662.1" y="184.0" fill="var(--ink)">1.91&times;</text>
+      <line x1="425.3" y1="20" x2="425.3" y2="216" stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <line class="ax" x1="196.0" y1="212" x2="712" y2="212"/>
+      <text class="tk" x="196.0" y="254">default rate relative to a bill in its normal range</text>
+    </svg>
+
+    </div>
+    <p class="cap">Default rate relative to a bill in its normal range, from 12,042 defaults over
+    4.0 million subscriber-months. Whiskers are 95 percent intervals. <b>A bill that falls is as
+    dangerous as one that doubles</b> &mdash; a collapsing bill is what precedes a service bar, because
+    the subscriber has already stopped using the service.</p>
+  </div>
+
+  <div class="card">
+    <h3>Which premium a given limit lands in</h3>
+    <p class="cap" style="margin-top:6px">Pick the row for what a subscriber bills in a month and
+    the column for what you lend them. The cell is the resulting rise and the premium it carries.</p>
+    <div class="tbl-s"><div class="grid" style="grid-template-columns:auto repeat(4,1fr)">
+      <div class="ghead"></div>
+      <div class="ghead">lend 100,000</div>
+      <div class="ghead">lend 200,000</div>
+      <div class="ghead">lend 300,000</div>
+      <div class="ghead">lend 500,000</div>
+      <div class="grow">1,000,000<em>a heavy user</em></div>
+      <div class="gcell g1"><b>1.00&times;</b><span class="sh">bill 1.10&times;</span></div>
+      <div class="gcell g1"><b>1.00&times;</b><span class="sh">bill 1.20&times;</span></div>
+      <div class="gcell g2"><b>1.13&times;</b><span class="sh">bill 1.30&times;</span></div>
+      <div class="gcell g2"><b>1.13&times;</b><span class="sh">bill 1.50&times;</span></div>
+      <div class="grow">500,000<em>&nbsp;</em></div>
+      <div class="gcell g1"><b>1.00&times;</b><span class="sh">bill 1.20&times;</span></div>
+      <div class="gcell g2"><b>1.13&times;</b><span class="sh">bill 1.40&times;</span></div>
+      <div class="gcell g2"><b>1.13&times;</b><span class="sh">bill 1.60&times;</span></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 2.00&times;</span></div>
+      <div class="grow">300,000<em>&nbsp;</em></div>
+      <div class="gcell g2"><b>1.13&times;</b><span class="sh">bill 1.33&times;</span></div>
+      <div class="gcell g2"><b>1.13&times;</b><span class="sh">bill 1.67&times;</span></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 2.00&times;</span></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 2.67&times;</span></div>
+      <div class="grow">170,000<em>the screen bar</em></div>
+      <div class="gcell g2"><b>1.13&times;</b><span class="sh">bill 1.59&times;</span></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 2.18&times;</span></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 2.76&times;</span></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 3.94&times;</span></div>
+      <div class="grow">100,000<em>&nbsp;</em></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 2.00&times;</span></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 3.00&times;</span></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 4.00&times;</span></div>
+      <div class="gcell g3"><b>1.91&times;</b><span class="sh">bill 6.00&times;</span></div>
+    </div></div>
+
+    <div class="glegend">
+      <span><i class="g1"></i>1.00&times; &mdash; rise under 1.25&times;</span>
+      <span><i class="g2"></i>1.13&times; &mdash; rise of 1.25 to 2.00&times;</span>
+      <span><i class="g3"></i>1.91&times; &mdash; rise of 2.00&times; or more</span>
+    </div>
+    <p class="cap"><b>Keep the draw below one month's bill and you stay out of the red.</b>
+    Strictly below &mdash; a draw of exactly one month's bill makes the rise 2.00&times;, which is
+    already the 1.91 band. The 170,000 row is the current screen bar: a 100,000 ticket puts it
+    in amber, a 300,000 ticket puts it in the red. That is the difference between <b>27 bn</b> and <b>46 bn</b> of
+    annual loss on the same book.</p>
+  </div>
+
+  <div class="card">
     <div class="tbl-s"><table>
       <thead><tr><th>Comparison</th><th>Normal bill</th><th>Raised bill</th><th>Premium</th><th>Reading</th></tr></thead>
       <tbody>
@@ -280,7 +391,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
       than a proven causal effect. Note the first row: a bill that <i>falls</i> is as dangerous as one
       that doubles.</td></tr></tfoot>
     </table></div>
-    <p class="cap"><b>The rule that follows.</b> Keep the draw at or below one month's bill and the
+    <p class="cap"><b>The rule that follows.</b> Keep the draw below one month's bill and the
     rise stays under 2&times;, where the premium is 1.13 rather than 1.91. That single constraint is the
     difference between <b>27 bn</b> and <b>46 bn</b> of annual loss. A 100,000 minimum ticket stays inside
     the safer band only above about <b>133,000 Toman a month</b> &mdash; and the screen bar, which nobody
