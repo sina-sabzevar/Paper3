@@ -365,3 +365,40 @@ SELECT  'measured rates',
 FROM    dwbi_temp40_db.dcb_dash_past
 GROUP BY flag_zero_month + flag_no_payment + flag_barred_before + flag_falling
 ORDER BY source, n_flags;
+
+
+-- ---------------------------------------------------------------------------
+-- D10  WHICH BILL SHOULD THE LIMIT REST ON?
+--
+--      D3 used bill_low - the second lowest of a customer's six months, a bill
+--      they reliably reach. That is the cautious basis, and it is why 2,906,210
+--      customers who pass the screen cannot take even the 100,000 minimum:
+--      the screen asks for 170,000 in ANY TWO of six months, so the other four
+--      can be almost nothing.
+--
+--      This runs the same counts against bill_avg, the plain six-month average,
+--      which is the other end of the range. The median customer's average is
+--      262,860 Toman against a second-lowest month of 144,031, so this should
+--      come back materially larger.
+--
+--      It is a policy decision with roughly a 2x consequence for the size of
+--      the programme, and it costs one query to put numbers on both sides.
+--      Nothing else needs re-running: it reads the table D0 already built.
+-- ---------------------------------------------------------------------------
+SELECT  'second lowest month (used on the dashboard)'  AS basis,
+        COUNT(*)                                       AS n_qualify,
+        SUM(IF(bill_low > 1000000, 1, 0))              AS can_take_100k,
+        SUM(IF(bill_low > 2000000, 1, 0))              AS can_take_200k,
+        SUM(IF(bill_low > 3000000, 1, 0))              AS can_take_300k,
+        SUM(IF(bill_low > 5000000, 1, 0))              AS can_take_500k,
+        SUM(IF(bill_low <= 1000000, 1, 0))             AS cannot_take_minimum
+FROM    dwbi_temp40_db.dcb_dash_now
+UNION ALL
+SELECT  'six-month average',
+        COUNT(*),
+        SUM(IF(bill_avg > 1000000, 1, 0)),
+        SUM(IF(bill_avg > 2000000, 1, 0)),
+        SUM(IF(bill_avg > 3000000, 1, 0)),
+        SUM(IF(bill_avg > 5000000, 1, 0)),
+        SUM(IF(bill_avg <= 1000000, 1, 0))
+FROM    dwbi_temp40_db.dcb_dash_now;

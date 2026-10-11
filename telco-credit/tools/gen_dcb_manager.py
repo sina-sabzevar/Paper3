@@ -195,6 +195,8 @@ page is how that works.</p>
        one(LOSS), f(D3[300_000]), pc(D3[300_000], QUALIFY), f(SERVED), f(ANNUAL)))
 
 # ------------------------------------------------------------------ funnel
+D1["lendable"] = D3[MIN_TKT]
+
 W("""<section>
   <div class="head">
     <h2>Who qualifies</h2>
@@ -212,8 +214,11 @@ STEPS = [("Everyone on a permanent contract", "the starting point", "base", "", 
           "not once in the last six months", "after_ow", "keep",
           ("had outgoing service suspended", "after_bar", "after_ow")),
          ("Their incoming service has never been cut off",
-          "not once in the last six months", "qualify", "last",
-          ("had incoming service suspended", "after_ow", "qualify"))]
+          "not once in the last six months", "qualify", "keep",
+          ("had incoming service suspended", "after_ow", "qualify")),
+         ("Their bill is big enough to carry the smallest loan",
+          "at least 100,000 Toman in a month they reliably reach", "lendable", "last",
+          ("bill too small for a 100,000 loan", "qualify", "lendable"))]
 for title, sub, key, cls, drop in STEPS:
     if drop:
         why, a, b = drop
@@ -222,14 +227,22 @@ for title, sub, key, cls, drop in STEPS:
     W('      <div class="fstep %s"><div class="t">%s<em>%s</em></div>'
       '<div class="v">%s</div></div>\n' % (cls, title, sub, f(D1[key])))
 W("""    </div>
-    <p class="cap"><b>The first check does almost all the work</b> &mdash; it
+    <p class="cap"><b>Why the last step drops %s more.</b> The third check
+    asks for 170,000 Toman in <i>any two</i> of six months. The other four can
+    be almost nothing, and for %s customers they are &mdash; someone billing
+    20,000, 30,000, 50,000, 60,000, 180,000 and 200,000 passes it. The fourth
+    step asks a different question: is there a monthly bill they <i>reliably</i>
+    reach that is large enough to carry a loan. <b>%s customers qualify;
+    %s can actually be lent to.</b> Both numbers are real and they answer
+    different questions.</p>
+    <p class="cap">The first check still does almost all the work &mdash; it
     removes %s customers, 97 of every 100 we turn away. It is not a judgement
-    about whether they would repay. It is about whether their bill is large
-    enough to carry a loan, which is why the next section matters more than this
-    one.</p>
+    about whether someone would repay, only about whether their bill can carry
+    a loan at all.</p>
   </div>
 </section>
-""" % f(D1["base"] - D1["after_bar"]))
+""" % (f(QUALIFY - D1["lendable"]), f(QUALIFY - D1["lendable"]), f(QUALIFY),
+       f(D1["lendable"]), f(D1["base"] - D1["after_bar"])))
 
 # -------------------------------------------------------- the loan size
 W("""<section>
