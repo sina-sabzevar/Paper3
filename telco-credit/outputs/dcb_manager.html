@@ -224,14 +224,16 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);color:v
     draw is repaid <i>on the bill</i>, so money that never reaches the bill
     cannot help repay it.
     <br><br>
-    Sized against the bill instead, a 100,000 Toman loan needs about
-    <b>192,000</b> of monthly spend rather than 100,000 &mdash; and the number of
-    customers who can take one falls from <b>6,438,513</b> to roughly
-    <b>3.4 million</b>, with the 200,000 and 300,000 groups falling into the top
-    tenth of customers. <b>The programme would be about a third of the size
-    shown below.</b> <code>D11</code> returns the exact counts and takes one
-    query. Until it runs, treat the figures on this page as the generous end of
-    a range.
+Sized against the bill instead, the number of customers who can take a
+    100,000 loan is roughly <b>half</b> what is shown below, and the 200,000 and
+    300,000 groups shrink further. <b>The programme is likely around a third of
+    the size on this page.</b>
+    <br><br>
+    <code>57_bill_basis.sql</code> settles it. The billing system does hold the
+    real figure &mdash; the end-of-cycle bill, which already excludes cash
+    packages &mdash; and 57 rebuilds every count on it and measures the cash
+    share on these exact customers instead of assuming a network average. Until
+    it runs, treat the figures here as the generous end of a range.
   </div>
 
   <div class="kpi" style="margin-top:14px">
@@ -515,10 +517,11 @@ page is how that works.</p>
         column, so applying the rule in revenue terms is at least consistent
         with how they were fitted. The two readings disagree by about 1.9 times
         and we do not yet know which is right.</li>
-        <li><b>The 48 pct is a network-wide figure, not measured on these
-        customers</b>, who bill more than most. <code>D11</code> brackets it at
-        0.45, 0.52 and 0.60, and <code>E1</code> looks for the column that would
-        settle it outright.</li>
+        <li><b>This does not have to be estimated.</b> The billing system
+        records the end-of-cycle bill, which already excludes cash packages.
+        <code>57_bill_basis.sql</code> rebuilds every count on it and measures
+        the cash share on these exact customers rather than assuming the
+        network average.</li>
       </ul>
     </div>
   </div>
