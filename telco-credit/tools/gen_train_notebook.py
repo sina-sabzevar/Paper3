@@ -1237,6 +1237,22 @@ configuration.
 """)
 
 # ===========================================================================
+def _stamp(nb):
+    """Deterministic cell ids.
+
+    nbformat mints a RANDOM id for every cell on every write, so regenerating
+    an unchanged notebook still rewrites all 35 of them - a diff that says
+    nothing, hides a real change inside it, and trips the commit check. A short
+    hash of the cell's own source keeps an id stable while the cell is, and
+    changes only for the cell that was actually edited.
+    """
+    import hashlib
+    for i, cell in enumerate(nb.cells):
+        h = hashlib.sha1(("".join(cell["source"]) + str(i)).encode()).hexdigest()
+        cell["id"] = "c" + h[:10]
+    return nb
+
+
 def build():
     nb = nbf.v4.new_notebook()
     nb.cells = [nbf.v4.new_markdown_cell(s) if t == MD
@@ -1251,7 +1267,7 @@ def build():
 
 if __name__ == "__main__":
     import ast
-    nb = build()
+    nb = _stamp(build())
     nbf.validate(nb)
     for i, (t, s) in enumerate(C):
         if t == CODE:
