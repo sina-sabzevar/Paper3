@@ -247,8 +247,8 @@ page is how that works.</p>
       <div class="fstep keep"><div class="t">Their outgoing service has never been cut off<em>not once in the last six months</em></div><div class="v">9,437,240</div></div>
       <div class="fdrop"><span>&minus; had incoming service suspended</span><span class="v">92,517</span></div>
       <div class="fstep keep"><div class="t">Their incoming service has never been cut off<em>not once in the last six months</em></div><div class="v">9,344,723</div></div>
-      <div class="fdrop"><span>&minus; bill too small for a 100,000 loan</span><span class="v">2,906,210</span></div>
-      <div class="fstep last"><div class="t">Their bill is big enough to carry the smallest loan<em>at least 100,000 Toman in a month they reliably reach</em></div><div class="v">6,438,513</div></div>
+      <div class="fdrop"><span>&minus; spend too little for a 100,000 loan</span><span class="v">2,906,210</span></div>
+      <div class="fstep last"><div class="t">They spend enough with us to carry the smallest loan<em>at least 100,000 Toman of service in a month they reliably reach</em></div><div class="v">6,438,513</div></div>
     </div>
     <p class="cap"><b>Why the last step drops 2,906,210 more.</b> The third check
     asks for 170,000 Toman in <i>any two</i> of six months. The other four can
@@ -482,19 +482,36 @@ page is how that works.</p>
       </ul>
     </div>
     <div class="panel unknown">
-      <h3><span class="dot" style="background:var(--crit)"></span>Which bill the limit is set against</h3>
+      <h3><span class="dot" style="background:var(--crit)"></span>We are measuring what they spend, not what they are invoiced</h3>
       <ul>
-        <li>Every figure here uses a bill the customer <b>reliably</b> reaches
-        &mdash; their second-lowest month out of six, 144,031 Toman for a typical
-        customer.</li>
-        <li>Their six-month average is 262,860 Toman. Setting limits against the
-        average instead would <b>roughly double the programme</b> and take on
-        more risk. It is a decision, not a detail, and it is cheap to count both
-        ways.</li>
+        <li>Every figure here uses <b>service revenue</b> &mdash; what a customer
+        spends with us in a month, before tax. That is not the same as the
+        invoice they receive, and we have never confirmed which column holds
+        the invoice total.</li>
+        <li>What we do know: customers pay back about <b>one and a half times</b>
+        what this figure says they were charged, and that gap is a steady
+        proportion rather than a fixed amount. So <b>the real invoice is larger
+        &mdash; perhaps 1.67 times larger</b>.</li>
+        <li><b>That makes the customer counts a floor, not a ceiling.</b> If the
+        invoice is really 1.67 times this, a 100,000 loan on someone spending
+        100,000 raises their bill by 1.6 times, not double, and they should have
+        counted as lendable. <b>Many of the 2,906,210 we excluded probably are.</b></li>
+        <li>The rule itself is unaffected, because it compares a loan to a bill
+        and both move together. Only the headcounts move.</li>
       </ul>
     </div>
   </div>
   <div class="split" style="margin-top:14px">
+    <div class="panel unknown">
+      <h3><span class="dot" style="background:var(--crit)"></span>Which month the limit is set against</h3>
+      <ul>
+        <li>We use a month the customer <b>reliably</b> reaches &mdash; their
+        second-lowest of six, 144,031 Toman for a typical customer.</li>
+        <li>Their six-month average is 262,860 Toman. Setting limits against
+        the average instead would <b>roughly double the programme</b> and take
+        on more risk. A decision, not a detail, and cheap to count both ways.</li>
+      </ul>
+    </div>
     <div class="panel unknown">
       <h3><span class="dot" style="background:var(--crit)"></span>Does the loan add to the bill or replace part of it?</h3>
       <ul>

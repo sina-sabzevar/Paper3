@@ -402,3 +402,72 @@ SELECT  'six-month average',
         SUM(IF(bill_avg > 5000000, 1, 0)),
         SUM(IF(bill_avg <= 1000000, 1, 0))
 FROM    dwbi_temp40_db.dcb_dash_now;
+
+
+-- ---------------------------------------------------------------------------
+-- D11  REVENUE IS NOT THE INVOICE, AND THE LADDER IS SENSITIVE TO IT
+--
+--      D0 builds r1..r6 from arpu minus tot_arpu_tax_amt. That is SERVICE
+--      REVENUE net of tax, not what the customer is invoiced. 53's header
+--      already recorded the evidence: subscribers pay about 1.5x what "arpu
+--      minus tax" says they were billed, and 54 E5 showed that gap is a roughly
+--      CONSTANT RATIO across billing bands (1.68, 1.66, 1.61, 1.41) rather than
+--      a constant amount. A constant ratio means arpu minus tax is a systematic
+--      fraction of the true invoice - around 60 pct of it.
+--
+--      WHAT THAT DOES AND DOES NOT BREAK
+--
+--        The shock rule is SAFE. Shock is a ratio and both sides scale
+--        together, so the 1.133 and 1.907 premiums and the band edge at
+--        "draw equals bill" are unaffected.
+--
+--        The LADDER IS NOT. D3 compares a draw in absolute Toman against a
+--        revenue figure that is smaller than the invoice it stands in for, so
+--        every count is a FLOOR. If the invoice is really 1.67x revenue, a
+--        100,000 draw on a customer with 100,000 of revenue is a rise of 1.60x,
+--        not 2.00x, and they should have been counted as lendable.
+--
+--      This runs the ladder under three assumptions so the band is visible.
+--      It reads the table D0 already built; nothing needs re-running.
+--      E1 below finds the column that would settle it properly.
+-- ---------------------------------------------------------------------------
+SELECT  'invoice = revenue (what the dashboard shows)'     AS assumption,
+        1.00                                                AS factor,
+        SUM(IF(bill_low * 100 > 1000000 * 100, 1, 0))       AS can_take_100k,
+        SUM(IF(bill_low * 100 > 2000000 * 100, 1, 0))       AS can_take_200k,
+        SUM(IF(bill_low * 100 > 3000000 * 100, 1, 0))       AS can_take_300k,
+        SUM(IF(bill_low * 100 > 5000000 * 100, 1, 0))       AS can_take_500k,
+        SUM(IF(bill_low * 100 <= 1000000 * 100, 1, 0))      AS cannot_take_minimum
+FROM    dwbi_temp40_db.dcb_dash_now
+UNION ALL
+SELECT  'invoice = revenue plus tax only', 1.09,
+        SUM(IF(bill_low * 109 > 1000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 109 > 2000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 109 > 3000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 109 > 5000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 109 <= 1000000 * 100, 1, 0))
+FROM    dwbi_temp40_db.dcb_dash_now
+UNION ALL
+SELECT  'invoice = revenue over 0.60, the measured ratio', 1.67,
+        SUM(IF(bill_low * 167 > 1000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 167 > 2000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 167 > 3000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 167 > 5000000 * 100, 1, 0)),
+        SUM(IF(bill_low * 167 <= 1000000 * 100, 1, 0))
+FROM    dwbi_temp40_db.dcb_dash_now;
+
+
+-- ---------------------------------------------------------------------------
+-- E1  WHICH COLUMN IS THE REAL INVOICE TOTAL?
+--
+--      54 E3 asked this and the answer was never written down, so every figure
+--      that mixes an absolute Toman amount with a revenue figure is still
+--      resting on a proxy. Look for anything named like a bill, charge,
+--      invoice or payable total. If one exists, D0 should use it and the whole
+--      ladder should be rebuilt on it rather than on a scaling factor.
+-- ---------------------------------------------------------------------------
+SELECT   column_name, data_type
+FROM     information_schema.columns
+WHERE    table_schema = 'dwbi_fact_db'
+  AND    table_name   = 'v_fact_sbrp_mthly_cip'
+ORDER BY ordinal_position;

@@ -17,8 +17,12 @@ MIN_TKT = 100_000
 D1 = dict(base=41_270_092, after_bar=10_087_975, after_ow=9_437_240, qualify=9_344_723)
 QUALIFY = D1["qualify"]
 
-# ---- D2  what a qualifying customer bills each month.
-#      bill_low is the SECOND LOWEST of their six months - a bill they
+# ---- D2  what a qualifying customer SPENDS WITH US each month.
+#      This is service revenue net of tax (arpu - tot_arpu_tax_amt), NOT the
+#      invoice. 54 E5 measured the gap as a roughly constant ratio across
+#      billing bands, so the real invoice is around 1.67x these figures and
+#      every count built on them is a floor. D11 runs the sensitivity.
+#      bill_low is the SECOND LOWEST of their six months - an amount they
 #      reliably reach. bill_avg is the plain average of the six.
 D2 = dict(p10=38_323, p25=84_748, median=144_031, p75=233_798, p90=363_544,
           median_avg=262_860, mean=181_994)
@@ -216,9 +220,9 @@ STEPS = [("Everyone on a permanent contract", "the starting point", "base", "", 
          ("Their incoming service has never been cut off",
           "not once in the last six months", "qualify", "keep",
           ("had incoming service suspended", "after_ow", "qualify")),
-         ("Their bill is big enough to carry the smallest loan",
-          "at least 100,000 Toman in a month they reliably reach", "lendable", "last",
-          ("bill too small for a 100,000 loan", "qualify", "lendable"))]
+         ("They spend enough with us to carry the smallest loan",
+          "at least 100,000 Toman of service in a month they reliably reach", "lendable", "last",
+          ("spend too little for a 100,000 loan", "qualify", "lendable"))]
 for title, sub, key, cls, drop in STEPS:
     if drop:
         why, a, b = drop
@@ -458,19 +462,36 @@ W("""<section>
       </ul>
     </div>
     <div class="panel unknown">
-      <h3><span class="dot" style="background:var(--crit)"></span>Which bill the limit is set against</h3>
+      <h3><span class="dot" style="background:var(--crit)"></span>We are measuring what they spend, not what they are invoiced</h3>
       <ul>
-        <li>Every figure here uses a bill the customer <b>reliably</b> reaches
-        &mdash; their second-lowest month out of six, %s Toman for a typical
-        customer.</li>
-        <li>Their six-month average is %s Toman. Setting limits against the
-        average instead would <b>roughly double the programme</b> and take on
-        more risk. It is a decision, not a detail, and it is cheap to count both
-        ways.</li>
+        <li>Every figure here uses <b>service revenue</b> &mdash; what a customer
+        spends with us in a month, before tax. That is not the same as the
+        invoice they receive, and we have never confirmed which column holds
+        the invoice total.</li>
+        <li>What we do know: customers pay back about <b>one and a half times</b>
+        what this figure says they were charged, and that gap is a steady
+        proportion rather than a fixed amount. So <b>the real invoice is larger
+        &mdash; perhaps 1.67 times larger</b>.</li>
+        <li><b>That makes the customer counts a floor, not a ceiling.</b> If the
+        invoice is really 1.67 times this, a 100,000 loan on someone spending
+        100,000 raises their bill by 1.6 times, not double, and they should have
+        counted as lendable. <b>Many of the %s we excluded probably are.</b></li>
+        <li>The rule itself is unaffected, because it compares a loan to a bill
+        and both move together. Only the headcounts move.</li>
       </ul>
     </div>
   </div>
   <div class="split" style="margin-top:14px">
+    <div class="panel unknown">
+      <h3><span class="dot" style="background:var(--crit)"></span>Which month the limit is set against</h3>
+      <ul>
+        <li>We use a month the customer <b>reliably</b> reaches &mdash; their
+        second-lowest of six, __MED__ Toman for a typical customer.</li>
+        <li>Their six-month average is __MEDAVG__ Toman. Setting limits against
+        the average instead would <b>roughly double the programme</b> and take
+        on more risk. A decision, not a detail, and cheap to count both ways.</li>
+      </ul>
+    </div>
     <div class="panel unknown">
       <h3><span class="dot" style="background:var(--crit)"></span>Does the loan add to the bill or replace part of it?</h3>
       <ul>
@@ -508,9 +529,12 @@ W("""<section>
   workbook</a>.</span>
 </footer>
 </div>
-""" % (f(D2["median"]), f(D2["median_avg"])))
+""" % f(BELOW_MIN))
 
-html = out.getvalue().replace("__PER_K__", "{:.2f}".format(LOSS / ANNUAL * 1000))
+html = (out.getvalue()
+        .replace("__PER_K__", "{:.2f}".format(LOSS / ANNUAL * 1000))
+        .replace("__MED__", f(D2["median"]))
+        .replace("__MEDAVG__", f(D2["median_avg"])))
 assert "__" not in html.replace("__EXTRA__", ""), "a placeholder went unfilled"
 
 io.open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

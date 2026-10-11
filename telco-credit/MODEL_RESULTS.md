@@ -758,3 +758,44 @@ not the screened set, so the trend transfers but the level does not.
 - `TAKE = 4,672,361` and the grade ladder generally: they rank by risk and say
   nothing about whether a customer's bill can carry the limit. Both constraints
   have to bind.
+
+## The ladder segments REVENUE, not the invoice — and that makes it a floor
+
+Sina asked which one it was. It is revenue: `r1..r6` are
+`arpu - tot_arpu_tax_amt` in both `42` and `56`, so `bill_low` is the
+second-lowest **revenue** month, not the second-lowest invoice.
+
+`53`'s own header already recorded the evidence and it was never followed
+through: subscribers pay about **1.5× what "arpu minus tax" says they were
+billed**, and `54` E5 showed that gap is a roughly **constant ratio** across
+billing bands (1.68, 1.66, 1.61, 1.41) rather than a constant amount. A
+constant ratio means `arpu - tax` is a systematic fraction of the true invoice
+— around **60%** of it.
+
+**What survives.** The shock rule. Shock is a ratio and both sides scale
+together, so 1.133 / 1.907 and the band edge at "draw equals bill" are
+unaffected by the units.
+
+**What does not.** The whole D3 ladder compares a draw in absolute Toman
+against a revenue figure standing in for an invoice that is larger. Every
+count is therefore a **floor**:
+
+| | needs revenue above | if the invoice is 1.67× revenue |
+|---|---|---|
+| 100,000 draw | 100,000 | 60,000 |
+| 300,000 draw | 300,000 | 180,000 |
+
+Against D2's percentiles (p25 84,748; median 144,031; p75 233,798) that moves
+the 300,000-capable group from below the median to above it — **plausibly more
+than double the 1,455,303 reported**, and most of the 2,906,210 excluded for
+spending too little are probably lendable.
+
+**`D11` runs the ladder under all three assumptions** (revenue as-is, plus tax
+only, over 0.60) so the band is visible, and **`E1` lists the monthly table's
+columns** to find the real invoice total. `54` E3 asked that question and the
+answer was never written down, which is why this survived into a published
+page. Once E1 names the column, `D0` should use it and the ladder rebuilt on
+it rather than on a scaling factor.
+
+The dashboard now says "service revenue" rather than "bill" throughout and
+carries the caveat as its own panel.
