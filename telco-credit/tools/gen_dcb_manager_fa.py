@@ -25,6 +25,47 @@ LOSS_LO, LOSS_HI = ANNUAL * 0.0009, ANNUAL * 0.0014
 LOSS_MID = (LOSS_LO + LOSS_HI) / 2
 RISKT    = sum(g[1] * g[3] * g[2] for g in GRADES if g[3] > 0)
 
+# ---- the model's own decile ladder: (cumulative n, cumulative 4-month pd).
+# The grade table is too coarse to place a cut at one million, the ladder is not.
+LADDER = [(934_472,0.000941),(1_868_944,0.001527),(2_803_416,0.001684),
+          (3_737_889,0.002104),(4_672_361,0.002694),(5_606_833,0.003146),
+          (6_541_306,0.004060),(7_475_778,0.005180),(8_410_250,0.008571),
+          (9_344_723,0.029613)]
+DECILE = [(LADDER[i][0] - (LADDER[i-1][0] if i else 0), LADDER[i][1]) for i in range(10)]
+
+# ---- 56 D7: where a FLAT ticket of each size lands the scored population.
+# Only these four ticket sizes were measured, so the scenarios use only these.
+D7 = {100_000:(729_051,5_709_462,2_906_210), 200_000:(68_125,2_944_902,6_331_696),
+      300_000:(13_829,1_441_474,7_889_420), 500_000:(2_712,366_965,8_975_046)}
+SHOCK_P = (1.000, 1.133, 1.907)          # 53: normal / under 2x / 2x or more
+
+# limit per decile, deciles ordered safest first. Decile 10 is declined in all
+# three, so the three differ ONLY in how much the same people are given.
+SCEN = [("گسترده", "وضع فعلی",
+         [500_000,500_000,300_000,300_000,300_000,300_000,300_000,300_000,200_000,0]),
+        ("محتاطانه", "نیمی از حجم",
+         [300_000,300_000,300_000,200_000,200_000,200_000,100_000,100_000,100_000,0]),
+        ("سخت‌گیرانه", "تجمع روی ۱۰۰ هزار",
+         [300_000,200_000,200_000,100_000,100_000,100_000,100_000,100_000,100_000,0])]
+
+def scen_metrics(lim):
+    out  = sum(DECILE[i][0]*lim[i] for i in range(10))
+    appr = sum(DECILE[i][0] for i in range(10) if lim[i])
+    ann  = out*12/1e9
+    pd1  = sum(DECILE[i][0]*lim[i]*DECILE[i][1] for i in range(10))/out/3.0
+    band = [0.0,0.0,0.0]
+    for i in range(10):
+        if not lim[i]: continue
+        t = D7[lim[i]]; tot = float(sum(t))
+        for k in range(3): band[k] += DECILE[i][0]*t[k]/tot
+    prem = sum(x*q for x,q in zip(band, SHOCK_P))/sum(band)
+    return dict(ge300=sum(DECILE[i][0] for i in range(10) if lim[i]>=300_000),
+                at100=sum(DECILE[i][0] for i in range(10) if lim[i]==100_000),
+                appr=appr, avg=out/appr, out=out/1e9, ann=ann, pd1=pd1,
+                band=band, prem=prem, loss=ann*pd1, lossp=ann*pd1*prem)
+
+MET = [scen_metrics(l) for _,_,l in SCEN]
+
 _FA = {"0":"۰","1":"۱","2":"۲","3":"۳","4":"۴","5":"۵","6":"۶","7":"۷","8":"۸","9":"۹",
        ",":"٬", ".":"٫"}
 def fa(t):   return "".join(_FA.get(c, c) for c in str(t))
@@ -102,6 +143,56 @@ DATA = {
             ["دو برابر یا بیشتر می‌شود", "۲٫۰۰ برابر و بالاتر", "۱٫۹۱ برابر", "tot"]],
    "foot": "اندازه‌گیری‌شده روی ۴٫۰ میلیون مشترک‑ماه. جدول سقف‌ها این قاعده را از قبل "
            "رعایت می‌کند." },
+ "scen": {
+   "h2": "سه سناریوی سقف اعتبار",
+   "p": "هر سه سناریو به همان " + f(MET[0]["appr"]) + " مشترک وام می‌دهند و فقط در "
+        "مبلغی که به هر کس می‌دهند فرق دارند. پرریسک‌ترین دهک در هر سه رد می‌شود.",
+   "cards": [[nm, tag, f(m["ann"]) + " میلیارد", "اعطایی در یک سال",
+              one(m["lossp"]) + " میلیارد", "زیان سالانه با احتساب شوک قبض"]
+             for (nm, tag, _), m in zip(SCEN, MET)],
+   "head": ["سنجه", SCEN[0][0], SCEN[1][0], SCEN[2][0]],
+   "rows": [["سقف بالای ۳۰۰ هزار می‌گیرند"] + [f(m["ge300"]) for m in MET] + [""],
+            ["سقف ۱۰۰ هزار می‌گیرند"] + [f(m["at100"]) for m in MET] + [""],
+            ["میانگین سقف اعتبار"] + [f(m["avg"]) for m in MET] + [""],
+            ["مانده در هر لحظه (میلیارد تومان)"] + [f(m["out"]) for m in MET] + [""],
+            ["اعطایی در یک سال (میلیارد تومان)"] + [f(m["ann"]) for m in MET] + ["tot"],
+            ["نسبت به هدف ۱۵٬۰۰۰ میلیاردی"]
+              + [fa("{:.0f}".format(100*m["ann"]/15000)) + " درصد" for m in MET] + [""],
+            ["احتمال نکول یک‌ماهه"]
+              + [fa("{:.3f}".format(100*m["pd1"])) + " درصد" for m in MET] + [""],
+            ["در باند پرریسک شوک قبض"] + [f(m["band"][2]) for m in MET] + [""],
+            ["ضریب شوک قبض"] + [fa("{:.2f}".format(m["prem"])) + " برابر" for m in MET] + [""],
+            ["زیان پایه (میلیارد تومان)"] + [one(m["loss"]) for m in MET] + [""],
+            ["زیان با شوک (میلیارد تومان)"] + [one(m["lossp"]) for m in MET] + ["tot"],
+            ["زیان به ازای هر ۱۰۰۰ تومان اعطایی"]
+              + [fa("{:.2f}".format(1000*m["lossp"]/m["ann"])) + " تومان" for m in MET] + [""]],
+   "foot": "<b>نرخ نکول تقریباً ثابت می‌ماند: " + fa("{:.3f}".format(100*MET[1]["pd1"]))
+           + " تا " + fa("{:.3f}".format(100*MET[0]["pd1"])) + " درصد.</b> سقف اعتبار "
+           "تعیین نمی‌کند چه کسی نکول می‌کند &mdash; آن را <i>تأیید</i> تعیین می‌کند. "
+           "چیزی که سقف عوض می‌کند، شوک قبض است: از "
+           + fa("{:.2f}".format(MET[0]["prem"])) + " برابر در حالت گسترده به "
+           + fa("{:.2f}".format(MET[2]["prem"])) + " برابر در حالت سخت‌گیرانه."
+           "<br><br><b>قید مهم:</b> سهم باندهای شوک از اندازه‌گیری یک سقف ثابت روی "
+           "<i>کل</i> جمعیت می‌آید، یعنی فرض می‌کند سقف بزرگ به یک مشترک تصادفی داده "
+           "می‌شود. در عمل سقف بزرگ به دهک‌های کم‌ریسک می‌رسد که قبض بالاتری هم دارند، "
+           "پس ارقام باند پرریسک و ضریب شوک <b>حد بالا هستند</b>. تفاوت میان سه سناریو "
+           "قابل اتکاتر از خود سطح اعداد است.",
+   "ladH3": "چه کسی چقدر می‌گیرد",
+   "ladHead": ["گروه مشترکین", SCEN[0][0], SCEN[1][0], SCEN[2][0]],
+   "ladRows": [["۱۰ درصد کم‌ریسک‌ترین" if i == 0 else
+                ("۱۰ درصد پرریسک‌ترین" if i == 9 else "دهک " + fa(i+1))]
+               + [("رد می‌شود" if l[i] == 0 else f(l[i])) for _, _, l in SCEN]
+               + ["off" if SCEN[0][2][i] == 0 else ""] for i in range(10)],
+   "ladFoot": "مشترکین بر اساس امتیاز مدل از کم‌ریسک به پرریسک مرتب شده‌اند. "
+              "ارقام به تومان.",
+   "cap": "<b>حالت سخت‌گیرانه هنوز " + fa("{:.0f}".format(100*MET[2]["ann"]/15000))
+          + " درصد هدف ۱۵٬۰۰۰ میلیاردی را پوشش می‌دهد</b>، با "
+          + fa("{:.1f}".format(MET[0]["lossp"]/MET[2]["lossp"]))
+          + " برابر زیان کمتر از حالت گسترده. حالت گسترده "
+          + fa("{:.1f}".format(MET[0]["ann"]/MET[2]["ann"]))
+          + " برابر بیشتر وام می‌دهد ولی "
+          + fa("{:.1f}".format(MET[0]["lossp"]/MET[2]["lossp"]))
+          + " برابر بیشتر زیان می‌دهد." },
  "cost": {
    "h2": "هزینه محتمل طرح",
    "p": "مرحله به مرحله، تا بشود روی هر قدمش بحث کرد.",
@@ -159,6 +250,16 @@ body.editing [data-k]{outline:1px dashed color-mix(in srgb,var(--s1) 55%,transpa
   outline-offset:3px;border-radius:3px}
 body.editing [data-k]:hover{background:color-mix(in srgb,var(--s1) 8%,transparent)}
 body.editing [data-k]:focus{outline:2px solid var(--s1);background:transparent}
+/* the three scenarios */
+.scards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.scards{grid-template-columns:1fr}}
+.scard{background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+  padding:18px 18px 20px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.scard .tag{font-size:12.5px;color:var(--ink-3);margin-bottom:10px}
+.scard .pair{display:flex;flex-direction:column;gap:1px;margin-top:9px}
+.scard .pair .v{font-size:20px;font-weight:700;line-height:1.35}
+.scard .pair .v.crit{color:var(--crit)}
+.scard .pair .l{font-size:12px;color:var(--ink-3);line-height:1.6}
 .hint{font-size:12.5px;color:var(--ink-3);margin-top:10px;line-height:1.85}
 """
 
@@ -221,6 +322,32 @@ function render() {
     + E("div", "why", "rule.why") + '</div><div class="card" style="margin-top:14px">'
     + table("rule", D.rule, 3) + "</div></section>");
 
+  // ---- the three scenarios
+  h.push('<section><div class="head">' + E("h2", "", "scen.h2") + E("p", "", "scen.p")
+    + '</div><div class="scards">');
+  D.scen.cards.forEach((c, i) => {
+    const b = "scen.cards." + i + ".";
+    h.push('<div class="scard">'
+      + E("h3", "", b + "0") + E("span", "tag", b + "1")
+      + '<div class="pair">' + E("span", "v", b + "2") + E("span", "l", b + "3") + "</div>"
+      + '<div class="pair">' + E("span", "v crit", b + "4") + E("span", "l", b + "5")
+      + "</div></div>");
+  });
+  h.push('</div><div class="card" style="margin-top:14px">'
+    + table("scen", D.scen, 3) + "</div>");
+  h.push('<div class="card">' + E("h3", "", "scen.ladH3")
+    + '<div class="tbl-s"><table><thead><tr>');
+  D.scen.ladHead.forEach((c, i) => h.push('<th data-k="scen.ladHead.' + i + '">' + c + "</th>"));
+  h.push("</tr></thead><tbody>");
+  D.scen.ladRows.forEach((r, i) => {
+    h.push('<tr class="' + (r[4] || "") + '">');
+    for (let j = 0; j < 4; j++)
+      h.push('<td data-k="scen.ladRows.' + i + "." + j + '">' + r[j] + "</td>");
+    h.push("</tr>");
+  });
+  h.push('</tbody><tfoot><tr><td colspan="4" data-k="scen.ladFoot">' + D.scen.ladFoot
+    + "</td></tr></tfoot></table></div></div>" + E("p", "cap", "scen.cap") + "</section>");
+
   // ---- the cost
   h.push('<section><div class="head">' + E("h2", "", "cost.h2") + E("p", "", "cost.p")
     + '</div><div class="card"><div class="steps">');
@@ -258,12 +385,13 @@ function render() {
 
 function table(key, o, cols) {
   const h = ['<div class="tbl-s"><table><thead><tr>'];
+  cols = o.head.length - 1 >= cols ? o.head.length : cols + 1;   // label + data
   o.head.forEach((c, i) => h.push('<th data-k="' + key + '.head.' + i + '">' + c + "</th>"));
   h.push("</tr></thead><tbody>");
   o.rows.forEach((r, i) => {
-    h.push('<tr class="' + (r[cols] || "") + '">');
+    h.push('<tr class="' + (r[cols] || r[r.length - 1] || "") + '">');
     for (let j = 0; j < cols; j++)
-      h.push('<td data-k="' + key + ".rows." + i + "." + j + '">' + r[j] + "</td>");
+      h.push('<td data-k="' + key + ".rows." + i + "." + j + '">' + (r[j] || "") + "</td>");
     h.push("</tr>");
   });
   h.push('</tbody><tfoot><tr><td colspan="' + cols + '" data-k="' + key + '.foot">'
