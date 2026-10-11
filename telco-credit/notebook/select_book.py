@@ -18,15 +18,29 @@ import pandas as pd
 SCORES   = os.path.join("outputs", "handover_scores.csv")
 OUT      = os.path.join("outputs", "approved_book.csv")
 
-TAKE          = 4_672_361   # how many to approve, safest first
-TICKET_TOMAN  = 500_000     # the line per approved subscriber
-APPETITE      = 0.005       # the book PD ceiling the committee has set
+# TAKE is a DECISION, not a result, and this value belongs to the four-month
+# product. Under the DCB grade ladder the approved set is A-D, 8,801,772 of
+# 9,344,723 - so this needs setting deliberately before the book is cut.
+TAKE          = 4_672_361
+
+# The DCB ticket: one-month credit, 100,000 minimum, 300,000 average. Was
+# 500,000, which was the four-month line.
+TICKET_TOMAN  = 300_000
+
+# A rate on the amount lent, so it does not move with the horizon. But it was
+# set against a product lending three times a year, and this one lends twelve.
+# The same 0.5 pct per cycle is four times the annual loss in absolute Toman -
+# against four times the lending. Worth the committee confirming which of the
+# two they were ceiling.
+APPETITE      = 0.005
 LGD           = 1.00        # 1.00 = a bar loses the whole balance. Pessimistic.
 
 # Measured on TEST, in the score region a take of this size draws from: the
 # model predicted 456 events and 412 occurred, so it runs about 10 pct
 # CONSERVATIVE there. Reported, not corrected - a 10 pct cushion in the
 # pessimistic direction is worth keeping.
+# STALE: measured on the FOUR-month model. Recompute from the new TEST decile
+# table before quoting it. Left here because it is reported, never applied.
 TEST_CALIB_RATIO = 0.904
 
 
@@ -117,9 +131,15 @@ def main():
     print(f"  loss rate           {book_pd*LGD:>12.4%}")
 
     print(f"\nSTRESS - the level is the model's least reliable output")
-    for nm, m in (("as predicted", 1.0),
-                  ("+17 pct, the drift between the two windows", 1.17),
-                  ("lending into months 1-4 instead (measured 1.68x)", 1.68),
+    # The DCB premiums are MEASURED, in 53_bill_shock.sql S10/S11: a bill
+    # raised under 2x carries 1.13x the default rate, one raised 2x or more
+    # carries 1.91x. Which of the two applies is a LIMIT DECISION - keep the
+    # draw at or below one month's bill and it is the first.
+    for nm, m in (("as predicted, no premium", 1.0),
+                  ("draw under 1x the bill (measured 1.13x)", 1.13),
+                  ("draw at or over 1x the bill (measured 1.91x)", 1.91),
+                  ("+17 pct drift on top of the 1.91x premium", 1.91 * 1.17),
+                  ("lending into months 1-4 as well (1.68x)", 1.91 * 1.68),
                   ("twice predicted", 2.0), ("three times predicted", 3.0)):
         r = book_pd * m * LGD
         print(f"  {nm:<48} {r:>7.4%}  {exposure*r/1e9:>5.1f} bn  "

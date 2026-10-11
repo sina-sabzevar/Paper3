@@ -171,19 +171,36 @@ SPLIT_VALID = 90              # under this -> valid; at or over -> test
 #
 # Set a value to None to skip that check, and update these numbers whenever
 # 42 is re-run with a different bar.
+# rows is None because the DCB label changed the row count and the new one is
+# not known until 42 runs. The INNER JOIN to lab now requires presence in
+# 140408 alone rather than in any of 140407-140410, so dcb_model loses the
+# subscribers who appear in the window but not in that month. The parts check
+# is the one that catches a half-finished export; compare the printed row
+# count against T1 in 42 by eye.
 EXPECT = {
-    "dcb_model": dict(rows=8_701_085, parts=2),
-    "dcb_score": dict(rows=9_344_723, parts=2),
+    "dcb_model": dict(rows=None, parts=2),
+    "dcb_score": dict(rows=None, parts=2),
 }
 
-TICKET_TOMAN = 500_000        # the credit line per approved subscriber, Toman
+# The DCB ticket. The product is one-month credit, 100,000 minimum, 300,000
+# average. This drives the exposure and expected-loss columns only - it does
+# not touch the model.
+TICKET_TOMAN = 300_000
 
-# Measured for THIS window at the PRODUCTION bar by 43_cohort_funnel.sql D5:
-# 28,263 bad of 5,100,390 screened = 0.5541 pct. dcb_model uses a lower bar, so
-# the rate here should sit somewhat above it. A rate near 0.95 pct would mean
-# the LABEL months are wrong - 0.95 pct is the months 1-4 figure, and these
-# labels are months 7-10.
-REFERENCE_RATE = 0.005541
+# The ONE-MONTH rate, measured by 52_one_month_label_choice.sql D4: 19,215
+# two-way bars in 8,701,085 screened = 0.2208 pct. The old value here was
+# 0.5541 pct, which belongs to a FOUR-month label - leaving it would make a
+# correct run look 60 pct off.
+#
+# A rate near 0.55 pct would mean the label window has quietly widened back to
+# four months; near 0.95 pct would mean it is also sitting in months 1-4.
+REFERENCE_RATE = 0.002208
+
+# Grade boundaries, as probabilities over the LABEL HORIZON. These were
+# 0.002 / 0.005 / 0.010 / 0.020 for a four-month label. A one-month label runs
+# at 0.42x of that (0.2208 against 0.5213), so the same boundaries would put
+# almost everyone in grade A and leave B to E nearly empty. Rescaled.
+GRADE_CUTS = [-1, 0.001, 0.002, 0.004, 0.008, 1.0]
 
 # Raw Rial level features that have a _rel twin from the SQL. Setting the flag
 # drops the raw ones and keeps the ratios - the drift-robust choice when PSI
@@ -406,10 +423,13 @@ print(f"  reference for this window at the production bar "
 print("  (the bar here is LOWER than production, so a somewhat higher rate is")
 print("   expected - the extra subscribers admitted are the poorer ones)")
 
-if rate > 0.0080:
-    print("\n  WARNING the rate is approaching the 0.95 pct that belongs to a")
-    print("  months 1-4 label. These labels should be months 7-10. Check the")
-    print("  label months in 42_model_datasets.sql before going further.")
+# The threshold was 0.0080, set against a FOUR-month label. Tying it to
+# REFERENCE_RATE means it keeps working when the horizon changes again.
+if rate > 2.0 * REFERENCE_RATE:
+    print(f"\n  WARNING the rate is {rate/REFERENCE_RATE:.1f}x the reference for this")
+    print("  horizon. The usual cause is a label window wider than intended -")
+    print("  check TERM_MONTHS and the label months in 42_model_datasets.sql")
+    print("  before going further.")
 
 rates = [md_df[md_df.split == nm].y.mean() for nm in ("train", "valid", "test")]
 if max(rates) / max(min(rates), 1e-12) > 1.5:
@@ -1039,8 +1059,7 @@ code(r'''
 print("SCORING THE LIVE SET")
 psc = np.clip(iso.predict(model.predict_proba(X(sc))[:, 1]) * anchor, 1e-7, 0.999)
 out = pd.DataFrame({"sbrp_id": sc.sbrp_id.values, "pd_4m": psc})
-out["grade"] = pd.cut(out.pd_4m, [-1, 0.002, 0.005, 0.010, 0.020, 1.0],
-                      labels=["A", "B", "C", "D", "E"])
+out["grade"] = pd.cut(out.pd_4m, GRADE_CUTS, labels=["A", "B", "C", "D", "E"])
 
 # TIE-BREAK KEYS. Isotonic calibration emits a STEP function, so a large block
 # of subscribers share one identical pd_4m. The book is the safest N, so the

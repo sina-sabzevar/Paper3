@@ -454,9 +454,16 @@ FROM    dwbi_temp40_db.dcb_score;
 
 -- ---------------------------------------------------------------------------
 -- T3  THE SPLIT, PREVIEWED. Python splits on MD5(sbrp_id) mod 100 - under 70
---     is train, 70 to 89 validation, 90 and over test. This is the same draw
---     in SQL, so the three sizes and their event rates can be checked before
---     anything is exported.
+--     is train, 70 to 89 validation, 90 and over test. The expression below
+--     reproduces that EXACTLY: MD5 of the id, the first 8 hex characters read
+--     as a number, mod 100, which is what int(md5(s).hexdigest()[:8], 16) does
+--     in Python. So the sizes AND the membership match, and the rates can be
+--     checked before anything is exported.
+--
+--     It used to use XXHASH64 here while Python used MD5. Both give a 70/20/10
+--     split, so the sizes looked right and this comment claimed it was the same
+--     draw - but the membership was entirely different, and any difference in
+--     the rates would have sent someone hunting a bug that was not there.
 --
 --     The draw is on a HASH, never on sbrp_id itself: every observed id in
 --     this base is odd and they share a five-digit block, so MOD on the raw
@@ -468,8 +475,8 @@ SELECT  IF(h < 70, 'train', IF(h < 90, 'valid', 'test')) AS split,
         100.0 * SUM(y) / COUNT(*)                        AS bad_pct
 FROM (
     SELECT  y,
-            MOD(ABS(FROM_BIG_ENDIAN_64(XXHASH64(TO_UTF8(
-                CAST(sbrp_id AS VARCHAR))))), 100) AS h
+            MOD(FROM_BASE(SUBSTR(TO_HEX(MD5(TO_UTF8(
+                CAST(sbrp_id AS VARCHAR)))), 1, 8), 16), 100) AS h
     FROM    dwbi_temp40_db.dcb_model
 ) z
 GROUP BY IF(h < 70, 'train', IF(h < 90, 'valid', 'test'))
