@@ -73,6 +73,39 @@ def five_month():
 FM = five_month()
 FM[2]["nm"] = "پر ریسک"          # the name the author gave the widest option
 
+
+def by_band():
+    """One block per option, rows per cap band, as the prepaid slide lays it
+    out. Bands inside one option ARE additive, so a total row is honest here
+    in a way it never was across the three options."""
+    out = []
+    for (nm, note, assign), m in zip(OPT, FM):
+        rows = []
+        for b in (1, 2, 3):
+            n  = sum(BANDS[i][0] for i, a in enumerate(assign) if a == b)
+            pw = sum(BANDS[i][0] * BANDS[i][1] for i, a in enumerate(assign) if a == b)
+            if not n:
+                rows.append(dict(b=b, n=0)); continue
+            bor   = n * TAKE[b]
+            once  = bor * MID[b] / 1e9
+            tot   = once * ROUNDS_5M[b]
+            pd1   = (pw / n) / 3.0
+            rows.append(dict(b=b, n=n, take=TAKE[b], bor=bor, once=once,
+                             rep=ROUNDS_5M[b], tot=tot, pd1=pd1, loss=tot * pd1))
+        live = [r for r in rows if r["n"]]
+        tn   = sum(r["n"] for r in live)
+        tbor = sum(r["bor"] for r in live)
+        tt   = sum(r["tot"] for r in live)
+        tl   = sum(r["loss"] for r in live)
+        out.append(dict(nm=m["nm"], note=note, rows=rows,
+                        tot=dict(n=tn, bor=tbor, take=tbor / APPROVED,
+                                 once=sum(r["once"] for r in live),
+                                 tot=tt, loss=tl, pd1=tl / tt)))
+    return out
+
+
+BB = by_band()
+
 CARDS = [("۱", "🔎", "غربال و واجد شرایط",
           "از " + fa("{:.1f}".format(BASE_SUB / 1e6)) + " میلیون مشترک دائمی، "
           + mi(SCORED) + " میلیون پس از غربال درآمد و سابقه قطعی وارد امتیازدهی می‌شوند.",
@@ -86,18 +119,12 @@ CARDS = [("۱", "🔎", "غربال و واجد شرایط",
           "وگرنه احتمال نکول نزدیک دو برابر می‌شود.",
           ["۱۰۰ تا ۳۰۰", "۳۰۰ تا ۵۰۰", "۵۰۰ تا ۱٬۰۰۰ هزار"])]
 
-COLW = [110, 86, 82, 92, 62, 82, 76, 84, 82, 82, 66]
-# drawn as a band above the table rather than merged header cells: a merged
-# cell comes out letter-spaced, which breaks Persian letter joining
-GRP  = [("👥", "مشترکین تأییدشده به تفکیک باند سقف", 1, 3),
-        ("💳", "در هر بار اعطا", 4, 6),
-        ("📅", "تا پایان سال \u2014 مهر تا اسفند", 7, 10)]
-ICON = ["🎯", "👤", "👤", "👤", "📈", "👥", "🪙", "🧾", "💰", "📉", "🧮"]
-HEAD = ["گزینه", "۱۰۰ تا ۳۰۰ هزار", "۳۰۰ تا ۵۰۰ هزار", "۵۰۰ هزار تا ۱ میلیون",
-        "ضریب نفوذ", "وام‌گیرنده", "میانگین وام", "تعداد کل وام",
-        "اعطایی", "نرخ نکول", "زیان"]
-UNIT = [None, "نفر", "نفر", "نفر", "از تأییدشده‌ها", "نفر", "تومان",
-        "فقره", "میلیارد تومان", "وزن‌دار بر مبلغ", "میلیارد"]
+COLW = [150, 118, 76, 110, 104, 68, 110, 92, 76]
+ICON = ["💳", "👥", "📈", "🧑", "🪙", "🔁", "💰", "📉", "🧮"]
+HEAD = ["سقف وام", "مشترکین تأییدشده", "ضریب نفوذ", "وام‌گیرنده",
+        "مبلغ هر بار اعطا", "ضریب تکرار", "مبلغ تا پایان سال", "نرخ نکول", "زیان"]
+UNIT = [None, "نفر", "از باند", "نفر", "میلیارد تومان", "تا اسفند",
+        "میلیارد تومان", "وزن‌دار بر مبلغ", "میلیارد تومان"]
 
 
 def build(prs):
@@ -111,103 +138,114 @@ def build(prs):
     chev.fill.solid(); chev.fill.fore_color.rgb = BLUE
     chev.line.fill.background()
 
-    text(sl, RIGHT - 700, 14, 700, 24,
+    rect(sl, M, 16, 210, 28, BAND, None, radius=0.34)
+    text(sl, M + 10, 16, 190, 28,
+         [[("🏦  ", 10, False, WHITE, EM), (f(APPROVED), 12, True, WHITE),
+           ("  تأییدشده", 8, False, RGBColor(0xB9, 0xCF, 0xEE))]], align="r")
+    text(sl, RIGHT - 660, 14, 660, 24,
          [("اعطای اعتبار روی قبض مشترکین دائمی: از امتیازدهی تا سه گزینه اعطا",
            19, True, INK)], align="r")
-    text(sl, RIGHT - 700, 38, 700, 14,
+    text(sl, RIGHT - 660, 38, 660, 14,
          [("مدل اعتبارسنجی اختصاصی   |   اعتبار یک‌ماهه روی قبض   |   "
            "افق مهر تا اسفند ۱۴۰۵", 9, False, INK3)], align="r")
 
     # ---------------------------------------------------------------- cards
-    cw, cy, ch = (RIGHT - M - 24) / 3.0, 58.0, 118.0
+    cw, cy, ch = (RIGHT - M - 24) / 3.0, 52.0, 68.0
     for i, (num, icon, title, body, pills) in enumerate(CARDS):
         x = RIGHT - cw - i * (cw + 12)
         rect(sl, x, cy, cw, ch, CARD, CARDBD, radius=0.09)
-        oval(sl, x + 10, cy + 10, 26, 26, NAVY)
-        text(sl, x + 10, cy + 10, 26, 26, [(num, 11, True, WHITE)])
-        text(sl, x + 42, cy + 12, cw - 54, 16, [(title, 11.5, True, INK)], align="r")
-        oval(sl, x + 12, cy + 46, 36, 36, PILL, CARDBD)
-        text(sl, x + 12, cy + 46, 36, 36, [(icon, 15, False, BLUE, EM)])
-        text(sl, x + 56, cy + 32, cw - 68, 46, [(body, 8, False, INK2)],
-             align="r", wrap=True, anchor=MSO_ANCHOR.TOP, line_spacing=1.45)
-        px = x + cw - 10
+        oval(sl, x + 9, cy + 8, 20, 20, NAVY)
+        text(sl, x + 9, cy + 8, 20, 20, [(num, 9, True, WHITE)])
+        oval(sl, x + 9, cy + 34, 26, 26, PILL, CARDBD)
+        text(sl, x + 9, cy + 34, 26, 26, [(icon, 11, False, BLUE, EM)])
+        text(sl, x + 34, cy + 7, cw - 46, 14, [(title, 10, True, INK)], align="r")
+        text(sl, x + 42, cy + 22, cw - 54, 24, [(body, 7.2, False, INK2)],
+             align="r", wrap=True, anchor=MSO_ANCHOR.TOP, line_spacing=1.35)
+        px = x + cw - 9
         for p in pills:
-            pw = 11 + 4.6 * len(p)
-            rect(sl, px - pw, cy + ch - 26, pw, 17, PILL, None, radius=0.42)
-            text(sl, px - pw, cy + ch - 26, pw, 17, [(p, 7.5, True, NAVY)])
-            px -= pw + 6
-
-    # ---------------------------------------------------------------- band
-    bw, by, bh = 470.0, 186.0, 38.0
-    bx = (W - bw) / 2.0
-    rect(sl, bx, by, bw, bh, BAND, None, radius=0.3)
-    text(sl, bx + bw - 44, by, 34, bh, [("🏦", 15, False, WHITE, EM)])
-    line(sl, bx + bw - 52, by + 8, bx + bw - 52, by + bh - 8, RGBColor(0x3E, 0x63, 0xA0), 1)
-    text(sl, bx + 12, by + 5, bw - 72, 18,
-         [(f(APPROVED) + "  مشترک تأییدشده برای اعطای اعتبار", 13, True, WHITE)],
-         align="r")
-    text(sl, bx + 12, by + 21, bw - 72, 13,
-         [(f(FM[0]["tot"]) + " تا " + f(FM[2]["tot"]) +
-           " میلیارد تومان اعطایی تا پایان سال، بسته به گزینه", 8,
-           False, RGBColor(0xB9, 0xCF, 0xEE))], align="r")
+            pw = 9 + 4.2 * len(p)
+            rect(sl, px - pw, cy + ch - 18, pw, 14, PILL, None, radius=0.42)
+            text(sl, px - pw, cy + ch - 18, pw, 14, [(p, 6.8, True, NAVY)])
+            px -= pw + 5
 
     # ---------------------------------------------------------------- table
-    TY, GH, HH, RH = 232.0, 25.0, 48.0, 44.0
-    xs = [RIGHT]
-    for w in COLW:
-        xs.append(xs[-1] - w)
-
-    rect(sl, M, TY, RIGHT - M, GH, NAVY, None, radius=0.34)
-    line(sl, xs[1], TY + 5, xs[1], TY + GH - 5, RGBColor(0x45, 0x6A, 0xA5), 0.75)
-    for icon, label, lo, hi in GRP:
-        text(sl, xs[hi + 1], TY, xs[lo] - xs[hi + 1], GH,
-             [[(icon + "  ", 8.5, False, WHITE, EM), (label, 8.5, True, WHITE)]])
-        if hi < 10:
-            line(sl, xs[hi + 1], TY + 5, xs[hi + 1], TY + GH - 5,
-                 RGBColor(0x45, 0x6A, 0xA5), 0.75)
-
-    TT = TY + GH + 3
-    gf = sl.shapes.add_table(4, 11, P(M), P(TT), P(RIGHT - M), P(HH + 3 * RH))
+    TY, HH, TH, RH, SH = 126.0, 35.0, 20.0, 19.0, 21.0
+    BLK = TH + 3 * RH + SH
+    nrow = 1 + 3 * 5
+    gf = sl.shapes.add_table(nrow, 9, P(M), P(TY), P(RIGHT - M),
+                             P(HH + 3 * (TH + 3 * RH + SH)))
     tbl = gf.table
     strip_table_style(tbl._tbl)
     for lo, w in enumerate(COLW):
-        tbl.columns[10 - lo].width = P(w)
-    for r, h in enumerate([HH, RH, RH, RH]):
+        tbl.columns[8 - lo].width = P(w)
+    heights = [HH] + [TH, RH, RH, RH, SH] * 3
+    for r, h in enumerate(heights):
         tbl.rows[r].height = P(h)
-    c = lambda r, lo: tbl.cell(r, 10 - lo)                   # noqa: E731
-    for r in range(4):
-        for j in range(11):
+    c = lambda r, lo: tbl.cell(r, 8 - lo)                    # noqa: E731
+    for r in range(nrow):
+        for j in range(9):
             cell_fill(tbl.cell(r, j), None)
             cell_borders(tbl.cell(r, j), "", GRID)
 
-    for lo in range(11):
+    for lo in range(9):
         cell_fill(c(0, lo), HDR)
         lines = [(ICON[lo], 9, False, WHITE, EM), (HEAD[lo], 8.5, True, WHITE)]
         if UNIT[lo]:
             lines.append((UNIT[lo], 6.8, False, RGBColor(0xA9, 0xC6, 0xEA)))
         cell_text(c(0, lo), lines, pad=(3, 3, 3, 3), wrap=True)
 
-    for i, m in enumerate(FM):
-        r = 1 + i
-        cell_fill(c(r, 0), NAVY)
-        cell_text(c(r, 0), [(m["nm"], 11, True, WHITE),
-                            (m["note"], 7.2, False, RGBColor(0xA9, 0xC6, 0xEA))],
-                  align="r", pad=(3, 10, 3, 6), wrap=True)
-        vals = [f(m["cnt"][1]), f(m["cnt"][2]),
-                f(m["cnt"][3]) if m["cnt"][3] else "\u2014",
-                d1(100 * m["take"]) + " درصد", f(m["uniq"]), f(m["avg"]),
-                f(m["loans"]), f(m["tot"]), d3(100 * m["pd1"]) + " درصد",
-                d2(m["loss"])]
-        for j, v in enumerate(vals, start=1):
-            key = (j == 8)
-            cell_fill(c(r, j), PICK if key else (ROW1 if i % 2 == 0 else ROW2))
-            cell_text(c(r, j), [(v, 11.5 if key else 9, key, INK if key else INK2)],
-                      pad=(2, 3, 2, 3))
-        for j in range(11):
-            cell_borders(c(r, j), "B" if i < 2 else "", GRID)
+    DASH = "\u2014"
+    for k, blk in enumerate(BB):
+        top = 1 + k * 5
+        # the scenario strip. A merged cell comes out letter-spaced, so the
+        # label sits in the rightmost cell of a row filled right across.
+        for j in range(9):
+            cell_fill(tbl.cell(top, j), NAVY)
+            cell_borders(tbl.cell(top, j), "", NAVY)
+            cell_text(tbl.cell(top, j), [(" ", 1, False, WHITE)], pad=(0, 0, 0, 0))
+        for i, r in enumerate(blk["rows"]):
+            rr = top + 1 + i
+            fill = ROW1 if i % 2 == 0 else ROW2
+            cell_fill(c(rr, 0), fill)
+            cell_text(c(rr, 0), [[("👤  ", 8, False, BLUE, EM),
+                                  (LABEL[r["b"]] + " تومان", 7.5, True, INK)]],
+                      align="r", pad=(1, 10, 1, 6))
+            vals = ([DASH] * 8 if not r["n"] else
+                    [f(r["n"]), fa(int(round(100 * r["take"]))) + " درصد",
+                     f(r["bor"]), d1(r["once"]), fa(r["rep"]) + " بار",
+                     d1(r["tot"]), d3(100 * r["pd1"]) + " درصد", d2(r["loss"])])
+            for j, v in enumerate(vals, start=1):
+                key = (j == 6)
+                cell_fill(c(rr, j), PICK if (key and r["n"]) else fill)
+                cell_text(c(rr, j), [(v, 9.5 if key else 7.5, key,
+                                      INK if key else INK2)], pad=(1, 3, 1, 3))
+            for j in range(9):
+                cell_borders(c(rr, j), "B", GRID)
+
+        t = blk["tot"]
+        sr = top + 4
+        for j in range(9):
+            cell_fill(tbl.cell(sr, j), HDR)
+            cell_borders(tbl.cell(sr, j), "", HDR)
+        cell_text(c(sr, 0), [[("🧮  ", 8.5, False, WHITE, EM),
+                              ("مجموع گزینه " + blk["nm"], 9, True, WHITE)]],
+                  align="r", pad=(1, 10, 1, 6))
+        for j, v in enumerate([f(t["n"]), d1(100 * t["take"]) + " درصد",
+                               f(t["bor"]), d1(t["once"]), DASH, d1(t["tot"]),
+                               d3(100 * t["pd1"]) + " درصد", d2(t["loss"])], start=1):
+            cell_text(c(sr, j), [(v, 10 if j == 6 else 8, True, WHITE)],
+                      pad=(1, 3, 1, 3))
+
+    for k, blk in enumerate(BB):                 # laid over the navy strips
+        ty = TY + HH + k * BLK
+        text(sl, M + 10, ty, RIGHT - M - 20, TH,
+             [[("گزینه " + fa(k + 1) + "  ", 8, False, RGBColor(0xA9, 0xC6, 0xEA)),
+               (blk["nm"], 9.5, True, WHITE),
+               ("   " + blk["note"], 7.5, False, RGBColor(0xA9, 0xC6, 0xEA))]],
+             align="r")
 
     # ---------------------------------------------------------------- notes
-    AY = TT + HH + 3 * RH + 10
+    AY = 462.0
     rect(sl, M, AY, RIGHT - M, 30, PILL, CARDBD, radius=0.3)
     text(sl, RIGHT - 34, AY, 26, 30, [("🔁", 12, False, BLUE, EM)])
     text(sl, M + 12, AY, RIGHT - M - 56, 30,
@@ -216,7 +254,7 @@ def build(prs):
            "&nbsp;|&nbsp;  سقف میانی هر باند ۲۰۰، ۴۰۰ و ۷۵۰ هزار تومان"
            .replace("&nbsp;", " "), 8.5, True, NAVY)], align="r")
 
-    text(sl, M, AY + 36, RIGHT - M, 26,
+    text(sl, M, AY + 32, RIGHT - M, 30,
          [[("⚠️  ", 7.5, False, INK3, EM), ("قاعدهٔ سقف می‌گوید وام باید از قبض یک ماه مشترک کمتر بماند، ولی فقط "
            + f(CARRY[500_000]) + " مشترک قبض بالای ۵۰۰ هزار تومان دارند؛ ضریب نفوذ "
            "و دفعات وام فرض است و اندازه‌گیری نشده؛ نرخ نکول وزن‌دار بر حسب مبلغ است، "
