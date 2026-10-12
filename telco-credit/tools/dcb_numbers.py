@@ -56,3 +56,24 @@ def f(n):   return fa("{:,}".format(int(round(n))))
 def mi(n):  return fa("{:.1f}".format(n/1e6))          # in millions
 def d1(x):  return fa("{:.1f}".format(x))
 def d3(x):  return fa("{:.3f}".format(x))
+
+# ---- the model itself, from MODEL_RESULTS.md "The refit, measured - run 1405-07-14"
+#      and the hyperparameters in notebook/build_cells_3.py
+TRAIN_ROWS, TRAIN_BADS = 8_701_085, 45_361
+BAD_RATE   = 0.005213          # 4-bill label, on the training file
+NFEAT      = 39                # oneway_months dropped for no variance
+VALID_FRAC = 0.30              # hash split on sbrp_id
+AUC_LOG_VA = 0.7843            # champion, WOE logistic scorecard
+AUC_GB_VA  = 0.8157            # challenger, histogram gradient boosting
+GINI, KS   = 0.6557, 0.5151    # chosen model, held-back half
+CAL_ERR    = 0.0168            # level error, population weighted
+TEST_PD, LIVE_PD = 0.005146, 0.005952
+SAFE3_RATIO = 0.776            # observed / predicted over the safest 3 deciles
+PSI_N, PSI_MAX = 12, 3.0223    # features over 0.25, and the worst one
+RATE_1M    = 0.002208          # the measured one-month cohort rate
+HP = [("تعداد درخت", "۴۰۰"), ("نرخ یادگیری", "۰٫۰۶"), ("عمق هر درخت", "۵"),
+      ("برگ در هر درخت", "۳۱"), ("حداقل نمونه در برگ", "۲۰۰"),
+      ("جریمه L2", "۱٫۰"), ("توقف زودهنگام", "۳۰ دور بدون بهبود"),
+      ("وزن کلاس", "متوازن"), ("بذر تصادفی", "۴۲")]
+PRE_TEST_GAIN, REFIT_GAIN = 0.0239, 0.0261   # the six prior-bar columns, on TEST
+LOG_GAIN, GB_GAIN = 0.0458, 0.0239           # what each model gained from them

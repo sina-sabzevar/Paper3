@@ -17,6 +17,7 @@ from pptx import Presentation
 from pptx.util import Pt
 from pptx.enum.text import MSO_ANCHOR
 from dcb_numbers import *                                   # noqa: F401,F403
+from pptx.dml.color import RGBColor
 from pptx_fa import (P, W, H, FONT, INK, INK2, INK3, PLANE, PANEL, LINE, RULE,
                      RULE2,
                      S1, CRIT, MDLBG, OUTBG, OUTLN, BAND3,
@@ -140,6 +141,162 @@ def slide_schematic(prs):
 
 
 # =============================================================== slide 2
+# model card. Two models compared, the chosen one's numbers, how it was fitted,
+# and the three things that stop the figures being read as point estimates.
+MCOLW = [250, 374, 130, 134]          # logical: مدل | چیست | AUC | نتیجه
+WARN  = RGBColor(0xFA, 0xB2, 0x19)
+
+
+def slide_model(prs):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    text(sl, RIGHT - 640, 18, 640, 30,
+         [("مدل‌ها \u2014 چه چیزی آزموده شد و چه چیزی انتخاب شد", 20, True, INK)],
+         align="r")
+    text(sl, M, 22, 300, 20, [("بازآموزی ۱۴۰۵/۰۷/۱۴", 9, False, INK3)], align="l")
+    line(sl, M, 54, RIGHT, 54, INK, 1.4)
+
+    # ---- the two models, side by side
+    T_Y, HD_H, ROW_H = 62.0, 24.0, 46.0
+    gf = sl.shapes.add_table(3, 4, P(M), P(T_Y), P(RIGHT - M), P(HD_H + 2 * ROW_H))
+    tbl = gf.table
+    strip_table_style(tbl._tbl)
+    for logical, w in enumerate(MCOLW):
+        tbl.columns[3 - logical].width = P(w)
+    for r, h in enumerate([HD_H, ROW_H, ROW_H]):
+        tbl.rows[r].height = P(h)
+    mc = lambda r, logical: tbl.cell(r, 3 - logical)         # noqa: E731
+
+    for r in range(3):
+        for c in range(4):
+            cell_fill(tbl.cell(r, c), None)
+            cell_borders(tbl.cell(r, c), "", LINE)
+    for logical, h in enumerate(["مدل", "چیست", "AUC روی دادهٔ اعتبارسنجی", "نتیجه"]):
+        cell_text(mc(0, logical), [(h, 8.5, False, INK3)],
+                  align="r" if logical == 0 else "ctr", pad=(2, 6, 2, 6), wrap=True)
+        cell_borders(mc(0, logical), "B", INK3)
+
+    rows = [(("کارت امتیازی لجستیک", INK),
+             "رگرسیون لجستیک روی ویژگی‌های WOE \u2014 هر ویژگی به ۱۰ بازه تقسیم و "
+             "با وزن شواهد جایگزین می‌شود",
+             fa("{:.4f}".format(AUC_LOG_VA)),
+             "مبنا. قابل توضیح به ازای هر مشترک، ولی ضعیف‌تر", None),
+            (("گرادیان بوستینگ درختی", S1),
+             "HistGradientBoosting \u2014 ۴۰۰ درخت کم‌عمق که هرکدام خطای قبلی را "
+             "اصلاح می‌کند و برهم‌کنش ویژگی‌ها را خودش پیدا می‌کند",
+             fa("{:.4f}".format(AUC_GB_VA)),
+             "انتخاب شد \u2014 " + fa("{:.4f}".format(AUC_GB_VA - AUC_LOG_VA)) +
+             " بهتر از مبنا", MDLBG)]
+    for i, ((name, col), what, auc, verdict, bg) in enumerate(rows):
+        r = 1 + i
+        cell_text(mc(r, 0), [(name, 10.5, True, col)], align="r",
+                  pad=(3, 6, 3, 6), wrap=True)
+        cell_text(mc(r, 1), [(what, 8.5, False, INK2)], align="r",
+                  pad=(3, 6, 3, 6), wrap=True)
+        cell_text(mc(r, 2), [(auc, 10.5, bg is not None, INK)], pad=(3, 4, 3, 4))
+        cell_text(mc(r, 3), [(verdict, 8.5, bg is not None, INK2 if bg is None else INK)],
+                  align="ctr", pad=(3, 4, 3, 4), wrap=True)
+        for j in range(4):
+            if bg:
+                cell_fill(mc(r, j), bg)
+            cell_borders(mc(r, j), "B" if i == 0 else "", RULE2)
+
+    # ---- how well it does
+    KY = T_Y + HD_H + 2 * ROW_H + 10
+    kpis = [(fa("{:.4f}".format(AUC)), "AUC روی دادهٔ کنارگذاشته"),
+            (fa("{:.4f}".format(GINI)), "ضریب جینی"),
+            (fa("{:.4f}".format(KS)), "آمارهٔ KS"),
+            (fa("{:.1f}".format(100 * CAL_ERR)) + " درصد", "خطای سطح کالیبراسیون")]
+    kw = (RIGHT - M - 3 * 8) / 4.0
+    for i, (big, small) in enumerate(kpis):
+        x = RIGHT - kw - i * (kw + 8)
+        rect(sl, x, KY, kw, 40, PANEL, LINE)
+        text(sl, x + 8, KY + 4, kw - 16, 19, [(big, 16, True, S1)], align="r")
+        text(sl, x + 8, KY + 23, kw - 16, 13, [(small, 8.5, False, INK2)], align="r")
+
+    # ---- what it leans on
+    NY = KY + 50
+    text(sl, M, NY, RIGHT - M, 40,
+         [("بیشترین چیزی که مدل از آن یاد می‌گیرد: سابقهٔ قطع سرویس سال قبل. شش "
+           "ستونی که قطعی‌های سال گذشته را می‌شمارند، به‌تنهایی " +
+           fa("{:.4f}".format(PRE_TEST_GAIN)) + " از AUC دادهٔ کنارگذاشته را "
+           "می‌سازند \u2014 " + fa(int(round(100 * PRE_TEST_GAIN / REFIT_GAIN))) +
+           " درصد از کل بهبود " + fa("{:.4f}".format(REFIT_GAIN)) + " که بازآموزی "
+           "داد. همین ستون‌ها پایدارترین ویژگی‌های مجموعه‌اند: PSI همهٔ آن‌ها زیر "
+           "۰٫۰۰۰۳ است. مدل خطی دو برابر مدل درختی از آن‌ها سود برد \u2014 " +
+           fa("{:.4f}".format(LOG_GAIN)) + " در برابر " +
+           fa("{:.4f}".format(GB_GAIN)) + " \u2014 یعنی این سیگنال تقریباً "
+           "جمع‌پذیر است و برای پیدا کردنش لازم نبود به درخت برسیم.",
+           8.5, False, INK2)], align="r", wrap=True, anchor=MSO_ANCHOR.TOP,
+         line_spacing=1.4)
+
+    # ---- how it was fitted
+    BY, BH = NY + 46, 104.0
+    bw_r = 400.0
+    bw_l = (RIGHT - M) - bw_r - 16
+    rect(sl, RIGHT - bw_r, BY, bw_r, BH, PANEL, RULE)
+    text(sl, RIGHT - bw_r + 12, BY + 8, bw_r - 24, 12,
+         [("داده و تفکیک", 9.5, True, INK2)], align="r")
+    dat = [("سطر آموزش", f(TRAIN_ROWS)),
+           ("مورد بد در آن", f(TRAIN_BADS) + " \u2014 " +
+            fa("{:.2f}".format(100 * BAD_RATE)) + " درصد"),
+           ("ویژگی", fa(NFEAT)),
+           ("تفکیک با هش روی شناسهٔ مشترک",
+            fa(int(100 * (1 - VALID_FRAC))) + " و " + fa(int(100 * VALID_FRAC)) + " درصد"),
+           ("کالیبراسیون", "ایزوتونیک، روی نیمی از اعتبارسنجی")]
+    ir, il = RIGHT - 12, RIGHT - bw_r + 12
+    for i, (lab, val) in enumerate(dat):
+        yy = BY + 28 + i * 15
+        text(sl, il + 170, yy, (ir - il) - 170, 11, [(lab, 8, False, INK2)], align="r")
+        text(sl, il, yy, 170, 11, [(val, 8, True, INK)], align="l")
+
+    rect(sl, M, BY, bw_l, BH, PANEL, RULE)
+    text(sl, M + 12, BY + 8, bw_l - 24, 12,
+         [("تنظیمات مدل انتخاب‌شده", 9.5, True, INK2)], align="r")
+    cw = (bw_l - 24) / 3.0
+    for i, (k, v) in enumerate(HP):
+        col, row = i // 3, i % 3
+        x = M + 12 + (2 - col) * cw
+        yy = BY + 28 + row * 17
+        text(sl, x, yy, cw - 10, 11, [(k, 8, False, INK3)], align="r")
+        text(sl, x, yy, 60, 11, [(v, 8, True, INK)], align="l")
+        line(sl, x, yy + 12, x + cw - 10, yy + 12, LINE, 0.5)
+
+    # ---- and the three things that stop these being point estimates
+    WY, WH = BY + BH + 10, 86.0
+    ww = (RIGHT - M - 2 * 10) / 3.0
+    warns = [("رتبه‌بندی را بیشتر از سطح باور کنید",
+              fa(PSI_N) + " ویژگی رانش معنادار دارند، بیشترین با PSI " +
+              fa("{:.2f}".format(PSI_MAX)) + ". مدل روی جمعیت زنده " +
+              fa("{:.3f}".format(100 * LIVE_PD)) + " درصد می‌دهد در برابر " +
+              fa("{:.3f}".format(100 * TEST_PD)) + " درصد روی آزمون. ترتیب ریسک "
+              "در برابر این جابه‌جایی مقاوم است، عدد مطلق نه."),
+             ("کالیبراسیون در دهک‌های امن محافظه‌کار است",
+              "در سه دهک امن، ریسک مشاهده‌شده " + fa("{:.2f}".format(SAFE3_RATIO)) +
+              " برابر چیزی است که مدل پیش‌بینی می‌کند \u2014 یعنی بیش از واقع "
+              "برآورد می‌کند. جهتش به نفع ماست، ولی عدد را نقطه‌ای نخوانید."),
+             ("سطح اعداد تأییدنشده است",
+              "لیبل روی افق ۴ قبض بسته می‌شود، درحالی‌که نرخ یک‌ماههٔ "
+              "اندازه‌گیری‌شده " + fa("{:.4f}".format(100 * RATE_1M)) + " درصد است. "
+              "شکل نتیجه درست است؛ سطحش تا اجرای آزمایشی تأیید نمی‌شود.")]
+    for i, (head, body) in enumerate(warns):
+        x = RIGHT - ww - i * (ww + 10)
+        rect(sl, x, WY, ww, WH, PANEL, RULE)
+        line(sl, x + ww, WY, x + ww, WY + WH, WARN, 2.5)
+        text(sl, x + 10, WY + 7, ww - 20, 12, [(head, 8.5, True, INK)], align="r",
+             wrap=True, anchor=MSO_ANCHOR.TOP)
+        text(sl, x + 10, WY + 22, ww - 20, WH - 30, [(body, 8, False, INK2)],
+             align="r", wrap=True, anchor=MSO_ANCHOR.TOP, line_spacing=1.4)
+
+    line(sl, M, 506, RIGHT, 506, RULE, 0.75)
+    text(sl, M, 511, RIGHT - M, 24,
+         [("مبنا و چالشگر روی همان تفکیک آموزش دیدند؛ انتخاب فقط بر اساس AUC روی "
+           "دادهٔ اعتبارسنجی بود؛ دادهٔ کنارگذاشته تا آخر کنار ماند و یک بار خوانده "
+           "شد؛ هیچ مشترکی در دو طرف تفکیک نیست، چون هش تابعی خالص از شناسهٔ اوست.",
+           7.5, False, INK3)], align="r", wrap=True, anchor=MSO_ANCHOR.TOP)
+    return sl
+
+
+# =============================================================== slide 3
 # logical order is the Persian reading order, rightmost first; the physical
 # column index is 9 - logical, so the table reads correctly in any renderer
 COLW = [155, 88, 82, 96, 84, 80, 64, 74, 109, 56]          # logical widths
@@ -307,6 +464,7 @@ def main():
     prs = Presentation()
     prs.slide_width, prs.slide_height = P(W), P(H)
     slide_schematic(prs)
+    slide_model(prs)
     slide_options(prs)
     dst = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "outputs", "dcb_deck_fa_editable.pptx")

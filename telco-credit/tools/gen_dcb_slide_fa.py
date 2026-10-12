@@ -123,7 +123,29 @@ tbody tr:last-child td{border-bottom:none}
   .slide{min-height:0;padding:20px 16px}
   .flow{flex-wrap:wrap}.fx{flex:1 1 45%}
   .two{grid-template-columns:1fr}
+  .mdl2,.warn3,.hp{grid-template-columns:1fr}
 }
+
+/* the model slide */
+.mdl2{display:grid;grid-template-columns:repeat(4,1fr);gap:calc(var(--u)*0.8)}
+.kpi{background:var(--panel);border:1px solid var(--rule);border-radius:calc(var(--u)*0.6);
+  padding:calc(var(--u)*0.9) calc(var(--u)*1.1);min-width:0}
+.kpi .n{display:block;font-size:calc(var(--u)*2.1);font-weight:700;line-height:1.15;color:var(--s1)}
+.kpi .t{display:block;font-size:calc(var(--u)*1.0);color:var(--ink-2);line-height:1.5;margin-top:calc(var(--u)*0.15)}
+table.m2 td,table.m2 th{white-space:normal}
+table.m2 td:first-child,table.m2 th:first-child{width:26%}
+.pick{background:color-mix(in srgb,var(--s1) 8%,transparent)}
+.pick td:first-child{color:var(--s1);font-weight:700}
+.hp{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(var(--u)*0.3) calc(var(--u)*1.1)}
+.hp div{display:flex;justify-content:space-between;gap:calc(var(--u)*0.5);
+  font-size:calc(var(--u)*1.02);border-bottom:1px solid var(--line);padding:calc(var(--u)*0.22) 0}
+.hp span{color:var(--ink-3)} .hp b{color:var(--ink);font-weight:600}
+.warn3{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(var(--u)*0.9)}
+.wn{background:var(--panel);border:1px solid var(--rule);border-radius:calc(var(--u)*0.6);
+  border-inline-start:calc(var(--u)*0.28) solid var(--warn);
+  padding:calc(var(--u)*0.9) calc(var(--u)*1.1);min-width:0}
+.wn b{display:block;font-size:calc(var(--u)*1.1);font-weight:600;margin-bottom:calc(var(--u)*0.3)}
+.wn span{font-size:calc(var(--u)*1.0);color:var(--ink-2);line-height:1.7}
 </style>
 
 <div class="slide">
@@ -135,9 +157,95 @@ tbody tr:last-child td{border-bottom:none}
   <p class="note">__CAP__</p>
   <div class="ft">__FN__</div>
 </div>
+""")
+
+W("""<div class="slide">
+  <div class="hd">
+    <h1>مدل‌ها &mdash; چه چیزی آزموده شد و چه چیزی انتخاب شد</h1>
+    <span class="sub">بازآموزی ۱۴۰۵/۰۷/۱۴</span>
+  </div>
+
+  <table class="m2">
+    <thead><tr>
+      <th>مدل</th><th>چیست</th>
+      <th>AUC روی دادهٔ اعتبارسنجی</th><th>نتیجه</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>کارت امتیازی لجستیک</td>
+          <td>رگرسیون لجستیک روی ویژگی‌های WOE &mdash; هر ویژگی به ۱۰ بازه تقسیم و با وزن شواهد جایگزین می‌شود</td>
+          <td>%s</td>
+          <td>مبنا. قابل توضیح به ازای هر مشترک، ولی ضعیف‌تر</td></tr>
+      <tr class="pick"><td>گرادیان بوستینگ درختی</td>
+          <td>HistGradientBoosting &mdash; %s درخت کم‌عمق که هرکدام خطای قبلی را اصلاح می‌کند، برهم‌کنش ویژگی‌ها را خودش پیدا می‌کند</td>
+          <td>%s</td>
+          <td><b>انتخاب شد</b> &mdash; %s بهتر از مبنا</td></tr>
+    </tbody>
+  </table>
+
+  <div class="mdl2">
+    <div class="kpi"><span class="n">%s</span><span class="t">AUC روی دادهٔ کنارگذاشته</span></div>
+    <div class="kpi"><span class="n">%s</span><span class="t">ضریب جینی</span></div>
+    <div class="kpi"><span class="n">%s</span><span class="t">آمارهٔ KS</span></div>
+    <div class="kpi"><span class="n">%s درصد</span><span class="t">خطای سطح کالیبراسیون</span></div>
+  </div>
+
+  <p class="note"><b>بیشترین چیزی که مدل از آن یاد می‌گیرد: سابقهٔ قطع سرویس سال قبل.</b>
+  شش ستونی که قطعی‌های سال گذشته را می‌شمارند، به‌تنهایی %s از AUC دادهٔ کنارگذاشته
+  را می‌سازند &mdash; %s درصد از کل بهبود %s که بازآموزی داد. همین ستون‌ها پایدارترین
+  ویژگی‌های مجموعه‌اند: PSI همهٔ آن‌ها زیر ۰٫۰۰۰۳ است. مدل خطی دو برابر مدل درختی
+  از آن‌ها سود برد &mdash; %s در برابر %s &mdash; یعنی این سیگنال تقریباً جمع‌پذیر
+  است و برای پیدا کردنش لازم نبود به درخت برسیم.</p>
+
+  <div class="two">
+    <div class="box">
+      <h2>داده و تفکیک</h2>
+      <table><tbody>
+        <tr><td>سطر آموزش</td><td class="num">%s</td></tr>
+        <tr><td>مورد بد در آن</td><td class="num">%s &mdash; %s درصد</td></tr>
+        <tr><td>ویژگی</td><td class="num">%s</td></tr>
+        <tr><td>تفکیک با هش روی شناسهٔ مشترک</td><td class="num">%s و %s درصد</td></tr>
+        <tr><td>کالیبراسیون</td><td class="num">ایزوتونیک، روی نیمی از اعتبارسنجی</td></tr>
+      </tbody></table>
+    </div>
+    <div class="box">
+      <h2>تنظیمات مدل انتخاب‌شده</h2>
+      <div class="hp">%s</div>
+    </div>
+  </div>
+
+  <div class="warn3">
+    <div class="wn"><b>رتبه‌بندی را بیشتر از سطح باور کنید</b><span>%s ویژگی رانش
+    معنادار دارند، بیشترین با PSI %s. مدل روی جمعیت زنده %s درصد می‌دهد در برابر
+    %s درصد مشاهده‌شده روی آزمون. ترتیب ریسک در برابر این جابه‌جایی مقاوم است،
+    عدد مطلق نه.</span></div>
+    <div class="wn"><b>کالیبراسیون در دهک‌های امن محافظه‌کار است</b><span>در سه دهک
+    امن، ریسک مشاهده‌شده %s برابر چیزی است که مدل پیش‌بینی می‌کند &mdash; یعنی
+    بیش از واقع برآورد می‌کند. جهتش به نفع ماست، ولی عدد را نقطه‌ای نخوانید.</span></div>
+    <div class="wn"><b>سطح اعداد تأییدنشده است</b><span>لیبل روی افق ۴ قبض بسته
+    می‌شود، درحالی‌که نرخ یک‌ماههٔ اندازه‌گیری‌شده %s درصد است. شکل نتیجه درست
+    است؛ سطحش تا اجرای آزمایشی تأیید نمی‌شود.</span></div>
+  </div>
+  <div class="ft">مبنا و چالشگر روی همان تفکیک آموزش دیدند&#1563; انتخاب فقط بر
+  اساس AUC روی دادهٔ اعتبارسنجی بود&#1563; دادهٔ کنارگذاشته تا آخر کنار ماند و یک
+  بار خوانده شد&#1563; هیچ مشترکی در دو طرف تفکیک نیست، چون هش تابعی خالص از
+  شناسهٔ اوست</div>
+</div>
 
 <div class="slide">
-""")
+""" % (fa("{:.4f}".format(AUC_LOG_VA)), fa("400"),
+       fa("{:.4f}".format(AUC_GB_VA)), fa("{:+.4f}".format(AUC_GB_VA - AUC_LOG_VA)),
+       fa("{:.4f}".format(AUC)), fa("{:.4f}".format(GINI)), fa("{:.4f}".format(KS)),
+       fa("{:.1f}".format(100 * CAL_ERR)),
+       fa("{:.4f}".format(PRE_TEST_GAIN)),
+       fa(int(round(100 * PRE_TEST_GAIN / REFIT_GAIN))),
+       fa("{:.4f}".format(REFIT_GAIN)),
+       fa("{:.4f}".format(LOG_GAIN)), fa("{:.4f}".format(GB_GAIN)),
+       f(TRAIN_ROWS), f(TRAIN_BADS), fa("{:.2f}".format(100 * BAD_RATE)), fa(NFEAT),
+       fa(int(100 * (1 - VALID_FRAC))), fa(int(100 * VALID_FRAC)),
+       "".join("<div><span>%s</span><b>%s</b></div>" % (k, v) for k, v in HP),
+       fa(PSI_N), fa("{:.2f}".format(PSI_MAX)), fa("{:.3f}".format(100 * LIVE_PD)),
+       fa("{:.3f}".format(100 * TEST_PD)), fa("{:.2f}".format(SAFE3_RATIO)),
+       fa("{:.4f}".format(100 * RATE_1M))))
 
 # ----------------------------------------------------------------- header
 W("""  <div class="hd">
