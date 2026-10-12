@@ -32,18 +32,22 @@ OPT = [("کم‌ریسک",  "سقف‌ها پایین، تمرکز روی بان
         [3,2,2,2,1,1,1,1,1,1]),
        ("گسترده",   "سه دهک در باند بالا",
         [3,3,3,2,2,2,2,1,1,1])]
-TAKE = [0.10, 0.20, 0.30, 0.40]
+TAKE, ROUNDS = 0.30, 3        # ضریب نفوذ و دفعات وام در سال
 # 56 D3: how many customers bill enough to carry each draw under the rule
 CARRY = {200_000: 3_013_027, 300_000: 1_455_303, 500_000: 369_677}
 
 def metrics(assign):
     cnt = {1:0, 2:0, 3:0}
     for i, b in enumerate(assign): cnt[b] += BANDS[i][0]
-    out  = sum(BANDS[i][0]*MID[assign[i]] for i in range(10))
-    pd1  = sum(BANDS[i][0]*MID[assign[i]]*BANDS[i][1] for i in range(10))/out/3.0
-    ann  = out*12/1e9
     assert sum(cnt.values()) == APPROVED
-    return dict(cnt=cnt, out=out/1e9, ann=ann, pd1=pd1, loss=ann*pd1)
+    # TAKE of each band borrows, every one of them ROUNDS times a year
+    borrowers = APPROVED * TAKE
+    per_round = sum(BANDS[i][0]*TAKE*MID[assign[i]] for i in range(10))
+    gross     = sum(BANDS[i][0]*MID[assign[i]] for i in range(10))
+    pd1 = sum(BANDS[i][0]*MID[assign[i]]*BANDS[i][1] for i in range(10))/gross/3.0
+    ann = per_round*ROUNDS/1e9
+    return dict(cnt=cnt, borrowers=borrowers, avg=per_round/borrowers,
+                per_round=per_round/1e9, ann=ann, pd1=pd1, loss=ann*pd1)
 
 MET = [metrics(a) for _, _, a in OPT]
 
@@ -68,7 +72,7 @@ W("""<title>سه گزینه اعطای اعتبار</title>
   --rule:rgba(11,11,11,0.10); --line:#e2e1db;
   --s1:#2a78d6; --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
   --fa:"Vazirmatn","Noto Sans Arabic",Tahoma,system-ui,sans-serif;
-  --u:clamp(9px, 1.34vmin, 20px);
+  --u:clamp(9px, 1.26vmin, 20px);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   color-scheme:dark;
@@ -120,11 +124,13 @@ tbody tr td:first-child{color:var(--ink)}
 tbody tr:last-child td{border-bottom:none}
 
 /* participation */
-.two{display:grid;grid-template-columns:1.35fr 1fr;gap:calc(var(--u)*1.4);align-items:start}
+.two{display:grid;grid-template-columns:1fr 1.5fr;gap:calc(var(--u)*1.4);align-items:start}
 .box{background:var(--panel);border:1px solid var(--rule);border-radius:calc(var(--u)*0.6);
   padding:calc(var(--u)*1.1) calc(var(--u)*1.3)}
 .box h2{margin:0 0 calc(var(--u)*0.65);font-size:calc(var(--u)*1.2);font-weight:600;color:var(--ink-2)}
 .box table{font-size:calc(var(--u)*1.1)}
+.box td{text-align:start}
+.box td.num{text-align:end;color:var(--ink);font-weight:600}
 .box th,.box td{padding:calc(var(--u)*0.42) calc(var(--u)*0.5);border-bottom:1px solid var(--line)}
 .box tbody tr:last-child td{border-bottom:none}
 .flag{border-inline-start:calc(var(--u)*0.3) solid var(--crit)}
@@ -171,38 +177,44 @@ W("""  </div>
 # ----------------------------------------------------------------- matrix
 W("""  <table>
     <thead><tr>
-      <th>گزینه</th><th>%s<br>تومان</th><th>%s<br>تومان</th><th>%s<br>تومان</th>
-      <th>اعطایی در یک سال<br>میلیارد تومان</th>
-      <th>نرخ نکول<br>یک‌ماهه</th>
+      <th>گزینه</th>
+      <th>%s<br>تومان</th><th>%s<br>تومان</th><th>%s<br>تومان</th>
+      <th>میانگین وام<br>هر نفر &mdash; تومان</th>
+      <th>مبلغ هر بار اعطا<br>میلیارد تومان</th>
+      <th>اعطایی در یک سال<br>%s بار &mdash; میلیارد</th>
       <th>زیان سالانه<br>میلیارد تومان</th>
     </tr></thead>
     <tbody>
-""" % (LABEL[1], LABEL[2], LABEL[3]))
+""" % (LABEL[1], LABEL[2], LABEL[3], fa(ROUNDS)))
 for (nm, tag, _), m in zip(OPT, MET):
     W('      <tr><td class="opt">%s<em>%s</em></td>' % (nm, tag))
     for b in (1, 2, 3):
         cls = ' class="band3"' if b == 3 and m["cnt"][b] else ""
         W('<td%s>%s</td>' % (cls, f(m["cnt"][b]) if m["cnt"][b] else "&mdash;"))
-    W('<td class="on1">%s</td><td>%s درصد</td><td>%s</td></tr>\n'
-      % (f(m["ann"]), d3(100*m["pd1"]), d1(m["loss"])))
-W('''    </tbody>
+    W('<td>%s</td><td>%s</td><td class="on1">%s</td><td>%s</td></tr>\n'
+      % (f(m["avg"]), f(m["per_round"]), f(m["ann"]), d1(m["loss"])))
+W("""    </tbody>
   </table>
-  <p class="note"><b>چرا نرخ نکول در گزینه کم‌ریسک بالاتر است؟</b> این نرخ وزن‌دار بر
-  حسب <i>مبلغ</i> است، نه تعداد نفرات. در گزینه گسترده پول بیشتری به دست
-  کم‌ریسک‌ترین دهک‌ها می‌رسد، پس نرخ هر تومان پایین‌تر می‌آید &mdash; ولی چون مبلغ
-  کل بزرگ‌تر است، <b>زیان مطلق بیشتر می‌شود: %s در برابر %s میلیارد تومان.</b></p>
-''' % (d1(MET[2]["loss"]), d1(MET[0]["loss"])))
+  <p class="note">سه ستون اول <b>مشترکین تأییدشده</b> در هر باند سقف است. ستون‌های
+  مبلغ با <b>ضریب نفوذ %s درصد</b> حساب شده‌اند، یعنی %s نفر از %s تأییدشده در هر
+  بار وام می‌گیرند. <b>با این فرض، حتی گزینه گسترده فقط %s درصد هدف ۱۵٬۰۰۰ میلیاردی
+  را پوشش می‌دهد</b> &mdash; رسیدن به هدف نیاز دارد هر وام‌گیرنده حدود %s بار در سال
+  وام بگیرد، یعنی تقریباً هر ماه.</p>
+""" % (fa(int(TAKE*100)), f(MET[0]["borrowers"]), f(APPROVED),
+       fa("{:.0f}".format(100*MET[2]["ann"]/TARGET)),
+       fa("{:.0f}".format(TARGET/(MET[2]["per_round"])))))
 
 # ------------------------------------------------- participation + the flag
 W("""  <div class="two">
     <div class="box">
-      <h2>اعطایی در یک سال به ازای نرخ مشارکت &mdash; میلیارد تومان</h2>
-      <table><thead><tr><th>گزینه</th>%s</tr></thead><tbody>
-""" % "".join("<th>%s درصد</th>" % fa(int(t*100)) for t in TAKE))
-for (nm, _, _), m in zip(OPT, MET):
-    W('        <tr><td>%s</td>%s</tr>\n'
-      % (nm, "".join("<td>%s</td>" % f(m["ann"]*t) for t in TAKE)))
-W("""      </tbody></table>
+      <h2>چطور حساب شده</h2>
+      <table><tbody>
+        <tr><td>مشترکین تأییدشده</td><td class="num">%s نفر</td></tr>
+        <tr><td>ضریب نفوذ</td><td class="num">%s درصد</td></tr>
+        <tr><td>وام‌گیرنده در هر بار</td><td class="num">%s نفر</td></tr>
+        <tr><td>دفعات وام در سال</td><td class="num">%s بار</td></tr>
+        <tr><td>سقف میانی هر باند</td><td class="num">۲۰۰، ۴۰۰ و ۷۵۰ هزار</td></tr>
+      </tbody></table>
     </div>
     <div class="box flag">
       <h2>یک هشدار پیش از انتخاب</h2>
@@ -212,12 +224,13 @@ W("""      </tbody></table>
       ۵۰۰ هزار تا ۱ میلیون می‌گذارد.</p>
     </div>
   </div>
-""" % (f(CARRY[500_000]), f(MET[1]["cnt"][3]), f(MET[2]["cnt"][3])))
+""" % (f(APPROVED), fa(int(TAKE*100)), f(MET[0]["borrowers"]), fa(ROUNDS),
+       f(CARRY[500_000]), f(MET[1]["cnt"][3]), f(MET[2]["cnt"][3])))
 
 W("""  <div class="ft">تعداد مشترکین از صورتحساب ۱۴۰۵۰۱ تا ۱۴۰۵۰۶ &middot;
   امتیاز و ترتیب ریسک از مدل بازآموزی‌شده ۱۴۰۵/۰۷/۱۴ &middot;
-  ارقام ریالی با سقف میانی هر باند (۲۰۰، ۴۰۰ و ۷۵۰ هزار تومان) محاسبه شده‌اند &middot;
-  نرخ نکول وزن‌دار بر حسب مبلغ در معرض، نه تعداد نفرات</div>
+  هر بار وام یک ماهه است و زیان از نرخ نکول یک‌ماهه وزن‌دار بر حسب مبلغ به دست
+  آمده &middot; ضریب نفوذ و دفعات وام در سال، فرض است و اندازه‌گیری نشده</div>
 </div>
 """)
 
