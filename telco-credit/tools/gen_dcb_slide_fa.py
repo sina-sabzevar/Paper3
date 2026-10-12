@@ -7,6 +7,7 @@ and still reads on a laptop; below 820px it falls back to a scrolling column.
 """
 import io, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import dcb_schematic_svg as SCH
 
 # ---- the model's decile ladder, with the riskiest decile split at today's
 #      grade boundary so the base is the 8,801,772 the business approves now
@@ -91,8 +92,16 @@ W("""<title>سه گزینه اعطای اعتبار</title>
 html,body{height:100%}
 body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--fa);
   -webkit-font-smoothing:antialiased}
-.slide{min-height:100%;display:flex;flex-direction:column;
+html{scroll-snap-type:y mandatory}
+.slide{height:100vh;min-height:100vh;scroll-snap-align:start;break-after:page;
+  display:flex;flex-direction:column;
   justify-content:space-between;gap:calc(var(--u)*1.25);padding:calc(var(--u)*2.2) calc(var(--u)*3) calc(var(--u)*1.7);direction:rtl}
+.slide:last-child{break-after:auto}
+
+/* the schematic slide: the drawing takes whatever height the text leaves */
+.schw{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center}
+.schw svg{display:block;width:100%;height:auto;max-height:100%;color:var(--ink-2)}
+__SVGCSS__
 
 .hd{display:flex;align-items:baseline;justify-content:space-between;gap:calc(var(--u)*2);
   border-bottom:2px solid var(--ink);padding-bottom:calc(var(--u)*1.1)}
@@ -170,11 +179,21 @@ tbody tr:last-child td{border-bottom:none}
 </style>
 
 <div class="slide">
+  <div class="hd">
+    <h1>مدل اعتبارسنجی &mdash; چطور کار می‌کند</h1>
+    <span class="sub">اعتبار روی قبض، یک‌ماهه، مهر ۱۴۰۵</span>
+  </div>
+  <div class="schw">__SVG__</div>
+  <p class="note">__CAP__</p>
+  <div class="ft">__FN__</div>
+</div>
+
+<div class="slide">
 """)
 
 # ----------------------------------------------------------------- header
 W("""  <div class="hd">
-    <h1>روش امتیازدهی و سه گزینه اعطای اعتبار</h1>
+    <h1>سه گزینه اعطای اعتبار</h1>
     <span class="sub">اعتبار روی قبض، یک‌ماهه، مهر ۱۴۰۵</span>
   </div>
 """)
@@ -280,9 +299,15 @@ W("""  <div class="ft">تعداد مشترکین از صورتحساب ۱۴۰۵�
 </div>
 """)
 
+# fill the drawing in last, so the per-cent signs in its CSS never meet a
+# format string
+html = (out.getvalue().replace("__SVGCSS__", SCH.CSS.strip())
+                      .replace("__SVG__", SCH.svg())
+                      .replace("__CAP__", SCH.CAPTION)
+                      .replace("__FN__", SCH.FOOTNOTE))
 io.open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                     "outputs", "dcb_slide_fa.html"), "w", encoding="utf-8").write(out.getvalue())
-print("written", len(out.getvalue()), "bytes")
+                     "outputs", "dcb_slide_fa.html"), "w", encoding="utf-8").write(html)
+print("written", len(html), "bytes")
 for (nm,_,_), m in zip(OPT, MET):
     print("  %-10s %s / %s / %s  ->  %s bn, %s pct, %s bn"
           % (nm, f(m["cnt"][1]), f(m["cnt"][2]), f(m["cnt"][3]),

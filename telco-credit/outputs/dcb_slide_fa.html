@@ -25,8 +25,33 @@
 html,body{height:100%}
 body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--fa);
   -webkit-font-smoothing:antialiased}
-.slide{min-height:100%;display:flex;flex-direction:column;
+html{scroll-snap-type:y mandatory}
+.slide{height:100vh;min-height:100vh;scroll-snap-align:start;break-after:page;
+  display:flex;flex-direction:column;
   justify-content:space-between;gap:calc(var(--u)*1.25);padding:calc(var(--u)*2.2) calc(var(--u)*3) calc(var(--u)*1.7);direction:rtl}
+.slide:last-child{break-after:auto}
+
+/* the schematic slide: the drawing takes whatever height the text leaves */
+.schw{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center}
+.schw svg{display:block;width:100%;height:auto;max-height:100%;color:var(--ink-2)}
+/* every rule is scoped to the svg: the deck slide that embeds this drawing
+   has its own .sub and must not inherit the drawing's */
+svg text{font-family:var(--fa);direction:rtl}
+svg .bx{fill:var(--panel);stroke:var(--line);stroke-width:1}
+svg .mdl{fill:color-mix(in srgb,var(--s1) 13%,var(--panel));
+     stroke:var(--s1);stroke-width:1.5}
+svg .out{fill:color-mix(in srgb,var(--s1) 9%,var(--panel));
+     stroke:color-mix(in srgb,var(--s1) 45%,var(--line));stroke-width:1.5}
+svg .ar{stroke:var(--ink-2);stroke-width:1.6;fill:none}
+svg .dash{stroke:var(--s1);stroke-width:1.4;stroke-dasharray:5 4;fill:none;opacity:.75}
+svg .srule{stroke:var(--line);stroke-width:1}
+svg .ttl{font-size:15.5px;font-weight:600;fill:var(--ink)}
+svg .sub{font-size:12.5px;fill:var(--ink-2)}
+svg .tag{font-size:11.5px;fill:var(--ink-3)}
+svg .al{font-size:11.5px;fill:var(--ink-3)}
+svg .sec{font-size:12.5px;font-weight:600;fill:var(--ink-3)}
+svg .big{font-size:25px;font-weight:700;fill:var(--s1)}
+svg .mt{font-size:15.5px;font-weight:600;fill:var(--s1)}
 
 .hd{display:flex;align-items:baseline;justify-content:space-between;gap:calc(var(--u)*2);
   border-bottom:2px solid var(--ink);padding-bottom:calc(var(--u)*1.1)}
@@ -105,7 +130,17 @@ tbody tr:last-child td{border-bottom:none}
 
 <div class="slide">
   <div class="hd">
-    <h1>روش امتیازدهی و سه گزینه اعطای اعتبار</h1>
+    <h1>مدل اعتبارسنجی &mdash; چطور کار می‌کند</h1>
+    <span class="sub">اعتبار روی قبض، یک‌ماهه، مهر ۱۴۰۵</span>
+  </div>
+  <div class="schw"><svg viewBox="0 0 1280 556" role="img" aria-label="مدل روی رفتار شش ماههٔ ۱۴۰۴ و نتیجهٔ شش ماه بعد آموزش دیده، سپس همان مدل روی رفتار شش ماه آخر اجرا می‌شود و احتمال نکول هر مشترک را می‌دهد؛ مشترکین در ده دهک مرتب می‌شوند و با قاعدهٔ سقف، هشت میلیون و هشتصد هزار نفر تأیید می‌شوند"><defs><marker id="ar" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs><text class="sec" x="1240" y="18" text-anchor="start">۱   مدل چطور یاد گرفت</text><line class="srule" x1="40" y1="28" x2="1240" y2="28"/><rect class="bx" x="920" y="40" width="320" height="124" rx="8"/><text class="ttl" x="1080" y="78" text-anchor="middle">رفتار ۶ ماههٔ مشترک</text><text class="sub" x="1080" y="102" text-anchor="middle">مهر تا اسفند ۱۴۰۴</text><text class="tag" x="1080" y="126" text-anchor="middle">۳۹ ویژگی از حساب خودش</text><rect class="mdl" x="550" y="40" width="240" height="124" rx="8"/><text class="mt" x="670" y="94" text-anchor="middle">آموزش مدل</text><text class="tag" x="670" y="118" text-anchor="middle">روی همین دوره</text><rect class="bx" x="40" y="40" width="380" height="124" rx="8"/><text class="ttl" x="230" y="78" text-anchor="middle">نتیجهٔ ۶ ماه بعد</text><text class="sub" x="230" y="102" text-anchor="middle">فروردین تا شهریور ۱۴۰۵</text><text class="tag" x="230" y="126" text-anchor="middle">بد = مشترکی که به قطع دوطرفه رسید</text><line class="ar" x1="916" y1="102" x2="794" y2="102" marker-end="url(#ar)"/><text class="al" x="855" y="86" text-anchor="middle">ویژگی‌ها</text><line class="ar" x1="424" y1="102" x2="546" y2="102" marker-end="url(#ar)"/><text class="al" x="485" y="86" text-anchor="middle">جوابِ درست</text><text class="tag" x="230" y="182" text-anchor="middle">در این دوره جواب معلوم است &mdash; مدل همین را یاد می‌گیرد</text><text class="sec" x="1240" y="214" text-anchor="start">۲   امروز چطور کار می‌کند</text><line class="srule" x1="40" y1="224" x2="1240" y2="224"/><rect class="bx" x="920" y="236" width="320" height="124" rx="8"/><text class="ttl" x="1080" y="274" text-anchor="middle">رفتار ۶ ماههٔ مشترک</text><text class="sub" x="1080" y="298" text-anchor="middle">فروردین تا شهریور ۱۴۰۵</text><text class="tag" x="1080" y="322" text-anchor="middle">همان ۳۹ ویژگی</text><rect class="mdl" x="550" y="236" width="240" height="124" rx="8"/><text class="mt" x="670" y="290" text-anchor="middle">همان مدل</text><text class="tag" x="670" y="314" text-anchor="middle">بدون تغییر</text><rect class="out" x="40" y="236" width="380" height="124" rx="8"/><text class="ttl" x="230" y="274" text-anchor="middle">احتمال نکول هر مشترک</text><text class="sub" x="230" y="298" text-anchor="middle">برای هر یک از ۹٬۳۴۴٬۷۲۳ مشترک</text><text class="tag" x="230" y="322" text-anchor="middle">از ۴۱٫۳ میلیون مشترک دائمی، پس از غربال</text><line class="ar" x1="916" y1="298" x2="794" y2="298" marker-end="url(#ar)"/><text class="al" x="855" y="282" text-anchor="middle">ویژگی‌ها</text><line class="ar" x1="546" y1="298" x2="424" y2="298" marker-end="url(#ar)"/><text class="al" x="485" y="282" text-anchor="middle">پیش‌بینی</text><text class="tag" x="230" y="378" text-anchor="middle">در این دوره جواب معلوم نیست &mdash; مدل آن را می‌گوید</text><line class="dash" x1="670" y1="164" x2="670" y2="232" marker-end="url(#ar)"/><text class="sec" x="1240" y="412" text-anchor="start">۳   امتیاز چطور به تصمیم تبدیل می‌شود</text><line class="srule" x1="40" y1="422" x2="1240" y2="422"/><rect class="bx" x="820" y="434" width="420" height="108" rx="8"/><text class="ttl" x="1030" y="474" text-anchor="middle">۱۰ دهک، از کم‌ریسک به پرریسک</text><text class="sub" x="1030" y="500" text-anchor="middle">هر دهک ۹۳۴٬۴۷۲ مشترک</text><line class="ar" x1="816" y1="488" x2="464" y2="488" marker-end="url(#ar)"/><text class="al" x="660" y="472" text-anchor="middle">قاعدهٔ سقف</text><text class="al" x="660" y="506" text-anchor="middle">وام هر نفر کمتر از قبض یک ماهش</text><rect class="out" x="40" y="434" width="420" height="108" rx="8"/><text class="big" x="250" y="478" text-anchor="middle">۸٬۸۰۱٬۷۷۲</text><text class="sub" x="250" y="506" text-anchor="middle">مشترک تأییدشده &mdash; سقف ۱۰۰ هزار تا ۱ میلیون تومان</text></svg></div>
+  <p class="note">تفاوت ساختاری دو ردیف بالا فقط در جهت یک فلش است: <b>در آموزش، نتیجه وارد مدل می‌شود؛ در امتیازدهی، پیش‌بینی از مدل بیرون می‌آید.</b> ورودی هر دو ردیف یکی است &mdash; ۶ ماه رفتار حساب و همان ۳۹ ویژگی &mdash; و همین است که اجازه می‌دهد عملکرد اندازه‌گیری‌شده روی گذشته به امروز تعمیم داده شود. دقت مدل روی دادهٔ کنارگذاشته <b>۰٫۸۳</b> است.</p>
+  <div class="ft">۳۹ ویژگی، همه از رفتار حساب خود مشترک &mdash; مصرف و درآمد، رفتار پرداخت، بدهی و اعتبار باز، سابقهٔ قطع سرویس، قدمت خط. هیچ داده شخصی، مکانی یا جمعیتی در مدل نیست&#1563; پنجرهٔ نتیجه ۶ ماه است: ۴ قبضی که اقساط رویشان می‌نشیند، به‌علاوهٔ ۲ ماه مهلت تا قسط آخر هم دیده شود&#1563; «قطع دوطرفه» حدود سه ماه بعد از شروع عدم پرداخت رخ می‌دهد، پس نشانهٔ دیررسی است: خرابی‌های اواخر پنجره دیده نمی‌شوند و نرخ بد کمتر از واقع برآورد می‌شود&#1563; مدل، درخت‌های تصمیم تقویت‌شده با کالیبراسیون است.</div>
+</div>
+
+<div class="slide">
+  <div class="hd">
+    <h1>سه گزینه اعطای اعتبار</h1>
     <span class="sub">اعتبار روی قبض، یک‌ماهه، مهر ۱۴۰۵</span>
   </div>
   <div class="flow">
