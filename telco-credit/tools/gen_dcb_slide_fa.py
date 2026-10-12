@@ -72,7 +72,7 @@ W("""<title>سه گزینه اعطای اعتبار</title>
   --rule:rgba(11,11,11,0.10); --line:#e2e1db;
   --s1:#2a78d6; --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
   --fa:"Vazirmatn","Noto Sans Arabic",Tahoma,system-ui,sans-serif;
-  --u:clamp(9px, 1.26vmin, 20px);
+  --u:clamp(9px, 1.19vmin, 20px);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   color-scheme:dark;
@@ -89,7 +89,7 @@ html,body{height:100%}
 body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--fa);
   -webkit-font-smoothing:antialiased}
 .slide{min-height:100%;display:flex;flex-direction:column;
-  justify-content:space-between;gap:calc(var(--u)*1.25);padding:calc(var(--u)*2.2) calc(var(--u)*3);direction:rtl}
+  justify-content:space-between;gap:calc(var(--u)*1.25);padding:calc(var(--u)*2.2) calc(var(--u)*3) calc(var(--u)*1.7);direction:rtl}
 
 .hd{display:flex;align-items:baseline;justify-content:space-between;gap:calc(var(--u)*2);
   border-bottom:2px solid var(--ink);padding-bottom:calc(var(--u)*1.1)}
@@ -106,6 +106,12 @@ body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--fa);
 .fx .t{font-size:calc(var(--u)*1.05);color:var(--ink-2);line-height:1.5}
 .note{font-size:calc(var(--u)*1.02);color:var(--ink-3);line-height:1.62;margin:0}
 .note b{color:var(--ink-2)}
+
+.fam{display:flex;gap:calc(var(--u)*0.6)}
+.fm{flex:1 1 0;min-width:0;border-top:2px solid var(--s1);padding-top:calc(var(--u)*0.5)}
+.fm b{display:block;font-size:calc(var(--u)*1.12);font-weight:600;line-height:1.35}
+.fm span{display:block;font-size:calc(var(--u)*0.92);color:var(--ink-3);
+  line-height:1.5;margin-top:calc(var(--u)*0.15)}
 
 /* the matrix */
 table{width:100%;border-collapse:collapse;font-size:calc(var(--u)*1.25)}
@@ -160,18 +166,29 @@ W("""  <div class="hd">
 """)
 
 # ----------------------------------------------------------------- method
+FAMILIES = [("مصرف و درآمد", "درآمد هر ماه، روند، ماه‌های بدون مصرف"),
+            ("رفتار پرداخت", "مجموع پرداختی و تعداد ماه‌های پرداخت"),
+            ("بدهی و اعتبار باز", "مانده بدهی و اعتبار در دسترس"),
+            ("سابقه قطع سرویس", "قطع یک‌طرفه و دوطرفه در سال قبل"),
+            ("قدمت خط", "سن خط و ماه‌هایی که فعال بوده")]
+
 STEPS = [(mi(BASE) + " میلیون", "مشترک دائمی", False),
          (mi(SCORED) + " میلیون", "پس از غربال درآمد و سابقه قطعی", False),
-         ("۳۹ ویژگی", "درآمد، پرداخت، سابقه قطعی، سابقه سال قبل", False),
+         ("امتیازدهی", "۳۹ ویژگی در ۵ خانواده، شرح زیر", False),
          (f(APPROVED), "تأییدشده برای اعطای اعتبار", True)]
 W('  <div class="flow">\n')
 for n, t, on in STEPS:
     W('    <div class="fx%s"><span class="n">%s</span><span class="t">%s</span></div>\n'
       % (" on" if on else "", n, t))
 W("""  </div>
-  <p class="note">مدل به هر مشترک یک امتیاز می‌دهد و آن‌ها را از کم‌ریسک به پرریسک
-  مرتب می‌کند. دقت مدل روی داده آزمون <b>%s</b> است. سقف اعتبار از روی همین ترتیب
-  تعیین می‌شود &mdash; سه گزینه زیر فقط در این تعیین سقف با هم فرق دارند.</p>
+  <div class="fam">
+""")
+for t, d in FAMILIES:
+    W('    <div class="fm"><b>%s</b><span>%s</span></div>\n' % (t, d))
+W("""  </div>
+  <p class="note"><b>۳۹ ویژگی</b>، همه از رفتار حساب خود مشترک &mdash; هیچ داده شخصی،
+  مکانی یا جمعیتی در مدل نیست. دقت روی داده آزمون <b>%s</b>.
+  <b>سابقه قطع سرویس سال قبل به‌تنهایی ۹۲ درصد بهبود مدل را می‌دهد.</b></p>
 """ % fa("{:.2f}".format(AUC)))
 
 # ----------------------------------------------------------------- matrix
@@ -182,6 +199,7 @@ W("""  <table>
       <th>میانگین وام<br>هر نفر &mdash; تومان</th>
       <th>مبلغ هر بار اعطا<br>میلیارد تومان</th>
       <th>اعطایی در یک سال<br>%s بار &mdash; میلیارد</th>
+      <th>نرخ نکول هر وام<br>وزن‌دار بر حسب مبلغ</th>
       <th>زیان سالانه<br>میلیارد تومان</th>
     </tr></thead>
     <tbody>
@@ -191,13 +209,15 @@ for (nm, tag, _), m in zip(OPT, MET):
     for b in (1, 2, 3):
         cls = ' class="band3"' if b == 3 and m["cnt"][b] else ""
         W('<td%s>%s</td>' % (cls, f(m["cnt"][b]) if m["cnt"][b] else "&mdash;"))
-    W('<td>%s</td><td>%s</td><td class="on1">%s</td><td>%s</td></tr>\n'
-      % (f(m["avg"]), f(m["per_round"]), f(m["ann"]), d1(m["loss"])))
+    W('<td>%s</td><td>%s</td><td class="on1">%s</td><td>%s درصد</td><td>%s</td></tr>\n'
+      % (f(m["avg"]), f(m["per_round"]), f(m["ann"]), d3(100*m["pd1"]), d1(m["loss"])))
 W("""    </tbody>
   </table>
   <p class="note">سه ستون اول <b>مشترکین تأییدشده</b> در هر باند سقف است. ستون‌های
   مبلغ با <b>ضریب نفوذ %s درصد</b> حساب شده‌اند، یعنی %s نفر از %s تأییدشده در هر
-  بار وام می‌گیرند. <b>با این فرض، حتی گزینه گسترده فقط %s درصد هدف ۱۵٬۰۰۰ میلیاردی
+  بار وام می‌گیرند. <b>نرخ نکول وزن‌دار بر حسب مبلغ است، نه تعداد نفرات</b>، برای همین
+  در گزینه گسترده پایین‌تر می‌آید: پول بیشتری به دست کم‌ریسک‌ترین دهک‌ها می‌رسد. ولی
+  چون مبلغ کل بزرگ‌تر است، زیان مطلق همچنان بالاتر می‌رود. <b>با این فرض، حتی گزینه گسترده فقط %s درصد هدف ۱۵٬۰۰۰ میلیاردی
   را پوشش می‌دهد</b> &mdash; رسیدن به هدف نیاز دارد هر وام‌گیرنده حدود %s بار در سال
   وام بگیرد، یعنی تقریباً هر ماه.</p>
 """ % (fa(int(TAKE*100)), f(MET[0]["borrowers"]), f(APPROVED),
@@ -209,7 +229,6 @@ W("""  <div class="two">
     <div class="box">
       <h2>چطور حساب شده</h2>
       <table><tbody>
-        <tr><td>مشترکین تأییدشده</td><td class="num">%s نفر</td></tr>
         <tr><td>ضریب نفوذ</td><td class="num">%s درصد</td></tr>
         <tr><td>وام‌گیرنده در هر بار</td><td class="num">%s نفر</td></tr>
         <tr><td>دفعات وام در سال</td><td class="num">%s بار</td></tr>
@@ -224,13 +243,13 @@ W("""  <div class="two">
       ۵۰۰ هزار تا ۱ میلیون می‌گذارد.</p>
     </div>
   </div>
-""" % (f(APPROVED), fa(int(TAKE*100)), f(MET[0]["borrowers"]), fa(ROUNDS),
+""" % (fa(int(TAKE*100)), f(MET[0]["borrowers"]), fa(ROUNDS),
        f(CARRY[500_000]), f(MET[1]["cnt"][3]), f(MET[2]["cnt"][3])))
 
 W("""  <div class="ft">تعداد مشترکین از صورتحساب ۱۴۰۵۰۱ تا ۱۴۰۵۰۶ &middot;
   امتیاز و ترتیب ریسک از مدل بازآموزی‌شده ۱۴۰۵/۰۷/۱۴ &middot;
-  هر بار وام یک ماهه است و زیان از نرخ نکول یک‌ماهه وزن‌دار بر حسب مبلغ به دست
-  آمده &middot; ضریب نفوذ و دفعات وام در سال، فرض است و اندازه‌گیری نشده</div>
+  هر مقدار ریالی به‌صورت نسبت به میانه جمعیت هم وارد مدل می‌شود تا تورم امتیاز را
+  جابه‌جا نکند &middot; هر بار وام یک ماهه است &middot; ضریب نفوذ و دفعات وام در سال، فرض است و اندازه‌گیری نشده</div>
 </div>
 """)
 

@@ -9,7 +9,7 @@
   --rule:rgba(11,11,11,0.10); --line:#e2e1db;
   --s1:#2a78d6; --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
   --fa:"Vazirmatn","Noto Sans Arabic",Tahoma,system-ui,sans-serif;
-  --u:clamp(9px, 1.26vmin, 20px);
+  --u:clamp(9px, 1.19vmin, 20px);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   color-scheme:dark;
@@ -26,7 +26,7 @@ html,body{height:100%}
 body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--fa);
   -webkit-font-smoothing:antialiased}
 .slide{min-height:100%;display:flex;flex-direction:column;
-  justify-content:space-between;gap:calc(var(--u)*1.25);padding:calc(var(--u)*2.2) calc(var(--u)*3);direction:rtl}
+  justify-content:space-between;gap:calc(var(--u)*1.25);padding:calc(var(--u)*2.2) calc(var(--u)*3) calc(var(--u)*1.7);direction:rtl}
 
 .hd{display:flex;align-items:baseline;justify-content:space-between;gap:calc(var(--u)*2);
   border-bottom:2px solid var(--ink);padding-bottom:calc(var(--u)*1.1)}
@@ -43,6 +43,12 @@ body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--fa);
 .fx .t{font-size:calc(var(--u)*1.05);color:var(--ink-2);line-height:1.5}
 .note{font-size:calc(var(--u)*1.02);color:var(--ink-3);line-height:1.62;margin:0}
 .note b{color:var(--ink-2)}
+
+.fam{display:flex;gap:calc(var(--u)*0.6)}
+.fm{flex:1 1 0;min-width:0;border-top:2px solid var(--s1);padding-top:calc(var(--u)*0.5)}
+.fm b{display:block;font-size:calc(var(--u)*1.12);font-weight:600;line-height:1.35}
+.fm span{display:block;font-size:calc(var(--u)*0.92);color:var(--ink-3);
+  line-height:1.5;margin-top:calc(var(--u)*0.15)}
 
 /* the matrix */
 table{width:100%;border-collapse:collapse;font-size:calc(var(--u)*1.25)}
@@ -94,12 +100,19 @@ tbody tr:last-child td{border-bottom:none}
   <div class="flow">
     <div class="fx"><span class="n">۴۱٫۳ میلیون</span><span class="t">مشترک دائمی</span></div>
     <div class="fx"><span class="n">۹٫۳ میلیون</span><span class="t">پس از غربال درآمد و سابقه قطعی</span></div>
-    <div class="fx"><span class="n">۳۹ ویژگی</span><span class="t">درآمد، پرداخت، سابقه قطعی، سابقه سال قبل</span></div>
+    <div class="fx"><span class="n">امتیازدهی</span><span class="t">۳۹ ویژگی در ۵ خانواده، شرح زیر</span></div>
     <div class="fx on"><span class="n">۸٬۸۰۱٬۷۷۲</span><span class="t">تأییدشده برای اعطای اعتبار</span></div>
   </div>
-  <p class="note">مدل به هر مشترک یک امتیاز می‌دهد و آن‌ها را از کم‌ریسک به پرریسک
-  مرتب می‌کند. دقت مدل روی داده آزمون <b>۰٫۸۳</b> است. سقف اعتبار از روی همین ترتیب
-  تعیین می‌شود &mdash; سه گزینه زیر فقط در این تعیین سقف با هم فرق دارند.</p>
+  <div class="fam">
+    <div class="fm"><b>مصرف و درآمد</b><span>درآمد هر ماه، روند، ماه‌های بدون مصرف</span></div>
+    <div class="fm"><b>رفتار پرداخت</b><span>مجموع پرداختی و تعداد ماه‌های پرداخت</span></div>
+    <div class="fm"><b>بدهی و اعتبار باز</b><span>مانده بدهی و اعتبار در دسترس</span></div>
+    <div class="fm"><b>سابقه قطع سرویس</b><span>قطع یک‌طرفه و دوطرفه در سال قبل</span></div>
+    <div class="fm"><b>قدمت خط</b><span>سن خط و ماه‌هایی که فعال بوده</span></div>
+  </div>
+  <p class="note"><b>۳۹ ویژگی</b>، همه از رفتار حساب خود مشترک &mdash; هیچ داده شخصی،
+  مکانی یا جمعیتی در مدل نیست. دقت روی داده آزمون <b>۰٫۸۳</b>.
+  <b>سابقه قطع سرویس سال قبل به‌تنهایی ۹۲ درصد بهبود مدل را می‌دهد.</b></p>
   <table>
     <thead><tr>
       <th>گزینه</th>
@@ -107,24 +120,26 @@ tbody tr:last-child td{border-bottom:none}
       <th>میانگین وام<br>هر نفر &mdash; تومان</th>
       <th>مبلغ هر بار اعطا<br>میلیارد تومان</th>
       <th>اعطایی در یک سال<br>۳ بار &mdash; میلیارد</th>
+      <th>نرخ نکول هر وام<br>وزن‌دار بر حسب مبلغ</th>
       <th>زیان سالانه<br>میلیارد تومان</th>
     </tr></thead>
     <tbody>
-      <tr><td class="opt">کم‌ریسک<em>سقف‌ها پایین، تمرکز روی باند اول</em></td><td>۶٬۹۳۲٬۸۲۸</td><td>۱٬۸۶۸٬۹۴۴</td><td>&mdash;</td><td>۲۴۲٬۴۶۷</td><td>۶۴۰</td><td class="on1">۱٬۹۲۱</td><td>۲٫۲</td></tr>
-      <tr><td class="opt">محتاطانه<em>یک دهک در باند بالا</em></td><td>۵٬۰۶۳٬۸۸۳</td><td>۲٬۸۰۳٬۴۱۷</td><td class="band3">۹۳۴٬۴۷۲</td><td>۳۲۲٬۰۹۴</td><td>۸۵۰</td><td class="on1">۲٬۵۵۱</td><td>۲٫۵</td></tr>
-      <tr><td class="opt">گسترده<em>سه دهک در باند بالا</em></td><td>۲٬۲۶۰٬۴۶۶</td><td>۳٬۷۳۷٬۸۹۰</td><td class="band3">۲٬۸۰۳٬۴۱۶</td><td>۴۶۰٬۱۱۳</td><td>۱٬۲۱۵</td><td class="on1">۳٬۶۴۵</td><td>۳٫۳</td></tr>
+      <tr><td class="opt">کم‌ریسک<em>سقف‌ها پایین، تمرکز روی باند اول</em></td><td>۶٬۹۳۲٬۸۲۸</td><td>۱٬۸۶۸٬۹۴۴</td><td>&mdash;</td><td>۲۴۲٬۴۶۷</td><td>۶۴۰</td><td class="on1">۱٬۹۲۱</td><td>۰٫۱۱۳ درصد</td><td>۲٫۲</td></tr>
+      <tr><td class="opt">محتاطانه<em>یک دهک در باند بالا</em></td><td>۵٬۰۶۳٬۸۸۳</td><td>۲٬۸۰۳٬۴۱۷</td><td class="band3">۹۳۴٬۴۷۲</td><td>۳۲۲٬۰۹۴</td><td>۸۵۰</td><td class="on1">۲٬۵۵۱</td><td>۰٫۰۹۷ درصد</td><td>۲٫۵</td></tr>
+      <tr><td class="opt">گسترده<em>سه دهک در باند بالا</em></td><td>۲٬۲۶۰٬۴۶۶</td><td>۳٬۷۳۷٬۸۹۰</td><td class="band3">۲٬۸۰۳٬۴۱۶</td><td>۴۶۰٬۱۱۳</td><td>۱٬۲۱۵</td><td class="on1">۳٬۶۴۵</td><td>۰٫۰۹۲ درصد</td><td>۳٫۳</td></tr>
     </tbody>
   </table>
   <p class="note">سه ستون اول <b>مشترکین تأییدشده</b> در هر باند سقف است. ستون‌های
   مبلغ با <b>ضریب نفوذ ۳۰ درصد</b> حساب شده‌اند، یعنی ۲٬۶۴۰٬۵۳۲ نفر از ۸٬۸۰۱٬۷۷۲ تأییدشده در هر
-  بار وام می‌گیرند. <b>با این فرض، حتی گزینه گسترده فقط ۲۴ درصد هدف ۱۵٬۰۰۰ میلیاردی
+  بار وام می‌گیرند. <b>نرخ نکول وزن‌دار بر حسب مبلغ است، نه تعداد نفرات</b>، برای همین
+  در گزینه گسترده پایین‌تر می‌آید: پول بیشتری به دست کم‌ریسک‌ترین دهک‌ها می‌رسد. ولی
+  چون مبلغ کل بزرگ‌تر است، زیان مطلق همچنان بالاتر می‌رود. <b>با این فرض، حتی گزینه گسترده فقط ۲۴ درصد هدف ۱۵٬۰۰۰ میلیاردی
   را پوشش می‌دهد</b> &mdash; رسیدن به هدف نیاز دارد هر وام‌گیرنده حدود ۱۲ بار در سال
   وام بگیرد، یعنی تقریباً هر ماه.</p>
   <div class="two">
     <div class="box">
       <h2>چطور حساب شده</h2>
       <table><tbody>
-        <tr><td>مشترکین تأییدشده</td><td class="num">۸٬۸۰۱٬۷۷۲ نفر</td></tr>
         <tr><td>ضریب نفوذ</td><td class="num">۳۰ درصد</td></tr>
         <tr><td>وام‌گیرنده در هر بار</td><td class="num">۲٬۶۴۰٬۵۳۲ نفر</td></tr>
         <tr><td>دفعات وام در سال</td><td class="num">۳ بار</td></tr>
@@ -141,6 +156,6 @@ tbody tr:last-child td{border-bottom:none}
   </div>
   <div class="ft">تعداد مشترکین از صورتحساب ۱۴۰۵۰۱ تا ۱۴۰۵۰۶ &middot;
   امتیاز و ترتیب ریسک از مدل بازآموزی‌شده ۱۴۰۵/۰۷/۱۴ &middot;
-  هر بار وام یک ماهه است و زیان از نرخ نکول یک‌ماهه وزن‌دار بر حسب مبلغ به دست
-  آمده &middot; ضریب نفوذ و دفعات وام در سال، فرض است و اندازه‌گیری نشده</div>
+  هر مقدار ریالی به‌صورت نسبت به میانه جمعیت هم وارد مدل می‌شود تا تورم امتیاز را
+  جابه‌جا نکند &middot; هر بار وام یک ماهه است &middot; ضریب نفوذ و دفعات وام در سال، فرض است و اندازه‌گیری نشده</div>
 </div>
