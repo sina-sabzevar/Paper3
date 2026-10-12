@@ -15,6 +15,20 @@ from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
 from pptx.oxml.ns import qn
+import os
+from PIL import Image
+
+ICONS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "assets", "icons")
+
+
+def icon(slide, name, cx, cy, h):
+    """one of the house icons, centred on (cx, cy) at height h in points."""
+    path = os.path.join(ICONS, name + ".png")
+    iw, ih = Image.open(path).size
+    w = h * iw / float(ih)
+    return slide.shapes.add_picture(path, P(cx - w / 2.0), P(cy - h / 2.0),
+                                    P(w), P(h))
 
 
 def _no_theme_style(shape):

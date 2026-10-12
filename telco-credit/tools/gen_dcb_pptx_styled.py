@@ -18,7 +18,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import MSO_ANCHOR
 from dcb_numbers import *                                    # noqa: F401,F403
 import pptx_fa as F
-from pptx_fa import (P, W, H, text, rect, oval, line, strip_table_style,
+from pptx_fa import (P, W, H, text, rect, oval, line, icon, strip_table_style,
                      cell_borders, cell_fill, cell_text)
 
 F.FONT = "IRANSansXFaNum"            # the font the house deck is set in
@@ -106,21 +106,22 @@ def by_band():
 
 BB = by_band()
 
-CARDS = [("۱", "🔎", "غربال و واجد شرایط",
+CARDS = [("۱", "screen", "غربال و واجد شرایط",
           "از " + fa("{:.1f}".format(BASE_SUB / 1e6)) + " میلیون مشترک دائمی، "
           + mi(SCORED) + " میلیون پس از غربال درآمد و سابقه قطعی وارد امتیازدهی می‌شوند.",
           ["درآمد ماهانه", "سابقه قطعی", "قدمت خط"]),
-         ("۲", "🧠", "مدل‌سازی رفتار اعتباری",
+         ("۲", "brain", "مدل‌سازی رفتار اعتباری",
           "آموزش روی رفتار حساب خود مشترک با " + fa(NFEAT) + " ویژگی در ۵ خانواده. "
           "دقت مدل روی دادهٔ کنارگذاشته " + fa("{:.2f}".format(AUC)) + " است.",
           ["HistGB", "WOE Logistic", "Isotonic"]),
-         ("۳", "🎯", "تعیین سقف و اعطا",
+         ("۳", "card", "تعیین سقف و اعطا",
           "رتبه‌بندی ۱۰ دهکی و قاعدهٔ سقف: وام هر نفر کمتر از قبض یک ماهش بماند، "
           "وگرنه احتمال نکول نزدیک دو برابر می‌شود.",
           ["۱۰۰ تا ۳۰۰", "۳۰۰ تا ۵۰۰", "۵۰۰ تا ۱٬۰۰۰ هزار"])]
 
 COLW = [150, 118, 76, 110, 104, 68, 110, 92, 76]
-ICON = ["💳", "👥", "📈", "🧑", "🪙", "🔁", "💰", "📉", "🧮"]
+ICON = ["card_w", "people", "percent", "users", "coins", "repeat",
+        "bag", "percent", "calc"]
 HEAD = ["سقف وام", "مشترکین تأییدشده", "ضریب نفوذ", "وام‌گیرنده",
         "مبلغ هر بار اعطا", "ضریب تکرار", "مبلغ تا پایان سال", "نرخ نکول", "زیان"]
 UNIT = [None, "نفر", "از باند", "نفر", "میلیارد تومان", "تا اسفند",
@@ -139,8 +140,9 @@ def build(prs):
     chev.line.fill.background()
 
     rect(sl, M, 16, 210, 28, BAND, None, radius=0.34)
-    text(sl, M + 10, 16, 190, 28,
-         [[("🏦  ", 10, False, WHITE, EM), (f(APPROVED), 12, True, WHITE),
+    icon(sl, "net_w", M + 24, 30, 16)
+    text(sl, M + 10, 16, 168, 28,
+         [[(f(APPROVED), 12, True, WHITE),
            ("  تأییدشده", 8, False, RGBColor(0xB9, 0xCF, 0xEE))]], align="r")
     text(sl, RIGHT - 660, 14, 660, 24,
          [("اعطای اعتبار روی قبض مشترکین دائمی: از امتیازدهی تا سه گزینه اعطا",
@@ -151,13 +153,13 @@ def build(prs):
 
     # ---------------------------------------------------------------- cards
     cw, cy, ch = (RIGHT - M - 24) / 3.0, 52.0, 68.0
-    for i, (num, icon, title, body, pills) in enumerate(CARDS):
+    for i, (num, ic, title, body, pills) in enumerate(CARDS):
         x = RIGHT - cw - i * (cw + 12)
         rect(sl, x, cy, cw, ch, CARD, CARDBD, radius=0.09)
         oval(sl, x + 9, cy + 8, 20, 20, NAVY)
         text(sl, x + 9, cy + 8, 20, 20, [(num, 9, True, WHITE)])
         oval(sl, x + 9, cy + 34, 26, 26, PILL, CARDBD)
-        text(sl, x + 9, cy + 34, 26, 26, [(icon, 11, False, BLUE, EM)])
+        icon(sl, ic, x + 22, cy + 47, 15)
         text(sl, x + 34, cy + 7, cw - 46, 14, [(title, 10, True, INK)], align="r")
         text(sl, x + 42, cy + 22, cw - 54, 24, [(body, 7.2, False, INK2)],
              align="r", wrap=True, anchor=MSO_ANCHOR.TOP, line_spacing=1.35)
@@ -182,6 +184,9 @@ def build(prs):
     for r, h in enumerate(heights):
         tbl.rows[r].height = P(h)
     c = lambda r, lo: tbl.cell(r, 8 - lo)                    # noqa: E731
+    xs = [RIGHT]                       # the right edge of each logical column
+    for w in COLW:
+        xs.append(xs[-1] - w)
     for r in range(nrow):
         for j in range(9):
             cell_fill(tbl.cell(r, j), None)
@@ -189,10 +194,12 @@ def build(prs):
 
     for lo in range(9):
         cell_fill(c(0, lo), HDR)
-        lines = [(ICON[lo], 9, False, WHITE, EM), (HEAD[lo], 8.5, True, WHITE)]
+        lines = [(HEAD[lo], 8.5, True, WHITE)]
         if UNIT[lo]:
             lines.append((UNIT[lo], 6.8, False, RGBColor(0xA9, 0xC6, 0xEA)))
-        cell_text(c(0, lo), lines, pad=(3, 3, 3, 3), wrap=True)
+        cell_text(c(0, lo), lines, pad=(3, 3, 3, 3), wrap=True,
+                  anchor=MSO_ANCHOR.BOTTOM)
+        icon(sl, ICON[lo], (xs[lo] + xs[lo + 1]) / 2.0, TY + 9, 11)
 
     DASH = "\u2014"
     for k, blk in enumerate(BB):
@@ -207,9 +214,10 @@ def build(prs):
             rr = top + 1 + i
             fill = ROW1 if i % 2 == 0 else ROW2
             cell_fill(c(rr, 0), fill)
-            cell_text(c(rr, 0), [[("👤  ", 8, False, BLUE, EM),
-                                  (LABEL[r["b"]] + " تومان", 7.5, True, INK)]],
-                      align="r", pad=(1, 10, 1, 6))
+            cell_text(c(rr, 0), [(LABEL[r["b"]] + " تومان", 7.5, True, INK)],
+                      align="r", pad=(1, 24, 1, 6))
+            icon(sl, "person", RIGHT - 13, TY + HH + k * BLK + TH + i * RH + RH / 2,
+                 11)
             vals = ([DASH] * 8 if not r["n"] else
                     [f(r["n"]), fa(int(round(100 * r["take"]))) + " درصد",
                      f(r["bor"]), d1(r["once"]), fa(r["rep"]) + " بار",
@@ -227,9 +235,9 @@ def build(prs):
         for j in range(9):
             cell_fill(tbl.cell(sr, j), HDR)
             cell_borders(tbl.cell(sr, j), "", HDR)
-        cell_text(c(sr, 0), [[("🧮  ", 8.5, False, WHITE, EM),
-                              ("مجموع گزینه " + blk["nm"], 9, True, WHITE)]],
-                  align="r", pad=(1, 10, 1, 6))
+        cell_text(c(sr, 0), [("مجموع گزینه " + blk["nm"], 9, True, WHITE)],
+                  align="r", pad=(1, 26, 1, 6))
+        icon(sl, "calc", RIGHT - 14, TY + HH + k * BLK + TH + 3 * RH + SH / 2, 12)
         for j, v in enumerate([f(t["n"]), d1(100 * t["take"]) + " درصد",
                                f(t["bor"]), d1(t["once"]), DASH, d1(t["tot"]),
                                d3(100 * t["pd1"]) + " درصد", d2(t["loss"])], start=1):
@@ -247,7 +255,7 @@ def build(prs):
     # ---------------------------------------------------------------- notes
     AY = 462.0
     rect(sl, M, AY, RIGHT - M, 30, PILL, CARDBD, radius=0.3)
-    text(sl, RIGHT - 34, AY, 26, 30, [("🔁", 12, False, BLUE, EM)])
+    icon(sl, "repeat_b", RIGHT - 21, AY + 15, 14)
     text(sl, M + 12, AY, RIGHT - M - 56, 30,
          [("تکرار وام تا پایان سال: سقف‌های ۳۰۰ و ۵۰۰ هزار دو بار، سقف ۱ میلیون "
            "یک بار  &nbsp;|&nbsp;  ضریب نفوذ به تفکیک باند ۱۵، ۱۳ و ۱۰ درصد  "
@@ -255,7 +263,7 @@ def build(prs):
            .replace("&nbsp;", " "), 8.5, True, NAVY)], align="r")
 
     text(sl, M, AY + 32, RIGHT - M, 30,
-         [[("⚠️  ", 7.5, False, INK3, EM), ("قاعدهٔ سقف می‌گوید وام باید از قبض یک ماه مشترک کمتر بماند، ولی فقط "
+         [[("", 1, False, INK3), ("قاعدهٔ سقف می‌گوید وام باید از قبض یک ماه مشترک کمتر بماند، ولی فقط "
            + f(CARRY[500_000]) + " مشترک قبض بالای ۵۰۰ هزار تومان دارند؛ ضریب نفوذ "
            "و دفعات وام فرض است و اندازه‌گیری نشده؛ نرخ نکول وزن‌دار بر حسب مبلغ است، "
            "نه تعداد نفرات؛ برای مقایسه، با ۳ بار وام در سال اعطایی "
