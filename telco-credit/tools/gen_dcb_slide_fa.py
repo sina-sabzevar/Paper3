@@ -32,7 +32,9 @@ OPT = [("کم‌ریسک",  "سقف‌ها پایین، تمرکز روی بان
         [3,2,2,2,1,1,1,1,1,1]),
        ("گسترده",   "سه دهک در باند بالا",
         [3,3,3,2,2,2,2,1,1,1])]
-TAKE, ROUNDS = 0.30, 3        # ضریب نفوذ و دفعات وام در سال
+# ضریب نفوذ به تفکیک باند: وام بزرگ‌تر، نفوذ کمتر
+TAKE   = {1: 0.15, 2: 0.13, 3: 0.10}
+ROUNDS = 3
 # 56 D3: how many customers bill enough to carry each draw under the rule
 CARRY = {200_000: 3_013_027, 300_000: 1_455_303, 500_000: 369_677}
 
@@ -40,11 +42,12 @@ def metrics(assign):
     cnt = {1:0, 2:0, 3:0}
     for i, b in enumerate(assign): cnt[b] += BANDS[i][0]
     assert sum(cnt.values()) == APPROVED
-    # TAKE of each band borrows, every one of them ROUNDS times a year
-    borrowers = APPROVED * TAKE
-    per_round = sum(BANDS[i][0]*TAKE*MID[assign[i]] for i in range(10))
-    gross     = sum(BANDS[i][0]*MID[assign[i]] for i in range(10))
-    pd1 = sum(BANDS[i][0]*MID[assign[i]]*BANDS[i][1] for i in range(10))/gross/3.0
+    # each band has its own take-up, so the borrower count AND the exposure
+    # mix differ between options, and the rate has to follow them
+    borrowers = sum(BANDS[i][0]*TAKE[assign[i]] for i in range(10))
+    per_round = sum(BANDS[i][0]*TAKE[assign[i]]*MID[assign[i]] for i in range(10))
+    pd1 = sum(BANDS[i][0]*TAKE[assign[i]]*MID[assign[i]]*BANDS[i][1]
+              for i in range(10))/per_round/3.0
     ann = per_round*ROUNDS/1e9
     return dict(cnt=cnt, borrowers=borrowers, avg=per_round/borrowers,
                 per_round=per_round/1e9, ann=ann, pd1=pd1, loss=ann*pd1)
@@ -114,10 +117,18 @@ body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--fa);
   line-height:1.5;margin-top:calc(var(--u)*0.15)}
 
 /* the matrix */
-table{width:100%;border-collapse:collapse;font-size:calc(var(--u)*1.25)}
-th,td{padding:calc(var(--u)*0.66) calc(var(--u)*0.8);text-align:center;
+table{width:100%;border-collapse:collapse;font-size:calc(var(--u)*1.18)}
+@media (max-width:1400px){table{font-size:calc(var(--u)*1.08)}
+  thead th{font-size:calc(var(--u)*0.9)}
+  tr.grp th{font-size:calc(var(--u)*0.86)}}
+th,td{padding:calc(var(--u)*0.6) calc(var(--u)*0.5);text-align:center;
   border-bottom:1px solid var(--line);white-space:nowrap}
-th:first-child,td:first-child{text-align:start;white-space:normal}
+th:first-child,td:first-child{text-align:start;white-space:normal;
+  padding-inline-start:0;padding-inline-end:calc(var(--u)*0.9)}
+tr.grp th{font-size:calc(var(--u)*0.95);font-weight:600;color:var(--ink-2);
+  border-bottom:1px solid var(--line);padding-bottom:calc(var(--u)*0.28)}
+tr.grp th[rowspan]{border-bottom:none}
+.tk{display:block;font-size:calc(var(--u)*0.84);color:var(--ink-3);font-weight:400}
 thead th{font-size:calc(var(--u)*1.0);font-weight:500;color:var(--ink-3);
   border-bottom:1px solid var(--ink-3);line-height:1.45;white-space:normal}
 tbody td{color:var(--ink-2)}
@@ -146,6 +157,9 @@ tbody tr:last-child td{border-bottom:none}
 .ft{padding-top:calc(var(--u)*0.9);border-top:1px solid var(--rule);
   font-size:calc(var(--u)*0.95);color:var(--ink-3);line-height:1.6}
 
+/* a 720- or 768-tall screen cannot carry the same unit as a 1080 one, and the
+   overflow there is uniform rather than from any one block */
+@media (max-height:800px){:root{--u:clamp(8px, 1.09vmin, 20px)}}
 @media (max-width:820px){
   :root{--u:12px}
   html,body{height:auto}
@@ -193,44 +207,57 @@ W("""  </div>
 
 # ----------------------------------------------------------------- matrix
 W("""  <table>
-    <thead><tr>
-      <th>گزینه</th>
-      <th>%s<br>تومان</th><th>%s<br>تومان</th><th>%s<br>تومان</th>
-      <th>میانگین وام<br>هر نفر &mdash; تومان</th>
-      <th>مبلغ هر بار اعطا<br>میلیارد تومان</th>
-      <th>اعطایی در یک سال<br>%s بار &mdash; میلیارد</th>
-      <th>نرخ نکول هر وام<br>وزن‌دار بر حسب مبلغ</th>
-      <th>زیان سالانه<br>میلیارد تومان</th>
-    </tr></thead>
+    <thead>
+      <tr class="grp">
+        <th rowspan="2">گزینه</th>
+        <th colspan="3">مشترکین تأییدشده و ضریب نفوذ هر باند</th>
+        <th colspan="3">در هر بار اعطا</th>
+        <th colspan="3">در یک سال &mdash; %s بار</th>
+      </tr>
+      <tr>
+        <th>%s<span class="tk">نفوذ %s درصد</span></th>
+        <th>%s<span class="tk">نفوذ %s درصد</span></th>
+        <th>%s<span class="tk">نفوذ %s درصد</span></th>
+        <th>وام‌گیرنده</th>
+        <th>میانگین وام<span class="tk">تومان</span></th>
+        <th>مبلغ کل<span class="tk">میلیارد</span></th>
+        <th>اعطایی<span class="tk">میلیارد</span></th>
+        <th>نرخ نکول<span class="tk">وزن‌دار بر مبلغ</span></th>
+        <th>زیان<span class="tk">میلیارد</span></th>
+      </tr>
+    </thead>
     <tbody>
-""" % (LABEL[1], LABEL[2], LABEL[3], fa(ROUNDS)))
+""" % (fa(ROUNDS), LABEL[1], fa(int(TAKE[1]*100)), LABEL[2], fa(int(TAKE[2]*100)),
+       LABEL[3], fa(int(TAKE[3]*100))))
 for (nm, tag, _), m in zip(OPT, MET):
     W('      <tr><td class="opt">%s<em>%s</em></td>' % (nm, tag))
     for b in (1, 2, 3):
         cls = ' class="band3"' if b == 3 and m["cnt"][b] else ""
         W('<td%s>%s</td>' % (cls, f(m["cnt"][b]) if m["cnt"][b] else "&mdash;"))
-    W('<td>%s</td><td>%s</td><td class="on1">%s</td><td>%s درصد</td><td>%s</td></tr>\n'
-      % (f(m["avg"]), f(m["per_round"]), f(m["ann"]), d3(100*m["pd1"]), d1(m["loss"])))
+    W('<td>%s</td><td>%s</td><td>%s</td><td class="on1">%s</td>'
+      '<td>%s درصد</td><td>%s</td></tr>\n'
+      % (f(m["borrowers"]), f(m["avg"]), f(m["per_round"]), f(m["ann"]),
+         d3(100*m["pd1"]), d1(m["loss"])))
 W("""    </tbody>
   </table>
-  <p class="note">سه ستون اول <b>مشترکین تأییدشده</b> در هر باند سقف است. ستون‌های
-  مبلغ با <b>ضریب نفوذ %s درصد</b> حساب شده‌اند، یعنی %s نفر از %s تأییدشده در هر
-  بار وام می‌گیرند. <b>نرخ نکول وزن‌دار بر حسب مبلغ است، نه تعداد نفرات</b>، برای همین
-  در گزینه گسترده پایین‌تر می‌آید: پول بیشتری به دست کم‌ریسک‌ترین دهک‌ها می‌رسد. ولی
-  چون مبلغ کل بزرگ‌تر است، زیان مطلق همچنان بالاتر می‌رود. <b>با این فرض، حتی گزینه گسترده فقط %s درصد هدف ۱۵٬۰۰۰ میلیاردی
-  را پوشش می‌دهد</b> &mdash; رسیدن به هدف نیاز دارد هر وام‌گیرنده حدود %s بار در سال
-  وام بگیرد، یعنی تقریباً هر ماه.</p>
-""" % (fa(int(TAKE*100)), f(MET[0]["borrowers"]), f(APPROVED),
-       fa("{:.0f}".format(100*MET[2]["ann"]/TARGET)),
-       fa("{:.0f}".format(TARGET/(MET[2]["per_round"])))))
+  <p class="note"><b>وام بزرگ‌تر، نفوذ کمتر.</b> برای همین گزینه گسترده کمترین
+  وام‌گیرنده را دارد (%s در برابر %s در کم‌ریسک) و با این حال بیشترین مبلغ را
+  می‌دهد. <b>نرخ نکول وزن‌دار بر حسب مبلغ است، نه تعداد نفرات</b>، پس در گزینه گسترده
+  پایین‌تر می‌آید چون پول بیشتری به دست کم‌ریسک‌ترین دهک‌ها می‌رسد؛ زیان مطلق با این
+  حال بالاتر می‌رود. <b>با این ضرایب، حتی گزینه گسترده فقط %s درصد هدف ۱۵٬۰۰۰
+  میلیاردی را پوشش می‌دهد</b> &mdash; این فاصله با سقف اعتبار پر نمی‌شود، با نفوذ و
+  دفعات وام پر می‌شود.</p>
+""" % (f(MET[2]["borrowers"]), f(MET[0]["borrowers"]),
+       fa("{:.0f}".format(100*MET[2]["ann"]/TARGET))))
 
 # ------------------------------------------------- participation + the flag
 W("""  <div class="two">
     <div class="box">
       <h2>چطور حساب شده</h2>
       <table><tbody>
-        <tr><td>ضریب نفوذ</td><td class="num">%s درصد</td></tr>
-        <tr><td>وام‌گیرنده در هر بار</td><td class="num">%s نفر</td></tr>
+        <tr><td>نفوذ باند ۱۰۰ تا ۳۰۰ هزار</td><td class="num">%s درصد</td></tr>
+        <tr><td>نفوذ باند ۳۰۰ تا ۵۰۰ هزار</td><td class="num">%s درصد</td></tr>
+        <tr><td>نفوذ باند ۵۰۰ هزار تا ۱ میلیون</td><td class="num">%s درصد</td></tr>
         <tr><td>دفعات وام در سال</td><td class="num">%s بار</td></tr>
         <tr><td>سقف میانی هر باند</td><td class="num">۲۰۰، ۴۰۰ و ۷۵۰ هزار</td></tr>
       </tbody></table>
@@ -243,7 +270,7 @@ W("""  <div class="two">
       ۵۰۰ هزار تا ۱ میلیون می‌گذارد.</p>
     </div>
   </div>
-""" % (fa(int(TAKE*100)), f(MET[0]["borrowers"]), fa(ROUNDS),
+""" % (fa(int(TAKE[1]*100)), fa(int(TAKE[2]*100)), fa(int(TAKE[3]*100)), fa(ROUNDS),
        f(CARRY[500_000]), f(MET[1]["cnt"][3]), f(MET[2]["cnt"][3])))
 
 W("""  <div class="ft">تعداد مشترکین از صورتحساب ۱۴۰۵۰۱ تا ۱۴۰۵۰۶ &middot;
